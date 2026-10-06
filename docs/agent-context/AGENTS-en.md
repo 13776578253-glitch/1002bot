@@ -74,7 +74,7 @@ Use two testing layers. Place each test according to the scope of the behavior i
 
 | Test type | Location |
 | --- | --- |
-| Unit tests for a function, class, or module | Alongside the module under test |
+| Unit tests for a function, class, or module | In `__tests__/` alongside the module under test |
 | Collaboration among multiple modules in one package | `tests/integration/` |
 | Collaboration across multiple packages | `tests/integration/` |
 | End-to-end tests | `tests/e2e/` |

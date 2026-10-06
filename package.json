@@ -6,7 +6,12 @@
     "test": "node --experimental-strip-types scripts/run-tests.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "sample": "node --experimental-strip-types scripts/m1-sample.ts",
-    "dev:console": "node --experimental-strip-types scripts/console-sample.ts"
+    "dev:console": "node --experimental-strip-types scripts/console-sample.ts",
+    "dev:tui": "node --experimental-strip-types scripts/tui-sample.ts",
+    "probe:tui": "node --experimental-strip-types scripts/tui-probe.ts"
+  },
+  "dependencies": {
+    "string-width": "^8.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

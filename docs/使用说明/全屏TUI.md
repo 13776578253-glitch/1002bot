@@ -1,0 +1,67 @@
+Owner: `src/console/tui/terminal.ts`, `src/console/tui/editor.ts`, `src/console/tui/input.ts`, `src/console/tui/state.ts`, `src/console/tui/view.ts`, `src/console/tui/text.ts`, `scripts/tui-sample.ts`, `scripts/tui-probe.ts`
+
+# 全屏 TUI
+
+状态：2026-10-06 首批同进程原型已实现，自动验证及 Windows PTY 操作通过；负责人确认 M2.1 人工验收通过。框架与依赖拆分属于后续讨论。
+
+在项目目录运行 `pnpm dev:tui`。样例在同一进程内装配 Runtime、FixtureWorld、脚本 Provider 和真实临时 JSONL，会话日志路径显示在初始活动中。它用于离线调试，不需要模型凭据。
+
+运行状态、活动时间线和草稿编辑区同时显示。输入处理完成后 Runtime 继续等待触发，新的诊断不改写草稿或光标。输入或输出被重定向时自动使用 [行式 Console](终端Console.md)，保留原 `/begin`、`/send` 与 EOF 行为。
+
+## 编辑与回看
+
+| 操作 | 行为 |
+| --- | --- |
+| Enter | 在草稿中换行 |
+| Ctrl+S | 在输入视图提交正文或本地命令；受理期间重复提交被忽略 |
+| 方向键、Home、End | 按字素编辑；上下键按显示列跨行移动 |
+| Backspace、Delete | 删除一个字素，保留组合字符和 emoji 整体 |
+| Ctrl+U | 清空草稿 |
+| 粘贴 | 标准 bracketed paste 整体插入草稿；其中的换行、Ctrl+S、Ctrl+C 不执行操作 |
+| PgUp、PgDn | 回看活动，或在帮助/详情中翻页；新活动只更新新增数量 |
+| Ctrl+L | 返回最新活动和输入视图 |
+| Tab | 切换输入与活动焦点；活动中用上下键选择条目 |
+| F2 | 打开/关闭选中条目的公开诊断详情 |
+| F1、Esc | 打开帮助；返回输入。Esc 不取消 Runtime 执行 |
+
+受理拒绝时保留正文和原因。受理期间仍可编辑；回执仅清空没有再编辑过的草稿，后续修改保留并提示。未提交草稿不写入 Session，本批没有草稿持久化或输入历史导航。
+
+草稿容量为 64 KiB UTF-8；超过容量的插入或粘贴整批拒绝。Runtime 的单条受理上限继续由公共契约决定，当前标准为 8 KiB，界面不会扩大该上限。
+
+## 命令与诊断
+
+本地命令使用一行草稿并按 Ctrl+S 执行；`//` 去掉第一个 `/` 后作为正文提交。命令不进入模型。
+
+| 命令 | 行为 |
+| --- | --- |
+| `/status` | 显示 Runtime 状态、可确定的活动输入和本端未完成数量 |
+| `/inspect ID` | 打开公共快照；缓存不可查询时显示 expired_or_not_found |
+| `/cancel [ID]` | 发送取消请求；省略 ID 使用已知活动输入，没有活动时提示指定 ID |
+| `/stop`、`/start` | 显示执行中及实际生命周期结果；失败保留命令草稿 |
+| `/help` | 打开帮助 |
+| `/quit`、Ctrl+C | 停止 Runtime，等待执行与记录写入收束，恢复终端后退出 |
+| Ctrl+D、EOF | 等待已受理输入完成，再停止退出；Ctrl+C 可将等待改为停止取消 |
+
+受理、模型轮次、工具执行、`write_pending` 和最终结果分别展示。取消回执不是最终取消结果，`tool_finished` 不确认落盘，`persisted` 仅表示最终记录追加结果。unknown、失败原因与错误码沿用公共诊断，不在界面自动重试。
+
+本端未完成数量只统计本 TUI 已受理且未收到终态的输入。诊断窗口有缺口时显示“记录不完整”，数量显示为未知；该界面没有 Runtime 全局队列快照或后台附着能力。
+
+活动缓存最多 128 条、512 KiB，文本和详情字段各保留最多约 16 KiB，超长内容显示截断提示。淘汰的条目不可从展示缓存恢复，完整已提交记录按 Session 的实际存储契约查询。新活动合并重绘，输出流背压期间保留最新界面状态，避免重复积压屏幕帧。
+
+## 实际终端验收
+
+先运行 `pnpm probe:tui`，检查中文候选确认、Enter、Ctrl+S、多行粘贴、方向键、F1/F2 与缩放对应的动作。探针只显示按键类别、文本摘要、字节数和列宽，不装配 Runtime。标准粘贴应显示一条 insert，Ctrl+S 应显示 submit，缩放应显示新的列数与行数。Ctrl+C 退出后终端继续可用。
+
+随后运行 `pnpm dev:tui`：
+
+1. 输入 `set answer 7`，Ctrl+S；运行期间继续输入 `get answer` 并提交，确认两个输入按实际受理顺序关联。
+2. 在活动更新时编辑中文、组合字符、emoji 和多行草稿，确认光标与正文保持；粘贴多行后，确认尚未自动提交。
+3. PgUp 回看，确认新活动不拉回底部；Tab 选择、F2 查看完整 ID 与诊断，PgDn 翻页，Ctrl+L 返回最新。
+4. 执行 `fail reason`，确认工具失败与最终回复分别展示；执行 `/stop` 后提交正文，确认拒绝且正文保留，清空后执行 `/start`。
+5. 在输入未结束时执行 `/cancel`、`/quit` 或 Ctrl+C，确认实际终态和终端恢复；缩小窗口后仍可编辑，正常恢复尺寸后内容可读。
+
+Windows PTY 已验证全屏启动、显式提交、两次工具往返、中文与 emoji 草稿、回看、帮助和 `/quit`；Node 退出记录为 code=0、raw=false、flowing=false。负责人于 2026-10-06 确认本批人工验收通过，未提供逐项环境与操作记录；其他终端组合需另行验证。
+
+实现与证据见 [首批开发记录](../agent-context/current-task/2026-10-06-consoleTUI首批开发.md)，后续混合来源展示按 [Console 计划](../agent-context/plans/2026-10-06-console终端交互计划.md) 推进。
+
+整体结构、内部复杂度和主线边界单独见 [M2.1 进度与架构图](../2026-10-06-M2.1进度与架构图.md)。

@@ -12,4 +12,5 @@ async function collect(directory) {
   }
 }
 await collect('tests');
+await collect('src');
 for (const file of files.sort()) await import(pathToFileURL(join(root, file)).href);

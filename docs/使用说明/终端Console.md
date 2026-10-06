@@ -8,6 +8,8 @@ Owner: `src/console/terminal.ts`, `src/protocol/input.ts`, `src/runtime/input-ch
 
 Console 在整体系统中的所有权、装配和依赖关系见 [M2 进度与架构图](../2026-10-05-M2进度与架构图.md)。
 
+独立全屏入口为 `pnpm dev:tui`，操作与验证范围见 [全屏 TUI](全屏TUI.md)。本页继续说明行式 Console；非 TTY 的全屏入口也使用本页的行式语义。
+
 在项目目录执行 `pnpm dev:console`。样例使用 FixtureWorld 和离线脚本模型，启动时打印临时 JSONL 路径。输入 `set answer 7` 写入值，再输入 `get answer` 读取；`fail reason` 演示工具失败；其他正文原样回复。
 
 每次提交显示 inputId 和受理序号；模型请求显示 provider_started/provider_finished 和 round，工具诊断显示 round、callId、状态及错误代码/原因。最终显示 succeeded/failed/cancelled、错误原因、persisted 与完整回复。Runtime 在输入完成后仍等待后续输入。
