@@ -13,13 +13,15 @@ Before changing an agent's prompts, tools, memory, or context handoff, apply the
 
 1. **Do not delete history:**
    - Never delete, overwrite, or empty historical records in this document directory.
-   - This applies to historical records under `agent-context/`: task records (`current-task/`, `finish-task/`), historical documents (`history/`), and schema snapshots.
+   - This applies to historical records under `docs/agent-context/`: task records (`current-task/`, `finish-task/`), historical documents (`history/`), and schema snapshots.
    - It does not apply to the directory structure itself, superseded drafts whose results have been recorded (such as old plan files), or content whose deletion is explicitly requested by the repository owner.
 2. **Keep records synchronized:**
    - Before changing code, record the intended logic, impact, and verification method in the current task record. Do not put task records in `AGENTS.md`.
-   - After changing code, append an update to the task record under `agent-context/current-task/`.
+   - After changing code, append an update to the task record under `docs/agent-context/current-task/`.
 
-### Documentation requirements for `agent-context`
+### Documentation requirements for `docs/agent-context`
+
+Historical records may retain project-root paths from before the 2026-10-06 migration. Resolve their former `agent-context/` prefix as `docs/agent-context/`; preserve the recorded decisions and verification results.
 
 - Store new content and records of major changes in `current-task/`.
 - Store task records by appending. When correcting an existing conclusion, append a correction instead of overwriting the original record.
@@ -40,7 +42,7 @@ These rules apply to comments, documents, commit messages, and reports to the op
 
 ### Operator-facing milestone reports
 
-Follow [the operator report standard](面向负责人的阶段汇报规范.md) for human-facing milestone progress and architecture reports. Present scope, a simplified overview, component ownership, structural changes from the previous milestone when applicable, separate detailed views, focused mechanism reports, remaining structure when applicable, verification, and scope boundaries in that order. Anchor each major change in the overview and expand that part locally. Keep existing requirements for plans, agent handoffs, logs, review records, documentation owners, and append-only history.
+Follow [the operator report standard](../面向负责人的阶段汇报规范.md) for human-facing milestone progress and architecture reports. Present scope, a simplified overview, component ownership, structural changes from the previous milestone when applicable, separate detailed views, focused mechanism reports, remaining structure when applicable, verification, and scope boundaries in that order. Anchor each major change in the overview and expand that part locally. Keep existing requirements for plans, agent handoffs, logs, review records, documentation owners, and append-only history.
 
 ### AI verbosity checklist
 
@@ -97,7 +99,7 @@ Put disposable work such as probes, one-off scripts, dumps, and experiments unde
 
 ## 7. Documentation
 
-- Every page under `docs/` and every README for a code unit must name, in its first line, the file or interface it shadows, called its owner. A commit that changes the owner must also change the page.
+- Every page under `docs/` and every README for a code unit must name, in its first line, the file or interface it shadows, called its owner. A commit that changes the owner must also change the page. Management records under `docs/agent-context/` follow section 2 instead of the code-owner page requirement.
 - Text without a code owner, such as plans, migration records, and decision history, lives in `scratch/` while active and in `deprecated/` when retired. Both are gitignored.
 - `PHILOSOPHY.md` is exempt because it is written for first-time readers and may repeat other files.
 

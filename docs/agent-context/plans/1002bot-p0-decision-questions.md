@@ -2,7 +2,7 @@
 
 状态：P0 主要决策已冻结，可进入 M1 实现。generation/lease 的 deadline 数值、停止顺序和外部副作用账本属于实现任务细节。
 
-用途：记录已经完成的 P0 裁定，并作为 M1 实现前的决策索引。执行入口见 `agent-context/plans/1002bot-m1-work-handoff.md`。
+用途：记录已经完成的 P0 裁定，并作为 M1 实现前的决策索引。执行入口见 `docs/agent-context/plans/1002bot-m1-work-handoff.md`。
 
 回答方式：本表的主要问题已经回答。标记为“可后定”的项目和表中明确保留的实现细节，不构成 M1 阻塞项；实现时必须记录具体选择。
 
@@ -15,8 +15,8 @@
 | P0-03 | 必答 | 允许迁移/照搬参考项目到什么程度？ | 结构和设计思想；单个模块代码；大段代码或目录；完整子系统；按阶段裁定 | 结构和设计思想/单个模块代码 |
 | P0-04 | 必答 | P0 阶段对参考代码采取什么处理？ | 只借鉴思想；允许直接迁移已裁定模块；其他 | P0 阶段只借鉴思想，不迁移代码 |
 | P0-05 | 必答 | 后续是否允许重新裁定代码迁移？ | 允许，在对应模块开始前单独裁定；不允许；其他 | 允许，在对应模块开始前单独裁定 |
-| P0-06 | 必答 | 哪些文件是规划/决策权威？ | `agent-context/plans` 管理活动计划，`docs` 管理稳定架构文档；其他 | agent-context/plans 管理活动计划，docs 管理稳定架构文档 |
-| P0-07 | 必答 | 计划完成后如何归档？ | 复制到 `agent-context/history/plans` 并保留原计划归档标记；其他 | 复制到 agent-context/history/plans 并保留原计划归档标记 |
+| P0-06 | 必答 | 哪些文件是规划/决策权威？ | `docs/agent-context/plans` 管理活动计划，`docs` 管理稳定架构文档；其他 | docs/agent-context/plans 管理活动计划，docs 管理稳定架构文档 |
+| P0-07 | 必答 | 计划完成后如何归档？ | 复制到 `docs/agent-context/history/plans` 并保留原计划归档标记；其他 | 复制到 docs/agent-context/history/plans 并保留原计划归档标记 |
 | P0-08 | 可后定 | 是否需要中英文双语文档？ | 仅中文；中文为主、关键规则英文；中英文同步 | 目前仅中文 |
 
 ## 二、协作流程与监督边界
@@ -125,4 +125,4 @@
 - 契约字段和失败语义草案。
 - 测试、Review、人工监督和进入 P1 的验收门槛。
 
-归档：本计划已复制到 `agent-context/history/plans/1002bot-p0-decision-questions.md`；后续以历史副本作为 P0 计划快照。
+归档：本计划已复制到 `docs/agent-context/history/plans/1002bot-p0-decision-questions.md`；后续以历史副本作为 P0 计划快照。

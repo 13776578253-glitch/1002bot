@@ -10,11 +10,11 @@
 
 按以下顺序阅读：
 
-1. `agent-context/AGENTS-en.md`
-2. `agent-context/plans/1002bot-p0-decision-questions.md`
+1. `docs/agent-context/AGENTS-en.md`
+2. `docs/agent-context/plans/1002bot-p0-decision-questions.md`
 3. `docs/1002bot-M1-通用Agent基础规划.md`
 4. `docs/1002bot-M1-Phase0详细规划.md`
-5. `agent-context/current-task/2026-10-03-p0决策问题合集.md`
+5. `docs/agent-context/current-task/2026-10-03-p0决策问题合集.md`
 
 实现开始前先检查仓库现状。当前没有已确认的 Node、pnpm、TypeScript 或测试基线；如果缺少 `package.json` 和对应脚本，先建立最小可运行基线，再进入功能实现。
 
@@ -134,6 +134,6 @@ deadline 数值、组件停止顺序和外部副作用账本留在实现任务�
 
 ## 交付记录要求
 
-每个实现批次都在 `agent-context/current-task/` 追加记录，写明时间、变更、影响、验证、开放问题和提交建议。稳定架构变更更新 `docs/`；完成后的计划复制到 `agent-context/history/plans/` 并在原计划中标注归档位置。
+每个实现批次都在 `docs/agent-context/current-task/` 追加记录，写明时间、变更、影响、验证、开放问题和提交建议。稳定架构变更更新 `docs/`；完成后的计划复制到 `docs/agent-context/history/plans/` 并在原计划中标注归档位置。
 
-归档：M1 基线和验收收尾已完成，本计划已复制到 `agent-context/history/plans/1002bot-m1-work-handoff.md`；原文件保留作为活动入口的历史记录。
+归档：M1 基线和验收收尾已完成，本计划已复制到 `docs/agent-context/history/plans/1002bot-m1-work-handoff.md`；原文件保留作为活动入口的历史记录。
