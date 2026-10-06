@@ -1,0 +1,15 @@
+{
+  "name": "1002bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types scripts/run-tests.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "sample": "node --experimental-strip-types scripts/m1-sample.ts",
+    "dev:console": "node --experimental-strip-types scripts/console-sample.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}
