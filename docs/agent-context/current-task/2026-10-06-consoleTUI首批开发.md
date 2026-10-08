@@ -189,3 +189,25 @@ Build: 核心与契约包各有生成 JS/声明的构建入口，workspace 清�
 Verification: pnpm build、pnpm test 111/111、pnpm run typecheck 通过；编译产物通过 1002bot 与 1002bot/control 入口导入，两个 composeRuntime 导出一致。只改变契约归属与公开导出，Runtime/Agent/Provider/Session/State 的执行代码未修改。
 
 Commit suggestion: feat(control): expose shared frontend capability contracts
+
+## 2026-10-08 独立 TUI 包迁移结果与提交前验证
+
+Change: 公共控制增量已提交为 59cc393。现将 6 个 TUI 模块、13 项模块单元测试与探针迁入 packages/apps/tui，包入口为 @1002bot/tui；string-width 8.3.0 归该包，核心不声明前端运行依赖。组合样例迁到 examples/tui；跨包集成从公开核心/TUI 导出验证，各开发工作区持有自己的依赖。内部 Console 留在 src/console。
+
+Control boundary: RuntimeControl 与现有协议类型共用一份定义。TUI 无核心实现、内部协议或测试入口导入，非原始 TTY 默认拒绝启动，由调用方可选注入 fallback。离线组合与重定向集成显式传入 runTerminal，原行式与 EOF 行为保持。没有迁移或扩展业务执行代码。
+
+Install findings: pnpm 10 的 recursive-install=false 需要通过 --config.recursive-install=true 覆盖后选择目标包，安装脚本已明确核心/TUI/整套范围。新 workspace 的本地旧 registry 元数据没有已有 @types/node 22.20.5，刷新元数据后全部复用缓存、下载 0；既有工具和 string-width 的锁定版本保持，没有升级全局 pnpm。
+
+Verification: 全仓测试 114/114、各包类型检查与构建通过。干净核心源码安装无 TUI/string-width，构建/类型检查通过，93 项核心测试通过、1 项仅前端边界检查跳过；干净 TUI 源码目录无核心 src，构建、类型检查、13/13 单元测试通过。核心与 TUI 真实 tarball 在仓库外离线安装，核心 FixtureWorld/JSONL 读回 7、两个终态 persisted=true、20 条记录；TUI 不安装核心仍可导入、检查声明并生成探针命令。
+
+Probe and sample: 独立 tarball 的 Windows PTY 探针将你好🙂解为 10 bytes/6 cells，换行、submit、quit 正确，Node 退出 0；此为工具注入按键。迁移后 pnpm dev:tui 的重定向 set/get 得到 7、两个 persisted=true、EOF 正常停止。没有启动真实 bot、联网 Provider 或执行负责人新人工复验。
+
+Documentation: 新增 M3.1 本线报告和包安装迁移说明，Owner 页、阅读指南与长期计划同步当前路径；M2.1/M3 报告保留历史正文并追加迁移指针。M3.1 的 5 张图使用现有本地 Mermaid/Playwright 流程渲染并逐图查看，最大显示宽度 758 px，文字与箭头无遮挡/裁切。新版本地模块需 CSS 静态资源，已仅在忽略的渲染工具中补齐；浏览器外部请求保持禁止。
+
+Evidence: scripts/check-packages.mjs 为可重复离线验收入口，结果 scratch/package-install-check.json，图形 scratch/m3.1-diagram-preview。首次打包闭环检查脚本误读 SessionEntry.type，核对真实 JSONL 后改为 kind；生产逻辑未据此改变。Runtime/Agent/Provider/State 与 main 55bdc7e 无差异。
+
+Outcome: 工程迁移与自验完成，独立源码审查与迁移后人工终端记录未另行提供；OpenTUI、远程传输、WebUI、扩展加载及主线新能力仍为后续范围。迁移计划复制到 history/plans 并校验，长期 Console 计划保持活动。准备只提交本轮路径，保持 main 和远端不变。
+
+Commit suggestion: refactor!: isolate optional TUI package from core
+
+Archive note: 迁移计划复制时哈希一致；归档目录层级不同，在副本尾部追加原相对链接的解析基准及可点击入口，保留复制正文。最终校验副本正文仍以前述原计划完整内容为前缀。

@@ -1,6 +1,7 @@
+#!/usr/bin/env node
 /** Manual TTY capability probe; it never creates a Runtime or sends input to a model. */
-import { TerminalInputDecoder } from '../src/console/tui/input.ts';
-import { width, plainText } from '../src/console/tui/text.ts';
+import { TerminalInputDecoder } from './input.ts';
+import { width, plainText } from './text.ts';
 
 const input = process.stdin, output = process.stdout;
 if (!input.isTTY || !output.isTTY) {

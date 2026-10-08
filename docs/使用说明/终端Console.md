@@ -2,7 +2,7 @@ Owner: `src/console/terminal.ts`, `src/protocol/input.ts`, `src/protocol/trigger
 
 # 终端 Console
 
-本文是 M2 终端调试与运维入口的操作和接口说明。游戏内玩家输入的接入与持续运行目标见 [目标偏差讨论](../../scratch/Off-topic%20discussion/2026-10-06-M2目标偏差与持续运行方向.md)。
+本文保留 M2 行式入口的操作说明。2026-10-08 起 src/console 定位为内部测试入口，未来有成熟测试替代时可删除；正式可选前端为独立 TUI 包。游戏内玩家输入的接入与持续运行目标见 [目标偏差讨论](../../scratch/Off-topic%20discussion/2026-10-06-M2目标偏差与持续运行方向.md)。
 
 源码阅读入口见 [代码阅读与注释](../开发指南/代码阅读与注释.md)：英文注释锚定模块职责，中文注释说明受理、诊断、容量和收束边界。
 
@@ -10,7 +10,7 @@ Owner: `src/console/terminal.ts`, `src/protocol/input.ts`, `src/protocol/trigger
 
 Console 的 M2 交付基线见 [M2 进度与架构图](../2026-10-05-M2进度与架构图.md)，当前统一触发结构见 [M3 进度与架构图](../2026-10-08-M3进度与架构图.md)。
 
-独立全屏入口为 `pnpm dev:tui`，操作与验证范围见 [全屏 TUI](全屏TUI.md)。本页继续说明行式 Console；非 TTY 的全屏入口也使用本页的行式语义。
+独立全屏组合样例为 `pnpm dev:tui`，安装与验证范围见 [包安装与迁移](包安装与迁移.md) 和 [全屏 TUI](全屏TUI.md)。样例显式注入行式回退；TUI 单包默认要求原始 TTY。
 
 在项目目录执行 `pnpm dev:console`。样例使用 FixtureWorld 和离线脚本模型，启动时打印临时 JSONL 路径。输入 `set answer 7` 写入值，再输入 `get answer` 读取；`fail reason` 演示工具失败；其他正文原样回复。
 

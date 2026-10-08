@@ -1,5 +1,5 @@
 /** Bounded public diagnostics and local view state, independent of Runtime scheduling. */
-import type { InputReceipt, OutputEvent } from '../../protocol/index.ts';
+import type { InputReceipt, OutputEvent } from '@1002bot/control-api';
 import { DraftEditor } from './editor.ts';
 import { plainText } from './text.ts';
 

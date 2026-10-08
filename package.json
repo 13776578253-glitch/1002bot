@@ -3,17 +3,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types scripts/run-tests.mjs",
-    "typecheck": "node scripts/typecheck.mjs",
+    "test": "pnpm build:all && node --experimental-strip-types scripts/run-tests.mjs",
+    "typecheck": "pnpm build:all && pnpm typecheck:core && pnpm --filter @1002bot/tui typecheck && pnpm --filter @1002bot/tui-example typecheck && pnpm --filter @1002bot/integration-tests typecheck",
     "sample": "node --experimental-strip-types scripts/m1-sample.ts",
     "dev:console": "node --experimental-strip-types scripts/console-sample.ts",
-    "dev:tui": "node --experimental-strip-types scripts/tui-sample.ts",
-    "probe:tui": "node --experimental-strip-types scripts/tui-probe.ts",
+    "dev:tui": "pnpm build:all && pnpm --filter @1002bot/tui-example dev",
+    "probe:tui": "pnpm --filter @1002bot/tui build && pnpm --filter @1002bot/tui probe",
     "build:core": "tsc -p tsconfig.build.json",
-    "build": "pnpm --filter @1002bot/control-api build && pnpm build:core"
+    "build": "pnpm --filter @1002bot/control-api build && pnpm build:core",
+    "install:core": "pnpm install --config.recursive-install=true --filter 1002bot...",
+    "install:tui": "pnpm install --config.recursive-install=true --filter @1002bot/tui...",
+    "install:all": "pnpm install --config.recursive-install=true",
+    "build:all": "pnpm build && pnpm --filter @1002bot/tui build",
+    "test:core": "node --experimental-strip-types scripts/run-tests.mjs --core",
+    "typecheck:core": "pnpm --filter @1002bot/control-api build && node scripts/typecheck.mjs",
+    "check:packages": "node scripts/check-packages.mjs"
   },
   "dependencies": {
-    "string-width": "^8.0.0",
     "@1002bot/control-api": "workspace:*"
   },
   "devDependencies": {

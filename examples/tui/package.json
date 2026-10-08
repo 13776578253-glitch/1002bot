@@ -1,0 +1,16 @@
+{
+  "name": "@1002bot/tui-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types sample.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "1002bot": "workspace:*",
+    "@1002bot/tui": "workspace:*",
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

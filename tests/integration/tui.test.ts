@@ -4,14 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { it } from 'node:test';
-import { ConversationAgent } from '../../src/agent/conversation-agent.ts';
-import { runTui, SCREEN_ENTER, SCREEN_LEAVE, type TuiInput, type TuiOutput } from '../../src/console/tui/terminal.ts';
-import { ScriptedProvider } from '../../src/providers/scripted-provider.ts';
-import { Runtime } from '../../src/runtime/runtime.ts';
-import { JsonlSessionStore } from '../../src/state/jsonl-session.ts';
-import { MemoryState } from '../../src/state/memory-state.ts';
+import { ConversationAgent } from '1002bot';
+import { runTerminal } from '../../src/console/terminal.ts';
+import { runTui, SCREEN_ENTER, SCREEN_LEAVE, type TuiInput, type TuiOutput } from '@1002bot/tui';
+import { ScriptedProvider } from '1002bot';
+import { Runtime } from '1002bot';
+import { JsonlSessionStore } from '1002bot';
+import { MemoryState } from '1002bot';
 import { FixtureWorld } from '../fixtures/fixture-world.ts';
-import type { ProviderResponse } from '../../src/protocol/index.ts';
+import type { ProviderResponse } from '1002bot';
 
 async function eventually(condition: () => boolean): Promise<void> {
   const deadline = Date.now() + 2000;
@@ -33,10 +34,20 @@ async function create(responses: ConstructorParameters<typeof ScriptedProvider>[
   let transcript = '';
   output.on('data', (chunk: Buffer) => { transcript += chunk.toString(); });
   await runtime.start();
-  const running = runTui(runtime, { input, output });
+  const running = runTui(runtime, { input, output, fallback: runTerminal });
   return { runtime, store, input, output, running, rawTransitions, transcript: () => transcript };
 }
 const done = (reply: string): ProviderResponse => ({ finishReason: 'stop', toolCalls: [], message: { role: 'assistant', content: reply } });
+
+it('rejects redirected streams without a supplied fallback and leaves Runtime under caller control', async () => {
+  const runtime = new Runtime({ agent: new ConversationAgent({ sessionId: 'tui-tty' }), provider: new ScriptedProvider([done('unused')]),
+    world: new FixtureWorld(), session: new JsonlSessionStore(join(await mkdtemp(join(tmpdir(), 'bot-tui-tty-')), 'session.jsonl')), state: new MemoryState() });
+  await runtime.start();
+  try {
+    await assert.rejects(runTui(runtime, { input: new PassThrough(), output: new PassThrough() }), /需要支持原始模式的 TTY/);
+    assert.equal(runtime.status, 'running');
+  } finally { await runtime.stop(); }
+});
 
 it('runs input through real Runtime while diagnostics preserve the next draft and grapheme cursor', { timeout: 4000 }, async () => {
   let release!: (response: ProviderResponse) => void;

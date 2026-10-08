@@ -4,14 +4,15 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
-import { ConversationAgent } from '../src/agent/conversation-agent.ts';
-import { runTui } from '../src/console/tui/terminal.ts';
-import { ScriptedProvider } from '../src/providers/scripted-provider.ts';
-import { composeRuntime } from '../src/runtime/compose.ts';
-import { JsonlSessionStore } from '../src/state/jsonl-session.ts';
-import { MemoryState } from '../src/state/memory-state.ts';
-import { FixtureWorld } from '../tests/fixtures/fixture-world.ts';
-import type { JsonValue, ProviderResponse } from '../src/protocol/index.ts';
+import { ConversationAgent } from '1002bot';
+import { runTui } from '@1002bot/tui';
+import { runTerminal } from '../../src/console/terminal.ts';
+import { ScriptedProvider } from '1002bot';
+import { composeRuntime } from '1002bot';
+import { JsonlSessionStore } from '1002bot';
+import { MemoryState } from '1002bot';
+import { FixtureWorld } from '../../tests/fixtures/fixture-world.ts';
+import type { JsonValue, ProviderResponse } from '1002bot';
 
 const directory = await mkdtemp(join(tmpdir(), 'bot-tui-'));
 const provider = new ScriptedProvider(async (request): Promise<ProviderResponse> => {
@@ -32,5 +33,5 @@ const runtime = composeRuntime({ agent: new ConversationAgent({ sessionId: 'tui-
   world: new FixtureWorld(), session: new JsonlSessionStore(join(directory, 'session.jsonl')), state: new MemoryState() });
 try {
   await runtime.start();
-  await runTui(runtime, { initialMessage: `离线样例 · set key 7 / get key / fail reason\n会话日志：${join(directory, 'session.jsonl')}` });
+  await runTui(runtime, { fallback: runTerminal, initialMessage: `离线样例 · set key 7 / get key / fail reason\n会话日志：${join(directory, 'session.jsonl')}` });
 } finally { await runtime.stop(); }

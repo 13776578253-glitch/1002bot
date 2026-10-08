@@ -1,7 +1,7 @@
 /** Runs the full-screen Console through public admission, diagnostics and lifecycle APIs. */
 import { randomUUID } from 'node:crypto';
 import type { Readable, Writable } from 'node:stream';
-import { runTerminal, type ConsoleRuntime } from '../terminal.ts';
+import type { RuntimeControl } from '@1002bot/control-api';
 import { TerminalInputDecoder, type KeyAction } from './input.ts';
 import { TuiState } from './state.ts';
 import { TuiView } from './view.ts';
@@ -11,19 +11,28 @@ export interface TuiInput extends Readable { isTTY?: boolean; isRaw?: boolean; s
 /** columns/rows 为终端显示列行数，缺省采用 80×24；resize 后重新读取。 */
 export interface TuiOutput extends Writable { isTTY?: boolean; columns?: number; rows?: number }
 /** 未指定流时使用进程标准流；initialMessage 只进入本地活动展示。 */
-export interface TuiOptions { input?: TuiInput; output?: TuiOutput; initialMessage?: string }
+export interface TuiOptions {
+  input?: TuiInput;
+  output?: TuiOutput;
+  initialMessage?: string;
+  /** 非原始 TTY 时交由调用方处理；未提供则拒绝启动，不改变 Runtime 生命周期。 */
+  fallback?: (runtime: RuntimeControl, streams: { input: TuiInput; output: TuiOutput }) => Promise<void>;
+}
 /** 本次启用备用屏幕和标准粘贴标记；退出时关闭并返回原屏幕。 */
 export const SCREEN_ENTER = '\x1b[?1049h\x1b[?2004h\x1b[2J';
 export const SCREEN_LEAVE = '\x1b[?2004l\x1b[?25h\x1b[0m\x1b[?1049l';
 
 /**
  * The caller composes and starts Runtime; this Console entry owns exit and terminal restoration.
- * 非原始 TTY 通过行式 Console 运行，沿用其文本和退出契约。
+ * 非原始 TTY 仅调用显式 fallback；内部行式测试入口不属于本包依赖。
  */
-export async function runTui(runtime: ConsoleRuntime, options: TuiOptions = {}): Promise<void> {
+export async function runTui(runtime: RuntimeControl, options: TuiOptions = {}): Promise<void> {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
-  if (!input.isTTY || !output.isTTY || !input.setRawMode) return runTerminal(runtime, { input, output });
+  if (!input.isTTY || !output.isTTY || !input.setRawMode) {
+    if (options.fallback) return options.fallback(runtime, { input, output });
+    throw new Error('全屏 TUI 需要支持原始模式的 TTY；重定向输入输出时请由调用方提供 fallback');
+  }
   const state = new TuiState(runtime.status);
   const view = new TuiView();
   if (options.initialMessage) state.append(options.initialMessage);

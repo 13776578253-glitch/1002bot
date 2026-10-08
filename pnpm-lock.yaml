@@ -11,9 +11,6 @@ importers:
       '@1002bot/control-api':
         specifier: workspace:*
         version: link:packages/shared/control-api
-      string-width:
-        specifier: ^8.0.0
-        version: 8.3.0
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -22,10 +19,56 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  examples/tui:
+    devDependencies:
+      1002bot:
+        specifier: workspace:*
+        version: link:../..
+      '@1002bot/tui':
+        specifier: workspace:*
+        version: link:../../packages/apps/tui
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/apps/tui:
+    dependencies:
+      '@1002bot/control-api':
+        specifier: workspace:*
+        version: link:../../shared/control-api
+      string-width:
+        specifier: ^8.0.0
+        version: 8.3.0
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/shared/control-api:
     devDependencies:
       typescript:
         specifier: ^5.7.2
+        version: 5.9.3
+
+  tests/integration:
+    devDependencies:
+      1002bot:
+        specifier: workspace:*
+        version: link:../..
+      '@1002bot/tui':
+        specifier: workspace:*
+        version: link:../../packages/apps/tui
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      typescript:
+        specifier: 5.9.3
         version: 5.9.3
 
 packages:

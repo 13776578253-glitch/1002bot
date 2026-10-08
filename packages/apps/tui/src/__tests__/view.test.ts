@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
-import type { OutputEvent } from '../../../protocol/index.ts';
+import type { OutputEvent } from '@1002bot/control-api';
 import { TuiState, DISPLAY_LIMITS } from '../state.ts';
 import { TuiView } from '../view.ts';
 import { width } from '../text.ts';

@@ -1,12 +1,14 @@
-Owner: `src/console/tui/terminal.ts`, `src/console/tui/editor.ts`, `src/console/tui/input.ts`, `src/console/tui/state.ts`, `src/console/tui/view.ts`, `src/console/tui/text.ts`, `scripts/tui-sample.ts`, `scripts/tui-probe.ts`
+Owner: `packages/apps/tui/src/`、`examples/tui/sample.ts`、`packages/apps/tui/package.json`
 
 # 全屏 TUI
 
-状态：2026-10-06 首批同进程原型已实现，自动验证及 Windows PTY 操作通过；负责人确认 M2.1 人工验收通过。框架与依赖拆分属于后续讨论。
+状态：M2.1 人工验收于 2026-10-06 通过。2026-10-08 已迁移为独立可选包，工程隔离与回归自验通过；本次迁移的人工复验未另行记录。框架替换继续后续讨论。
+
+首次运行先按 [包安装与迁移](包安装与迁移.md) 执行 `pnpm install:all`；只安装核心时不包含 TUI、组合样例和前端依赖。
 
 在项目目录运行 `pnpm dev:tui`。样例在同一进程内装配 Runtime、FixtureWorld、脚本 Provider 和真实临时 JSONL，会话日志路径显示在初始活动中。它用于离线调试，不需要模型凭据。
 
-运行状态、活动时间线和草稿编辑区同时显示。输入处理完成后 Runtime 继续等待触发，新的诊断不改写草稿或光标。输入或输出被重定向时自动使用 [行式 Console](终端Console.md)，保留原 `/begin`、`/send` 与 EOF 行为。
+运行状态、活动时间线和草稿编辑区同时显示。输入处理完成后 Runtime 继续等待触发，新的诊断不改写草稿或光标。组合样例显式注入 [内部行式 Console](终端Console.md)，重定向时保留原 `/begin`、`/send` 与 EOF 行为；直接调用 TUI 包时，非原始 TTY 需自行提供 fallback，否则拒绝启动。
 
 M3 将输入、World Event 与 Heartbeat 统一调度后，非用户活动摘要显示触发种类、ID 与来源，详情保留公共关联字段。草稿、用户输入取消和快照操作沿用原契约；本次只适配诊断字段。主线结构与自验状态见 [M3 阶段报告](../2026-10-08-M3进度与架构图.md)。
 
