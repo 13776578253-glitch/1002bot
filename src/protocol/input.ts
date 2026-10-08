@@ -1,6 +1,7 @@
-/** The input channel defines admission, execution diagnostics and finite in-process retention. */
+/** User-input compatibility contracts share execution diagnostics with the Runtime trigger channel. */
+import type { TriggerKind } from './trigger.ts';
 
-/** 外部只提交文本，不直接提交模型消息、工具调用或原生 Provider 内容。 */
+/** UserInput admits text; model messages, tool calls and native Provider data belong to execution. */
 export interface UserInput {
   /** 受理去重标识；受理后即占用，完成或取消不会释放。 */
   inputId: string;
@@ -28,18 +29,22 @@ export interface InputSnapshot {
   /** 出队执行时分配；排队期间及排队取消的结果为 null。 */
   runId: string | null;
   queueSequence: number;
-  /** write_pending 表示执行已结束，但最终记录的写入结果尚未确认。 */
+  /** write_pending 表示处理结果已确定，接收或最终记录的写入尚未结算。 */
   status: 'queued' | 'running' | 'write_pending' | RunResult['status'];
   result?: RunResult;
   round?: number;
 }
-/** 公开诊断只携带关联标识和简要结果，不暴露请求体、原生响应或错误私有属性。 */
+/** Public diagnostics span every trigger source and expose no Provider-native or private error data. */
 export interface OutputEvent {
-  type: 'queued' | 'run_started' | 'run_status' | 'provider_started' | 'provider_finished' | 'tool_started' | 'tool_finished' | 'run_finished' | 'runtime_status';
+  type: 'queued' | 'run_started' | 'run_status' | 'provider_started' | 'provider_finished' | 'tool_started' | 'tool_finished' | 'run_finished' | 'runtime_status' | 'heartbeat_skipped';
+  triggerKind?: TriggerKind | null;
+  triggerId?: string | null;
+  source?: string | null;
+  /** 仅 UserInput 填写；其他来源使用 triggerKind/triggerId/source 关联。 */
   inputId: string | null;
   runId: string | null;
   sessionId: string;
-  /** 输入事件沿用受理时的代次；Runtime 状态事件使用当前代次。 */
+  /** 已受理触发沿用受理代次；Runtime 状态与跳过的心跳使用当前代次。 */
   generation: number;
   /** 通道实例内单调递增，用于读取保留窗口和检测缺口。 */
   seq: number;
@@ -53,22 +58,25 @@ export interface OutputEvent {
   round?: number;
   /** 工具错误和 unknown 原因只投影 code/message，不能携带任意错误对象。 */
   error?: { code: string; message: string };
+  /** 跳过的心跳只累计诊断，不占外部去重身份或逐 tick 保存历史。 */
+  skippedCount?: number;
 }
 export type RunProgress = Pick<OutputEvent, 'callId' | 'toolName' | 'status' | 'error'> & {
   type: 'provider_started' | 'provider_finished' | 'tool_started' | 'tool_finished';
   round: number;
 };
+/** UserInput admission is a facade over the shared Session trigger channel. */
 export interface InputChannel {
   /** 严格验证输入形状与容量；拒绝的输入不占用去重标识和排队序号。 */
   submit(input: UserInput): Promise<InputReceipt>;
   cancel(inputId: string): Promise<CancelReceipt>;
   /** 快照可能因容量淘汰而不可见；不可见不意味着去重标识已释放。 */
   inspect(inputId: string): InputSnapshot | undefined;
-  /** 返回取消订阅函数；监听器收到副本，异常不影响执行。 */
+  /** 返回取消订阅函数；所有来源共享通知，监听器收到副本，异常不影响执行。 */
   subscribe(listener: (event: OutputEvent) => void): () => void;
   /** 读取 seq 之后仍保留的事件；gap 表示请求位置早于保留窗口。 */
   eventsSince(seq: number): { gap: boolean; events: readonly OutputEvent[] };
-  /** 等待执行与最终记录写入；不代表 World 清理或 Runtime 停止已完成。 */
+  /** 等待共享通道各来源的执行与终态写入；不代表 World 清理或 Runtime 停止已完成。 */
   idle(): Promise<void>;
 }
 /** 所有字节限制按 UTF-8 计量，时间限制单位为毫秒。 */
@@ -79,28 +87,28 @@ export interface InputLimits {
   textBytes: number;
   /** 留给续轮增长的软余量；当前运行可使用 requestBytes 的完整硬上限。 */
   reserveBytes: number;
-  /** 等待队列上限，不包含当前活动输入。 */
+  /** 三种触发共享的等待队列上限，不包含当前活动项。 */
   pendingInputs: number;
-  /** 单次输入最多发起的模型请求数。 */
+  /** 单次触发的模型请求上限，还受 Agent 声明的 maxTurns 限制。 */
   providerCalls: number;
   /** 单次模型调用期限。 */
   providerMs: number;
   /** 单次工具调用期限；超时不能证明外部效果未发生。 */
   toolMs: number;
-  /** 输入出队后的整轮期限。 */
+  /** 触发出队后的整次处理期限，包含等待接收追加确认的时间。 */
   runMs: number;
-  /** 输入受理后等待出队的期限。 */
+  /** 仅 UserInput 的排队期限；World Event 与 Heartbeat 使用各自 expiresAt。 */
   queueMs: number;
   /** 单次响应的工具批量上限，执行任何一项前检查。 */
   toolCalls: number;
   /** 原始 HTTP 响应体或进程内响应 JSON 的上限。 */
   responseBytes: number;
-  /** 通道实例累计受理标识上限；停止再启动不重置。 */
+  /** UserInput 与 World Event 累计身份上限；内部心跳不占用，停止再启动不重置。 */
   admissionIds: number;
   /** 诊断事件同时受条数和总字节数约束。 */
   outputEntries: number;
   outputBytes: number;
-  /** 快照同时受条数和总字节数约束，独立于受理去重表。 */
+  /** 各来源快照共享条数和总字节预算，独立于受理去重表。 */
   snapshotEntries: number;
   snapshotBytes: number;
 }

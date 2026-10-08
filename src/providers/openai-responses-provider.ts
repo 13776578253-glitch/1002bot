@@ -9,7 +9,7 @@ export interface OpenAIResponsesOptions {
   baseUrl?: string;
   /** 可注入离线传输替身，测试无需联网。 */
   fetchImpl?: typeof fetch;
-  /** 流式读取响应时的字节上限；默认使用标准输入容量。 */
+  /** 分块读取原始响应体的字节上限；独立配置，装配时应与 Runtime 响应容量对齐。 */
   responseBytes?: number;
 }
 

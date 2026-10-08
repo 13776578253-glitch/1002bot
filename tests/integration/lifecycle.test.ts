@@ -23,6 +23,7 @@ describe('runtime lifecycle', () => {
     let resolveProvider!: (response: ProviderResponse) => void;
     const provider: Provider = {
       id: 'deferred',
+      measureRequest: (request) => Buffer.byteLength(JSON.stringify(request)),
       complete: async (_request: ProviderRequest, _signal: AbortSignal) => new Promise<ProviderResponse>((resolve) => { resolveProvider = resolve; }),
     };
     const world: World = {

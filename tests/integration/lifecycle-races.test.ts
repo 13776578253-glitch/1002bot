@@ -80,7 +80,7 @@ it('keeps concurrent stops on one cleanup while a cancelled start settles', { ti
   assert.equal(runtime.status, 'stopped');
 });
 
-it('drops a delayed history read before restoring trace after stop', { timeout: 2000 }, async () => {
+it('drops a delayed history read after stop while retaining admission and terminal facts', { timeout: 2000 }, async () => {
   const store = await session();
   await store.append({ kind: 'event', at: event.occurredAt, event });
   const reading = gate();
@@ -96,8 +96,8 @@ it('drops a delayed history read before restoring trace after stop', { timeout: 
   await runtime.stop();
   release.resolve();
   await handling;
-  assert.equal(runtime.trace.length, 0);
-  assert.equal((await store.read()).length, 1);
+  assert.deepEqual(runtime.trace.map((entry) => entry.kind), ['trigger_received', 'run_finished']);
+  assert.equal((await store.read()).length, 3);
 });
 
 for (const kind of ['event', 'provider_request', 'provider_response', 'tool_call', 'tool_outcome'] as const) {
@@ -141,8 +141,9 @@ for (const kind of ['event', 'provider_request', 'provider_response', 'tool_call
     assert.equal(requests, kind === 'event' || kind === 'provider_request' ? 0 : 1);
     assert.equal(continuations, 0);
     const persisted = await store.read();
-    assert.equal(persisted.at(-1)?.kind, kind);
-    assert.equal(runtime.trace.some((entry) => entry.kind === kind), false);
+    assert.equal(persisted.at(-1)?.kind, 'run_finished');
+    assert.equal(runtime.trace.some((entry) => entry.kind === kind), true);
+    assert.equal(persisted.filter((entry) => entry.kind === 'run_finished').at(-1)?.result.status, 'cancelled');
   });
 }
 
@@ -170,7 +171,9 @@ it('drops a late World receipt across restart without losing the new generation'
   await handling;
   await runtime.handleEvent({ ...event, id: 'new' });
   await runtime.stop();
-  assert.equal((await store.read()).some((entry) => entry.kind === 'tool_outcome' && entry.outcome.callId === 'old'), false);
+  const old = (await store.read()).flatMap((entry) => entry.kind === 'tool_outcome' && entry.outcome.callId === 'old' ? [entry.outcome] : []);
+  assert.equal(old.length, 1);
+  assert.equal(old[0]?.status, 'unknown');
   assert.equal(runtime.trace.some((entry) => entry.kind === 'event' && entry.event.id === 'new'), true);
 });
 
@@ -216,7 +219,7 @@ it('ignores an initial Agent request completed after stop', { timeout: 2000 }, a
   release.resolve();
   await handling;
   assert.equal(requests, 0);
-  assert.deepEqual((await store.read()).map((entry) => entry.kind), ['event']);
+  assert.deepEqual((await store.read()).map((entry) => entry.kind), ['trigger_received', 'event', 'run_started', 'run_finished']);
 });
 
 it('gives cleanup a live signal and aborts it when its deadline expires', { timeout: 2000 }, async () => {
@@ -258,19 +261,19 @@ it('reports a real storage failure only after all accepted writes have settled',
   };
   const runtime = new Runtime({ agent: new TestAgent(), provider: new ScriptedProvider([done]), world: new FixtureWorld(), session: delayed, state: new MemoryState() });
   await runtime.start();
-  const failedHandling = assert.rejects(runtime.handleEvent(event));
+  const failedHandling = runtime.handleEvent(event);
   await firstWriting.promise;
   const otherHandling = runtime.handleEvent({ ...event, id: 'other' });
   await secondWriting.promise;
   const stopping = runtime.stop();
   const rejectedStop = assert.rejects(stopping, AggregateError);
   releaseFirst.resolve();
-  await failedHandling;
+  assert.equal((await failedHandling).code, 'storage_error');
   assert.equal(runtime.status, 'stopping');
   await assert.rejects(runtime.start(), /stopping/);
   releaseSecond.resolve();
   await Promise.all([otherHandling, rejectedStop]);
   assert.equal(runtime.status, 'stopped');
-  assert.equal((await store.read()).length, 1);
-  assert.equal(runtime.trace.length, 0);
+  assert.deepEqual((await store.read()).map((entry) => entry.kind), ['trigger_received', 'run_finished']);
+  assert.equal(runtime.trace.some((entry) => entry.kind === 'provider_request'), false);
 });

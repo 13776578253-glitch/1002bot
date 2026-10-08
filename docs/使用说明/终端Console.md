@@ -1,4 +1,4 @@
-Owner: `src/console/terminal.ts`, `src/protocol/input.ts`, `src/runtime/input-channel.ts`, `src/runtime/input-run.ts`, `src/agent/conversation-agent.ts`, `src/providers/openai-responses-provider.ts`, `scripts/console-sample.ts`
+Owner: `src/console/terminal.ts`, `src/protocol/input.ts`, `src/protocol/trigger.ts`, `src/runtime/input-channel.ts`, `src/runtime/trigger-channel.ts`, `src/runtime/trigger-run.ts`, `src/agent/conversation-agent.ts`, `src/providers/openai-responses-provider.ts`, `scripts/console-sample.ts`
 
 # 终端 Console
 
@@ -6,7 +6,9 @@ Owner: `src/console/terminal.ts`, `src/protocol/input.ts`, `src/runtime/input-ch
 
 源码阅读入口见 [代码阅读与注释](../开发指南/代码阅读与注释.md)：英文注释锚定模块职责，中文注释说明受理、诊断、容量和收束边界。
 
-Console 在整体系统中的所有权、装配和依赖关系见 [M2 进度与架构图](../2026-10-05-M2进度与架构图.md)。
+2026-10-08 注释核对补充了共享诊断流、UserInput 取消目标和 EOF 等待全部受理来源的边界；本次未改变命令或执行行为。
+
+Console 的 M2 交付基线见 [M2 进度与架构图](../2026-10-05-M2进度与架构图.md)，当前统一触发结构见 [M3 进度与架构图](../2026-10-08-M3进度与架构图.md)。
 
 独立全屏入口为 `pnpm dev:tui`，操作与验证范围见 [全屏 TUI](全屏TUI.md)。本页继续说明行式 Console；非 TTY 的全屏入口也使用本页的行式语义。
 
@@ -31,7 +33,9 @@ Console 在整体系统中的所有权、装配和依赖关系见 [M2 进度与�
 
 通用入口为 `runtime.inputs`：submit 返回受理/拒绝回执；subscribe 接收运行、模型轮次、工具诊断、write_pending 与最终结果；cancel、inspect、eventsSince 和 idle 分别用于取消、有限状态查询、游标补读与队列收束。round 从 1 开始表示本输入的 Provider 请求尝试编号；0 表示尚未开始请求，快照同时保留当前编号。Console 仅依赖这一公共契约和生命周期接口。Agent、Provider、World 与 Session 在组合根替换；首个生产 World 尚未选定。
 
-用户输入与环境 Event 独立定义。Agent 的初始用户入口为 initialInputRequest，后续 AgentContinuation.input 为 Event | UserInput。M1 原 Event 入口保留，运行环境事件时拒绝受理用户输入；用户队列运行时拒绝直接 Event 调用，避免两条入口同时执行 World 工具。首批不新增环境事件调度器。
+用户输入、World Event 和 Heartbeat 保留各自语义，共用一个 FIFO 队列与执行器。runtime.inputs 是 UserInput 门面，runtime.triggers 提供通用受理、取消、查询与诊断；handleEvent 进入同一队列并返回自身的 RunResult。受理拒绝抛稳定错误，执行失败或取消通过结果表达。新事件不自动取消活动处理，本批不按来源插队或合并批次。
+
+Agent 的入口分别为 initialInputRequest、initialRequest 和可选 initialHeartbeatRequest；续轮 input 为 Event | UserInput | HeartbeatTrigger。Event/Heartbeat 可以无文本成功，Console 输入继续要求最终回复。非用户诊断显示触发种类、ID 与来源；Console 取消和快照命令仍针对 UserInput。
 
 | 标准参数 | 数值 |
 | --- | ---: |
@@ -42,14 +46,14 @@ Console 在整体系统中的所有权、装配和依赖关系见 [M2 进度与�
 | 每批工具；Provider 响应体 | 8 个；1 MiB |
 | Provider；工具时限 | 30 秒；10 秒 |
 | 执行；排队时限 | 各 120 秒 |
-| 受理 ID | 每个 Runtime 最多 4096 |
+| 外部受理 ID | UserInput 与 World Event 合计每个 Runtime 最多 4096；内部心跳不占用 |
 | 事件缓存；输入快照 | 256 条/4 MiB；128 条/4 MiB |
 
 容量由 STANDARD_INPUT_LIMITS 定义；组合根可以覆盖正整数参数。Responses 适配器使用同一序列化方法计量与发送，请求体包含消息、工具 schema 和原始输出项，凭据头不计入。响应读取有独立 responseBytes 上限，默认同为 1 MiB；调整运行容量时，应同步配置适配器的响应读取上限。进程内 Provider 按响应结构的序列化字节数计量。
 
 ConversationAgent 只选择配对完整的成功历史轮次，原始输出项随整轮保留或淘汰。当前活动轮次超限时发布 context_limit，已确认的工具成功仍按 succeeded 记录，不重试。旧 M1 日志保留，不纳入首批用户上下文；没有自动摘要。
 
-受理队列在内存中，首批没有崩溃恢复、跨进程去重或结果投递保证。run_finished 在 JSONL 终态追加完成后发布；写入失败标记 persisted=false，存储持续挂起保持 write_pending 并阻塞 stop。现有 JSONL 追加未增加 fsync 或事务保证。
+accepted 在内存受理后返回，随受理启动 trigger_received 追加，执行等待追加确认。首批没有崩溃恢复、跨进程去重或结果投递保证。run_finished 在 JSONL 终态追加成功或明确失败后发布；写入失败标记 persisted=false 并停止后续处理，存储持续挂起阻塞 stop。现有 JSONL 追加未增加 fsync 或事务保证。
 
 M2 工具已经进入 World 执行后抛异常，无法确认结果，按 unknown 收束；明确领域失败应由 World 返回 failed 回执。unknown 诊断保留原 callId 与原因，缺少原因时标记 tool_unknown。取消、工具超时和回执 ID 错配分别保留对应错误代码，未开始的同批调用标记 cancelled/not_executed。
 

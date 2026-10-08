@@ -16,7 +16,10 @@ export interface TuiOptions { input?: TuiInput; output?: TuiOutput; initialMessa
 export const SCREEN_ENTER = '\x1b[?1049h\x1b[?2004h\x1b[2J';
 export const SCREEN_LEAVE = '\x1b[?2004l\x1b[?25h\x1b[0m\x1b[?1049l';
 
-/** Runtime 由调用方装配和启动，退出由本入口停止；非原始 TTY 回退到行式 Console。 */
+/**
+ * The caller composes and starts Runtime; this Console entry owns exit and terminal restoration.
+ * 非原始 TTY 通过行式 Console 运行，沿用其文本和退出契约。
+ */
 export async function runTui(runtime: ConsoleRuntime, options: TuiOptions = {}): Promise<void> {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;

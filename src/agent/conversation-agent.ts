@@ -1,25 +1,29 @@
 /** Agent owns instructions and context selection; complete runs and opaque Provider items stay intact. */
-import type { Agent, AgentContext, AgentContinuation, Event, ModelMessage, ProviderRequest, SessionEntry, UserInput } from '../protocol/index.ts';
+import type { Agent, AgentContext, AgentContinuation, Event, HeartbeatRequest, ModelMessage, ProviderRequest, SessionEntry, UserInput } from '../protocol/index.ts';
 import { InputError, STANDARD_INPUT_LIMITS } from '../protocol/index.ts';
 
 export class ConversationAgent implements Agent {
   readonly id = 'conversation';
   private readonly sessionId: string;
   private readonly instructions: string;
-  constructor(options: { sessionId: string; instructions?: string }) {
+  readonly initialHeartbeatRequest: HeartbeatRequest;
+  constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest }) {
     this.sessionId = options.sessionId;
     this.instructions = options.instructions ?? 'Respond to the user. Use the available tools when needed. Report tool failures accurately.';
+    // 没有周期任务策略时，心跳正常无动作结束；装配方可提供语义策略。
+    this.initialHeartbeatRequest = options.heartbeatRequest ?? (async () => undefined);
   }
   declareSession() { return { sessionId: this.sessionId, maxTurns: STANDARD_INPUT_LIMITS.providerCalls, persistent: true }; }
+  /** Compatibility fallback serves direct callers without runId; Runtime uses grouped execution facts. */
   async initialRequest(event: Event, context: AgentContext): Promise<ProviderRequest> {
-    return this.build(context, [{ role: 'user', content: JSON.stringify(event) }]);
+    return this.build(context, context.runId ? [] : [{ role: 'user', content: JSON.stringify(event) }]);
   }
   /** 当前输入已在历史中；再次拼接参数会重复发送用户文本。 */
   async initialInputRequest(_input: UserInput, context: AgentContext): Promise<ProviderRequest> { return this.build(context); }
   async nextRequest(input: AgentContinuation, context: AgentContext): Promise<ProviderRequest> {
     let eventIndex = input.history.length - 1;
     while (eventIndex >= 0 && input.history[eventIndex]!.kind !== 'event') --eventIndex;
-    return this.build({ ...context, history: input.history }, 'payload' in input.input && eventIndex >= 0 ? transcript(input.history.slice(eventIndex)) : []);
+    return this.build({ ...context, history: input.history }, !context.runId && 'payload' in input.input && eventIndex >= 0 ? transcript(input.history.slice(eventIndex)) : []);
   }
 
   private build(context: AgentContext, fallback: ModelMessage[] = []): ProviderRequest {
@@ -27,6 +31,7 @@ export class ConversationAgent implements Agent {
     // 以整轮为裁剪单位，防止截掉工具调用或回执中的一半。
     const groups = new Map<string, SessionEntry[]>();
     for (const entry of context.history) {
+      // 无运行分组的旧记录不能作为完整历史轮次自动重放。
       if (!entry.runId) continue;
       const group = groups.get(entry.runId) ?? [];
       group.push(entry);
@@ -65,6 +70,8 @@ function transcript(entries: readonly SessionEntry[]): ModelMessage[] {
   return entries.flatMap((entry): ModelMessage[] => {
     if (entry.kind === 'event') return [{ role: 'user', content: JSON.stringify(entry.event) }];
     if (entry.kind === 'input') return [{ role: 'user', content: entry.input.content.text }];
+    if (entry.kind === 'heartbeat') return [{ role: 'user', content: JSON.stringify(entry.heartbeat) }];
+    // 原生 Provider 项随所属 assistant 轮次保留，适配器负责解释和重放。
     if (entry.kind === 'provider_response') return [{
       role: 'assistant', content: entry.response.message?.content ?? '', toolCalls: entry.response.toolCalls,
       ...(entry.response.providerData ? { providerData: entry.response.providerData } : {}),

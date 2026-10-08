@@ -20,7 +20,7 @@ export class JsonlSessionStore implements SessionStore {
   }
 
   async read(): Promise<readonly SessionEntry[]> {
-    // 等待已提交的写入后再读，避免将尚在追加的历史当作完整快照。
+    // 读取等待此前已进入的追加结算，失败的写入链同样使读取失败。
     await this.writeQueue;
     try {
       const text = await readFile(this.path, 'utf8');

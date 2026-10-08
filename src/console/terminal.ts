@@ -19,6 +19,7 @@ export async function runTerminal(runtime: ConsoleRuntime, options: { input?: Re
   const write = (text: string) => { output.write(`${text}\n`); };
   /** 只统计本终端受理后尚未收到最终事件的输入，不代表 Runtime 的完整快照。 */
   const pending = new Set<string>();
+  /** /cancel 缺省目标仅关联 UserInput；环境触发使用通用诊断标识展示。 */
   let active: string | undefined;
   let interrupted = false;
   /** undefined 表示单行模式，空数组表示已经开始编辑多行正文。 */
@@ -60,7 +61,7 @@ export async function runTerminal(runtime: ConsoleRuntime, options: { input?: Re
       else write(`[${inputId}] rejected ${receipt.code}: ${receipt.message}`);
     }
     if (block) write('EOF：未提交的多行输入已丢弃');
-    // EOF 等待已受理输入完成；显式退出和 SIGINT 已走停止取消路径。
+    // EOF 等待共享通道收束，包含已受理的 World/Heartbeat；显式退出走停止取消。
     if (!interrupted) await runtime.inputs.idle();
   } finally { lines.close(); await runtime.stop(); unsubscribe(); }
 }
@@ -68,7 +69,8 @@ export async function runTerminal(runtime: ConsoleRuntime, options: { input?: Re
 /** 只格式化公共诊断字段，完整回复仅在最终结果中展示。 */
 function format(event: OutputEvent): string {
   if (event.type === 'runtime_status') return `Runtime=${event.status}`;
-  const prefix = `[${event.inputId}]${event.round !== undefined ? ` round=${event.round}` : ''}`;
+  const label = event.inputId ?? `${event.triggerKind ?? 'runtime'}:${event.triggerId ?? 'tick'}`;
+  const prefix = `[${label}]${!event.inputId && event.source ? ` source=${event.source}` : ''}${event.round !== undefined ? ` round=${event.round}` : ''}`;
   if (event.type === 'run_finished' && event.result) {
     const result = event.result;
     return `${prefix} ${result.status}${result.code ? ` ${result.code}` : ''} persisted=${result.persisted}${result.message ? `: ${result.message}` : ''}${result.reply ? `\n${result.reply}` : ''}`;

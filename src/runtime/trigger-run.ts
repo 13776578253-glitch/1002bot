@@ -1,8 +1,9 @@
-/** Executes one admitted input; queue ownership and terminal result persistence stay with the channel. */
-import type { Agent, AgentContext, InputLimits, Provider, ProviderResponse, RunProgress, RunResult, SessionEntry, SessionStore, ToolCall, ToolOutcome, UserInput, World } from '../protocol/index.ts';
-import { InputError } from '../protocol/index.ts';
+/** Executes one admitted trigger; queue ownership and terminal persistence stay with the channel. */
+import type { Agent, AgentContext, InputLimits, Provider, ProviderResponse, RunProgress, RunResult, SessionEntry, SessionStore, ToolCall, ToolOutcome, RuntimeTrigger, World } from '../protocol/index.ts';
+import { InputError, triggerId, triggerSource } from '../protocol/index.ts';
 
-export interface InputRunHost {
+/** Runtime owns the collaborators and tracked writes used by one trigger execution. */
+export interface TriggerRunHost {
   agent: Agent;
   provider: Provider;
   world: World;
@@ -10,37 +11,38 @@ export interface InputRunHost {
   /** 由 Runtime 跟踪的写入入口；停止时仍等待已进入的写入与收束记录。 */
   append(entry: SessionEntry): Promise<void>;
 }
-export interface InputRun {
-  input: UserInput;
+export interface TriggerRun {
+  trigger: RuntimeTrigger;
   runId: string;
   queueSequence: number;
   generation: number;
   signal: AbortSignal;
   limits: InputLimits;
-  /** 发布执行诊断；最终结果由输入通道单独提交。 */
+  /** 发布执行诊断；最终结果由通用通道单独提交。 */
   progress(event: RunProgress): void;
 }
 
-/** halt 独立于 result：即使存储错误覆盖最终原因，效果不明仍要求停止后续输入。 */
-export async function executeInput(host: InputRunHost, run: InputRun): Promise<{ result: RunResult; halt: boolean }> {
+/** halt 独立于 result：即使存储错误覆盖最终原因，效果不明仍要求停止后续触发。 */
+export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Promise<{ result: RunResult; halt: boolean }> {
   const history: SessionEntry[] = [];
-  /** 已声明但尚未提交执行结果的调用，用于中断时补齐回执。 */
+  /** 已声明但尚未取得执行回执的调用；已有回执在追加前移出，避免重复归类。 */
   let pending: ToolCall[] = [];
   /** 仅在即将进入 World 时设置；用于区分效果不明与尚未执行。 */
   let executing: string | undefined;
   let halt = false;
   let round = 0;
+  const association = { runId: run.runId, triggerKind: run.trigger.kind, triggerId: triggerId(run.trigger), source: triggerSource(run.trigger), generation: run.generation };
   const append = async (entry: SessionEntry): Promise<void> => {
-    // 写入前后都检查取消，避免已失效的输入在等待存储后继续调用外部服务。
+    // 写入前后都检查取消，避免已失效的触发在等待存储后继续调用外部服务。
     check(run.signal);
-    const record = { ...entry, runId: run.runId };
+    const record = { ...entry, ...association };
     try { await host.append(record); } catch (error) { throw new InputError('storage_error', message(error)); }
     history.push(record);
     check(run.signal);
   };
   const context = (): AgentContext => ({
     session: host.agent.declareSession(), history, runId: run.runId, tools: host.world.tools(),
-    measureRequest: (request) => host.provider.measureRequest!(request),
+    ...(host.provider.measureRequest ? { measureRequest: (request) => host.provider.measureRequest!(request) } : {}),
     requestBytes: run.limits.requestBytes, reserveBytes: run.limits.reserveBytes,
   });
   const commitOutcome = async (call: ToolCall, outcome: ToolOutcome): Promise<void> => {
@@ -48,18 +50,32 @@ export async function executeInput(host: InputRunHost, run: InputRun): Promise<{
     // 先决定停止并发布执行结果；Session 写入失败也不能丢失 unknown 的收束要求。
     run.progress({ type: 'tool_finished', round, callId: call.callId, toolName: call.toolName, status: outcome.status,
       ...(outcome.error ? { error: publicError(outcome.error) } : {}) });
-    const record: SessionEntry = { kind: 'tool_outcome', runId: run.runId, at: now(), outcome };
+    const record: SessionEntry = { kind: 'tool_outcome', ...association, at: now(), outcome };
+    // 工具回执不因取消跳过追加；存储失败与效果分类分别保留。
     try { await host.append(record); } catch (error) { throw new InputError('storage_error', message(error)); }
     history.push(record);
   };
   try {
-    history.push(...await guarded(() => host.session.read(), run.signal));
+    // 读取时过滤接收归档，避免 Agent 提前使用尚未出队的原始输入。
+    try { history.push(...(await guarded(() => host.session.read(), run.signal)).filter((entry) => entry.kind !== 'trigger_received')); }
+    catch (error) { if (run.signal.aborted) throw error; throw new InputError('storage_error', message(error)); }
+    if (run.trigger.kind === 'user_input') await append({ kind: 'input', at: now(), input: run.trigger.input, queueSequence: run.queueSequence });
+    else if (run.trigger.kind === 'world_event') await append({ kind: 'event', at: now(), event: run.trigger.event });
+    else await append({ kind: 'heartbeat', at: now(), heartbeat: run.trigger });
+    await append({ kind: 'run_started', at: now(), inputId: triggerId(run.trigger) });
+    // 入口保留来源语义；心跳是否请求模型由 Agent 决定，Runtime 只执行其决定。
+    const initial = await guarded(() => {
+      const trigger = run.trigger;
+      if (trigger.kind === 'heartbeat') return host.agent.initialHeartbeatRequest?.(trigger, context()) ?? Promise.resolve(undefined);
+      if (trigger.kind === 'world_event') return host.agent.initialRequest(trigger.event, context());
+      if (!host.agent.initialInputRequest) throw new InputError('input_unsupported', 'Agent does not support user input');
+      return host.agent.initialInputRequest(trigger.input, context());
+    }, run.signal);
+    if (!initial) return { result: { status: 'succeeded', persisted: false }, halt: false };
+    let request = initial;
     if (!host.provider.measureRequest) throw new InputError('request_measurement', 'Provider request measurement is required');
-    if (!host.agent.initialInputRequest) throw new InputError('input_unsupported', 'Agent does not support user input');
-    await append({ kind: 'input', at: now(), input: run.input, queueSequence: run.queueSequence });
-    await append({ kind: 'run_started', at: now(), inputId: run.input.inputId });
-    let request = await guarded(() => host.agent.initialInputRequest!(run.input, context()), run.signal);
-    for (let turn = 0; turn < run.limits.providerCalls; turn++) {
+    const maxCalls = Math.min(run.limits.providerCalls, host.agent.declareSession().maxTurns);
+    for (let turn = 0; turn < maxCalls; turn++) {
       check(run.signal);
       const size = host.provider.measureRequest(request);
       if (size > run.limits.requestBytes) throw new InputError('context_limit', `Request needs ${size} bytes; allowed ${run.limits.requestBytes}`);
@@ -77,6 +93,7 @@ export async function executeInput(host: InputRunHost, run: InputRun): Promise<{
       } catch (error) {
         const cause = run.signal.aborted ? run.signal.reason as unknown : error;
         run.progress({ type: 'provider_finished', round, status: cancellation(cause) ? 'cancelled' : 'error', error: diagnostic(cause) });
+        if (!run.signal.aborted) await append({ kind: 'provider_response', at: now(), response: { toolCalls: [], finishReason: 'error', error: diagnostic(cause) } });
         throw error;
       }
       run.progress({ type: 'provider_finished', round, status: response.finishReason, ...(response.error ? { error: publicError(response.error) } : {}) });
@@ -88,8 +105,9 @@ export async function executeInput(host: InputRunHost, run: InputRun): Promise<{
       if (ids.some((id) => !id) || new Set(ids).size !== ids.length || history.some((entry) => entry.runId === run.runId && entry.kind === 'tool_call' && ids.includes(entry.call.callId))) throw new InputError('invalid_tool_calls', 'Tool call IDs must be unique within the run');
       if (!response.toolCalls.length) {
         const reply = response.message?.content;
-        if (!reply?.trim()) throw new InputError('empty_response', 'Provider returned no final text');
-        return { result: { status: 'succeeded', reply, persisted: false }, halt: false };
+        // Console 需要回复文本；环境事件与心跳可以正常结束且没有对外表达。
+        if (run.trigger.kind === 'user_input' && !reply?.trim()) throw new InputError('empty_response', 'Provider returned no final text');
+        return { result: { status: 'succeeded', ...(reply ? { reply } : {}), persisted: false }, halt: false };
       }
       pending = [...response.toolCalls];
       const outcomes: ToolOutcome[] = [];
@@ -113,6 +131,7 @@ export async function executeInput(host: InputRunHost, run: InputRun): Promise<{
             outcome = { callId: call.callId, toolName: call.toolName, status: 'unknown', error: { code: 'world_error', message: message(error) } };
           }
           if (outcome.callId !== call.callId || outcome.toolName !== call.toolName) { halt = true; throw new InputError('invalid_tool_outcome', 'World returned a mismatched tool outcome'); }
+          // 已取得且匹配的回执结束效果不明窗口，后续写入失败不重新执行该工具。
           executing = undefined;
         }
         if (outcome.status === 'unknown' && !outcome.error) outcome = { ...outcome, error: { code: 'tool_unknown', message: 'World returned an unconfirmed tool result' } };
@@ -123,17 +142,21 @@ export async function executeInput(host: InputRunHost, run: InputRun): Promise<{
         if (outcome.status === 'unknown') throw new InputError('tool_unknown', `Tool ${call.callId} has an unknown result: ${outcome.error!.code}: ${outcome.error!.message}`);
         check(run.signal);
       }
-      if (turn + 1 >= run.limits.providerCalls) throw new InputError('round_limit', 'Provider request limit reached');
+      if (turn + 1 >= maxCalls) throw new InputError('round_limit', 'Provider request limit reached');
       const next = await guarded(() => host.agent.nextRequest({
-        input: run.input,
+        input: run.trigger.kind === 'user_input' ? run.trigger.input : run.trigger.kind === 'world_event' ? run.trigger.event : run.trigger,
         response, outcomes, history,
       }, context()), run.signal);
-      if (!next) throw new InputError('empty_response', 'Agent ended without a final response');
+      if (!next) {
+        if (run.trigger.kind === 'user_input') throw new InputError('empty_response', 'Agent ended without a final response');
+        return { result: { status: 'succeeded', persisted: false }, halt: false };
+      }
       request = next;
     }
     throw new InputError('round_limit', 'Provider request limit reached');
   } catch (error) {
-    const cause = run.signal.aborted ? run.signal.reason as unknown : error;
+    // 已知存储故障保留优先级，停止信号不能把它覆盖为普通取消。
+    const cause = error instanceof InputError && error.code === 'storage_error' ? error : run.signal.aborted ? run.signal.reason as unknown : error;
     let storageError: unknown;
     // 收束写入不受输入取消信号阻断；一条回执写入失败仍继续收束其余已声明调用。
     for (const call of pending) {
@@ -144,7 +167,8 @@ export async function executeInput(host: InputRunHost, run: InputRun): Promise<{
     }
     const finalCause = storageError ?? cause;
     const detail = diagnostic(finalCause);
-    return { result: { status: cancellation(finalCause) ? 'cancelled' : 'failed', ...detail, persisted: false }, halt };
+    // Provider 等普通失败只结束本项；未知效果或必要存储故障停止共享通道。
+    return { result: { status: cancellation(finalCause) ? 'cancelled' : 'failed', ...detail, persisted: false }, halt: halt || detail.code === 'storage_error' };
   }
 }
 

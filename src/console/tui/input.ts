@@ -2,7 +2,7 @@
 import { StringDecoder } from 'node:string_decoder';
 import { DRAFT_BYTES } from './editor.ts';
 
-/** 本地编辑/控制意图；解码器不受理输入、不查询 Runtime。 */
+/** Key actions express local editing and control; the decoder does not access Runtime. */
 export type KeyAction = { type: 'insert' | 'notice'; text: string } | {
   type: 'left' | 'right' | 'up' | 'down' | 'home' | 'end' | 'backspace' | 'delete' |
     'submit' | 'quit' | 'drain' | 'escape' | 'help' | 'details' | 'focus' | 'page_up' | 'page_down' | 'follow' | 'clear';

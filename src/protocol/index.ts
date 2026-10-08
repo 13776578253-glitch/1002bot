@@ -1,15 +1,19 @@
 /** Shared contracts keep Runtime mechanics independent of Agent semantics and World/Provider adapters. */
 export type JsonPrimitive = string | number | boolean | null;
 import type { UserInput, RunResult } from './input.ts';
+import type { HeartbeatTrigger, HeartbeatRequest, RuntimeTrigger, TriggerKind, WorldEventSink } from './trigger.ts';
 export * from './input.ts';
+export * from './trigger.ts';
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 
 /** World 提供的事实；payload 保持可序列化，语义由产生方和 Agent 解释。 */
 export interface Event<TPayload extends JsonValue = JsonValue> {
+  /** 同种触发在 Runtime 实例内唯一；source 变化不会解除相同 ID 的去重。 */
   id: string;
   type: string;
   source: string;
+  /** 业务发生时间，受理顺序由 Runtime 序号确定，有效期由来源另行声明。 */
   occurredAt: string;
   payload: TPayload;
   meta?: JsonObject;
@@ -50,8 +54,12 @@ export interface ToolExecutionContext {
 /** World owns external effects and platform semantics; Runtime invokes only this boundary. */
 export interface World {
   readonly id: string;
+  /** Runtime 等待启动完成后装配感知订阅；此前产生的事实由 World 保留。 */
   start(signal: AbortSignal): Promise<void>;
+  /** 清理信号独立于已中止的启动信号；超时取消不保证底层动作已退出。 */
   stop(signal: AbortSignal): Promise<void>;
+  /** 同步装配订阅，返回退订函数；旧代 sink 在停止或重启后拒绝投递。 */
+  subscribeEvents?(sink: WorldEventSink): () => void;
   /** 当前可用的工具声明；名称和参数语义由 World 定义。 */
   tools(): readonly ToolDefinition[];
   /** 回执须匹配调用标识与工具名；无法确认效果时必须保留 unknown。 */
@@ -100,15 +108,15 @@ export interface ProviderResponse {
 /** Providers own transport and wire format; Runtime supplies cancellation and owns the lifecycle. */
 export interface Provider {
   readonly id: string;
-  /** 无网络副作用地测量 complete 实际发送的 UTF-8 请求体；通用输入路径要求实现。 */
+  /** 无网络副作用地测量 complete 实际发送的 UTF-8 请求体；所有模型执行路径要求实现。 */
   measureRequest?(request: ProviderRequest): number;
-  /** signal 可由单次输入、调用期限或 Runtime 停止触发；适配器应协作释放传输资源。 */
+  /** signal 可由单次触发、调用期限或 Runtime 停止触发；适配器应协作释放传输资源。 */
   complete(request: ProviderRequest, signal: AbortSignal): Promise<ProviderResponse>;
 }
 
 export interface SessionDecl {
   sessionId: string;
-  /** 旧 Event 路径的模型轮次上限；通用输入路径使用 InputLimits.providerCalls。 */
+  /** Agent 声明的模型轮次上限；执行还受 InputLimits.providerCalls 限制。 */
   maxTurns: number;
   /** Agent 的持久化意图；实际存储保证仍取决于装配的 SessionStore。 */
   persistent: boolean;
@@ -117,8 +125,9 @@ export interface SessionDecl {
 /** Runtime supplies request facts; Agent owns semantic context assembly. */
 export interface AgentContext {
   readonly session: SessionDecl;
+  /** 执行器已过滤接收归档；历史内容选择与容量裁剪仍由 Agent 决定。 */
   readonly history: readonly SessionEntry[];
-  /** 当前输入运行标识；旧 Event 路径不提供此字段。 */
+  /** 区分当前运行与已结束历史分组，不代替 Runtime 生命周期代次。 */
   readonly runId?: string;
   readonly tools?: readonly ToolDefinition[];
   readonly measureRequest?: (request: ProviderRequest) => number;
@@ -127,7 +136,7 @@ export interface AgentContext {
 }
 
 export interface AgentContinuation {
-  input: Event | UserInput;
+  input: Event | UserInput | HeartbeatTrigger;
   response: ProviderResponse;
   outcomes: readonly ToolOutcome[];
   history: readonly SessionEntry[];
@@ -136,15 +145,23 @@ export interface AgentContinuation {
 export interface Agent {
   readonly id: string;
   declareSession(): SessionDecl;
+  /** 当前 Event 已作为执行事实写入 history，不应再次拼接成重复用户消息。 */
   initialRequest(event: Event, context: AgentContext): Promise<ProviderRequest>;
   /** 通用输入入口；输入已写入 context.history，无需再次拼接同一条文本。 */
   initialInputRequest?(input: UserInput, context: AgentContext): Promise<ProviderRequest>;
-  /** undefined 结束旧 Event 续轮；通用输入在工具续轮返回 undefined 时按缺少最终回复失败。 */
+  /** 缺省或返回 undefined 时，心跳无模型调用并以成功终态结束。 */
+  initialHeartbeatRequest?: HeartbeatRequest;
+  /** undefined 正常结束 Event/Heartbeat；UserInput 仍要求最终文本回复。 */
   nextRequest(input: AgentContinuation, context: AgentContext): Promise<ProviderRequest | undefined>;
 }
 
-/** 追加式事实记录；runId 用于隔离上下文分组，旧 Event 和尚未出队的输入可缺省。 */
-export type SessionEntry = ({ runId?: string } & (
+/**
+ * Session records archive received facts and execution commits; Agent context excludes receipt-only records.
+ * trigger_received 与排队终态可无 runId；终态 inputId 沿用旧字段名，值为对应触发 ID。
+ */
+export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; triggerId?: string; source?: string; generation?: number } & (
+  | { kind: 'trigger_received'; at: string; trigger: RuntimeTrigger; queueSequence: number }
+  | { kind: 'heartbeat'; at: string; heartbeat: HeartbeatTrigger }
   | { kind: 'input'; at: string; input: UserInput; queueSequence: number }
   | { kind: 'run_started'; at: string; inputId: string }
   | { kind: 'run_finished'; at: string; inputId: string; result: RunResult }

@@ -11,7 +11,7 @@ export class TestAgent implements Agent {
   declareSession(): SessionDecl { return this.session; }
 
   async initialRequest(event: Event, context: AgentContext): Promise<ProviderRequest> {
-    return request(this.session.sessionId, [...messagesFromHistory(context.history), { role: 'user', content: JSON.stringify(event) }]);
+    return request(this.session.sessionId, [...messagesFromHistory(context.history), ...(context.runId ? [] : [{ role: 'user' as const, content: JSON.stringify(event) }])]);
   }
 
   async nextRequest(input: AgentContinuation, _context: AgentContext): Promise<ProviderRequest | undefined> {

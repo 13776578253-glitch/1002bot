@@ -16,6 +16,7 @@ export class TuiState {
   /** 仅跟踪本端已受理且尚未收到终态的 ID；不拥有执行队列。 */
   readonly pending = new Set<string>();
   status: string;
+  /** 最近开始且尚未结束的 UserInput ID；不据此推断 Runtime 全局活动触发。 */
   activeId: string | undefined;
   selectedId: number | undefined;
   /** undefined 跟随最新；指定锚点时新活动只增加未读数量。 */
@@ -70,7 +71,9 @@ export class TuiState {
       this.pending.delete(event.inputId);
       if (this.activeId === event.inputId) this.activeId = undefined;
     }
-    const prefix = `[${event.inputId?.slice(0, 8) ?? '?'}]`;
+    // 摘要允许缩短身份；详情保留完整公共字段，非用户触发不进入本端 pending。
+    const label = event.inputId?.slice(0, 8) ?? `${event.triggerKind ?? 'runtime'}:${event.triggerId?.slice(0, 8) ?? 'tick'}`;
+    const prefix = `[${label}]${!event.inputId && event.source ? ` source=${event.source}` : ''}`;
     let text: string;
     if (event.type === 'run_finished' && event.result) {
       const result = event.result;

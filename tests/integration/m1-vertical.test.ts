@@ -93,7 +93,8 @@ describe('M1 vertical loop', () => {
     await runtime.stop();
 
     const outcomes = (await store.read()).filter((entry) => entry.kind === 'tool_outcome');
-    assert.deepEqual(outcomes[0]?.outcome, { callId: 'uncertain-1', toolName: 'fixture.uncertain', status: 'unknown' });
+    assert.deepEqual(outcomes[0]?.outcome, { callId: 'uncertain-1', toolName: 'fixture.uncertain', status: 'unknown', error: { code: 'tool_unknown', message: 'World returned an unconfirmed tool result' } });
+    assert.equal(runtime.status, 'stopped');
   });
 
   it('recovers JSONL session entries', async () => {
