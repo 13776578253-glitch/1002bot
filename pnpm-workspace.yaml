@@ -1,0 +1,6 @@
+packages:
+  - packages/apps/*
+  - packages/extensions/*
+  - packages/shared/*
+  - examples/*
+  - tests/integration

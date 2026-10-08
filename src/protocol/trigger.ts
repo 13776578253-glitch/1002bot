@@ -2,7 +2,8 @@
 import type { Event, ProviderRequest, AgentContext } from './index.ts';
 import type { UserInput, RunResult, OutputEvent, InputSnapshot } from './input.ts';
 
-export type TriggerKind = 'user_input' | 'world_event' | 'heartbeat';
+import type { TriggerKind } from '@1002bot/control-api';
+export type { TriggerKind } from '@1002bot/control-api';
 /** World 原始事实保持 Event 形状；未声明 expiresAt 时不按 occurredAt 年龄过期。 */
 export type ExternalTrigger =
   | { kind: 'user_input'; input: UserInput }

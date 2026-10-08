@@ -2,15 +2,11 @@
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
-import type { InputChannel, OutputEvent } from '../protocol/index.ts';
+import type { OutputEvent } from '../protocol/index.ts';
+import type { RuntimeControl } from '../control/index.ts';
 
-/** Console depends on this public capability boundary rather than Runtime internals. */
-export interface ConsoleRuntime {
-  readonly inputs: InputChannel;
-  readonly status: string;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-}
+/** Internal Console keeps its former type name as a compatibility alias. */
+export type ConsoleRuntime = RuntimeControl;
 
 /** 将终端编辑和本地命令转换为通用输入；options 可替换流以支持离线交互测试。 */
 export async function runTerminal(runtime: ConsoleRuntime, options: { input?: Readable; output?: Writable } = {}): Promise<void> {

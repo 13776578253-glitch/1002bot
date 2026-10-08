@@ -127,3 +127,65 @@ Verification result: pnpm test 87/87 通过，其中本 TUI 的模块单元测�
 Git preflight: 已 fetch origin，main 与 origin/main 均为 ada454f，当前 feat/console-tui 从该基线开始，本轮可正常快进同步。同期 M3 任务记录 SHA256 为 8C4F01DBAC6357048BE9B1749863FCDCA8C108163D553A31EC1D8D8026493755，提交与切换分支后核对不变。按明确路径暂存本轮增量，推送分支后将 main 快进至同一提交；发布结果以 Git 引用为准。
 
 Open issues: 后续框架、依赖拆分、控制接口和探索隔离尚待讨论；独立审查及修复复核未单列结论。负责人人工验收仅记录本批确认，未推定其他终端环境已验证。长期 Console 计划继续保留，后续独立补充按已实现主线基线递增编号。
+
+## 2026-10-08 独立前端包与可选安装要求
+
+Owner decision: TUI 应与未来 WebUI 并列，拥有独立包与文件结构，由 pnpm 支持整套或单独安装；核心单独安装和运行时，不要求 OpenTUI、React 或 TUI 所需运行时。这些是当前已确认的拆分目标，具体迁移仍处于讨论。
+
+Current evidence: 工作目录已切换为 C:/Users/86139/.codex/worktrees/4df2/1002bot，HEAD 为 62c7ee8，已有 M3 未提交修改。本轮只读核对这些修改，不将历史 M2 状态视为当前源码状态。pnpm 为 10.30.3；根 package.json 仍是单包，运行依赖 string-width 由 TUI 使用，根 typecheck 与测试发现扫描 src。TUI 引用行式 Console 的 runTerminal/ConsoleRuntime，state 通过相对路径读取公开协议类型；离线样例负责直接装配核心与测试夹具。
+
+Proposal: pnpm workspace 内将核心、现有公开控制契约与 TUI 分为独立包，各包拥有依赖与导出。组合入口装配已有 Runtime 和 TUI；核心不依赖或默认导入任何前端。已有控制契约按能力公开，不提前增加 World 配置、完整运行监控、执行调度或传输协议。行式 Console、启动组合与包分发的具体归属继续讨论。
+
+Documentation: Console 计划追加已确认目标与迁移验收范围，未创建候选实现或目录。官方 pnpm 10 文档确认 workspace 默认 install 全项目、filter 可选择包及其依赖；单独安装目标还需核对共享锁文件解析与安装入口，不把 optionalDependencies 当作默认不下载的开关。
+
+References: [pnpm 10 install](https://pnpm.io/10.x/cli/install)、[filtering](https://pnpm.io/10.x/filtering)、[workspace](https://pnpm.io/10.x/workspaces)、[npm optionalDependencies](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#optionaldependencies)。
+
+Verification: 本轮只有讨论记录与计划追加，无生产代码或依赖更改；未运行代码测试，未提交或推送。M3 的已有代码、报告与记录保留原状。迁移验收包括干净环境核心单包安装/运行、前端单包入口、整套装配与现有界面回归，实施前另列验证步骤。
+
+## 2026-10-08 核心目录与应用/扩展分类澄清
+
+Owner direction: 负责人质疑 packages/core 的必要性，提出 src/console 统一入口候选；确认行式 Console 留在 src/console，仅用于内部测试，有成熟替代时考虑删除。负责人希望独立扩展不必耦合到 src，询问增加 packages/apps 分类以区别应用与扩展。
+
+Proposal update: 独立包边界不要求核心搬家；核心继续由根 package.json 和 src 持有，隔离根包运行依赖、公开导出及自身检查范围。packages/apps、extensions、shared 作为职责分类候选，各实际包独立持有清单；只为已有需求创建包。公共控制实现建议放 src/control，轻量契约按分发需要独立；这些位置没有冻结。
+
+Entry relationship: 核心提供一份公共能力契约与实现，前端拥有界面启动/渲染入口。当前 Runtime 已满足 ConsoleRuntime 的基本形状，同进程可直接将能力对象传入 TUI，不因包化强制新增双侧适配或传输。跨进程适配仍待实际运行需求决定。
+
+Evidence: runTui 当前导入 runTerminal 与 ConsoleRuntime，非 TTY 分支调用内部行式入口；scripts/tui-sample.ts 装配后直接传入 Runtime。迁移需解除正式 TUI 对可删除测试入口的依赖，并单独讨论非 TTY 兼容语义。现有主线源码与协议不因目录讨论改写。
+
+Outcome: Console 计划追加已确认的行式入口定位与更新后的目录方案，保留此前讨论历史；没有移动源码、创建包、安装依赖、运行代码测试、提交或推送。文档 diff --check 用于检查本次追加格式。
+
+## 2026-10-08 包隔离迁移准备与主分支同步
+
+Authorization: 负责人采纳根包/src 核心、src/control 公共能力、src/console 内部测试、packages/apps 前端及 extensions/shared 分类结构，要求规划迁移，并在迁移前同步主分支改动。
+
+Preflight: 已 fetch origin；已提交 main/origin/main 仍为 62c7ee8。主检出另有未提交的 M3 实现与最新注释，当前 worktree 带有较早复制的 M3 内容和本会话 Console 文档增量。主线最新记录标明 M3 首批独立验收通过、111/111 测试与类型检查通过，工程文档继续推进；这是主线记录证据，未在本轮重验。
+
+Plan: 新增 [TUI 包隔离迁移计划](../plans/2026-10-08-TUI包隔离迁移计划.md)，逐项列出控制契约、TUI 模块、样例/探针、测试、依赖与安装验证的迁移归属。迁移保持现有驱动和业务行为，公共边界复用现有能力，非 TTY 回退通过组合归属解除内部测试依赖。
+
+Baseline question: 已向负责人询问先由主线提交 M3 后同步，或基于当前未提交 main 快照迁移且保持结果未提交。未明确前只完成独立的计划与差异检查，不执行覆盖、stash、源码迁移或提交其他工作线代码。Git fetch 已完成，不等于未提交 M3 已同步。
+
+Boundary: 当前只有准备与计划记录；TUI/核心源码、包清单和主线工作区未修改。未安装框架、运行 bot、推送或合并。实施前保存各线差异，基线同步后按当时规范与接口重新验证。
+
+## 2026-10-08 主线提交后恢复迁移：实施前
+
+Authorization: 负责人先要求停止，由主线提交重要改动；随后确认已提交并要求继续。已重新 fetch origin，从 main 的 55bdc7e 建立 codex/tui-package-migration。当前工作区不再带较早 M3 草稿，先前所有改动保存在 stash dcf64e1c7da75527aa2912c9e6c4486dec31f786；仅恢复本会话追加的 Console 任务/计划及迁移计划。
+
+Sync detail: Windows 文本补丁未直接应用成功，改为从保存快照读取两份文档，核对它们都是 62c7ee8 的原文加尾部增量，再只追加讨论部分至新基线。没有恢复或覆盖旧 M3 源码。主线工作区未修改。
+
+Baseline verification: 本 worktree 安装现有锁定依赖（offline/ignore-scripts），pnpm test 111/111、pnpm run typecheck 均通过。新基线规范继续要求分开提交增量与迁移，当前任务目录 19 份，不触发归档。
+
+Implementation plan: 先增加 packages/shared/control-api 和 src/control 公共导出，搬移既有前端可见类型且保留 protocol 兼容导出；核心入口公开已有装配/实现，不增加业务控制层。然后移动 6 个 TUI 模块、单元测试和探针到 packages/apps/tui，string-width 归该包；src/console 保留内部行式测试。可选样例与跨包集成各自持有 workspace 依赖，核心清单不声明 TUI，核心验证可独立运行。
+
+TTY boundary: 独立 TUI 默认要求原始 TTY，不直接导入内部 Console。调用方可提供 fallback；离线样例及重定向集成显式注入既有 runTerminal，保持原回归行为。变化属于包入口迁移并在使用说明与 breaking footer 标明。
+
+Verification plan: 每个提交前完整测试与类型检查；独立包构建、干净目录 tarball 安装/导入、核心依赖与离线闭环、可选 TUI 的探针/组合样例、真实跨包回归。历史报告只追加迁移指针，新增 M3.1 本线报告，图形离线渲染。只暂存本轮路径，不推送、不合并 main；OpenTUI、传输及主线新能力均留后续。
+
+## 2026-10-08 公共控制入口增量结果
+
+Change: 增加 packages/shared/control-api，既有 UserInput、回执、快照、公开事件、InputChannel 与 TriggerKind 共用一份类型定义；src/protocol 保留兼容导出，限额与 InputError 留在核心。RuntimeControl 沿用原 ConsoleRuntime 形状，内部 Console 保留类型别名。src/control 与核心包 exports 公开既有 composeRuntime 及注入式协作者，没有新增业务实现或前端导入。
+
+Build: 核心与契约包各有生成 JS/声明的构建入口，workspace 清单已定义 apps/extensions/shared 分类。契约包与核心可打包，尚未发布到 registry；本增量暂保留旧 TUI 路径和 string-width 根依赖，下一步迁移解除。
+
+Verification: pnpm build、pnpm test 111/111、pnpm run typecheck 通过；编译产物通过 1002bot 与 1002bot/control 入口导入，两个 composeRuntime 导出一致。只改变契约归属与公开导出，Runtime/Agent/Provider/Session/State 的执行代码未修改。
+
+Commit suggestion: feat(control): expose shared frontend capability contracts
