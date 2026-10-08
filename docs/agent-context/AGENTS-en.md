@@ -105,6 +105,12 @@ Put disposable work such as probes, one-off scripts, dumps, and experiments unde
 
 ## 8. Git
 
+### Mainline and TUI worktrees
+
+The primary checkout uses `main`. TUI implementation work uses the project-owned `.worktrees/TUI` checkout on `feat/TUI`; this is a regular Git worktree, not a Codex-managed worktree. Verify the current directory and branch before editing, and set command working directories and file paths to that checkout. Worktree setup and status are described in [the worktree guide](../开发指南/Git工作树.md).
+
+Worktrees share Git refs, object storage, hooks, and remote state. Administrative Git actions follow the owner's explicit task; ordinary feature work does not change other checkouts or discard their uncommitted files.
+
 - Commit once per milestone: describe the change in one sentence and leave `pnpm test && pnpm run typecheck` green. A commit should be smaller than a feature and larger than one file; an additive step and its migration are separate commits.
 - Stage explicit paths. Other sessions may have uncommitted work in this tree, so never use `git add -A`, `git add .`, or `git commit -a`.
 - Committing is not pushing. Push, open pull requests, or rewrite published history only when asked.

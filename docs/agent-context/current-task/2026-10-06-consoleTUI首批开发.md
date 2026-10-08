@@ -211,3 +211,23 @@ Outcome: 工程迁移与自验完成，独立源码审查与迁移后人工终�
 Commit suggestion: refactor!: isolate optional TUI package from core
 
 Archive note: 迁移计划复制时哈希一致；归档目录层级不同，在副本尾部追加原相对链接的解析基准及可点击入口，保留复制正文。最终校验副本正文仍以前述原计划完整内容为前缀。
+
+## 2026-10-08 Git 分支收束与项目内工作树：实施前
+
+Authorization: 负责人要求先按规范提交当前工作区，再清理本地与远端旧分支，只保留 main 和 feat/TUI。TUI 使用项目根目录内自行创建的普通 Git worktree，参考 Incept/scripts/worktree.mjs 的登记、基线与隔离逻辑，不使用 Codex 托管工作树。
+
+Preflight: main 在 563a77d，两个旧分支 feat/console-tui、codex/tui-package-migration 均为 main 的祖先。已 fetch/prune，远端仅有 main 55bdc7e 和 feat/console-tui 62c7ee8。当前报告改名与链接更新经测试 114/114、类型检查通过，已提交为 e5f6706。Git 引用/提交/stash 的完整 bundle 与未提交内容快照位于 scratch/git-maintenance-2026-10-08，bundle verify 通过；不清除恢复 stash 或 Codex 内部快照引用。
+
+Plan: 新增本项目 scripts/worktree.mjs，仅实现普通 Git worktree 的创建与状态查询，目录为 .worktrees/TUI，分支精确为 feat/TUI；登记基线与路径，生成本地隔离说明。参考项目的数据库、端口和 .env 复制逻辑不适用于本项目。为工作树与本地登记加入 ignore，配置 wt:new/wt:status 及规范入口。用临时真实 Git 仓库验证隔离、重复创建、非法路径、未知基线及未提交主目录拒绝。
+
+Git execution: 工具与说明提交后，以最新 main 创建工作树。先确保 main 与 feat/TUI 的提交均可保留旧分支历史，再通过正常 main 推送、旧远端分支的期望 SHA 校验与 atomic 更新同步远端；不强制改写 main。远端确认成功后，使用 branch -d 清理已包含的本地旧分支。最后只在 .worktrees/TUI 中安装、检查和开展 TUI 工作，主目录留给 main。
+
+## 2026-10-08 项目内工作树工具与提交前验证
+
+Change: scripts/worktree.mjs 提供 wt:new 与 wt:status。创建必须从干净主检出的 main 发起，校验名称、基线、目录实际路径与 ignore；既有分支只有明确声明且与基线一致时可接管。独立登记保存在工作树内 .worktree-local，不复制环境文件、凭据或运行数据。规范入口与 Git 工作树指南同步该目录约定，主线 Runtime、控制协议和 TUI 实现没有改动。
+
+Verification: 三项临时真实 Git 仓库测试通过，覆盖独立文件和提交、登记基线、状态差异、子工作树拒绝创建、主线草稿保留、路径与基线错误、目录/分支碰撞以及既有分支接管。完整 pnpm test 117/117、pnpm run typecheck 通过。
+
+Next operation: 本提交后才创建实际 .worktrees/TUI 并同步/清理分支；最终 Git 引用、路径和远端核验写入忽略的 scratch/git-maintenance-2026-10-08/final-state.json，并向负责人报告。这里的测试结果不表示实际远端操作已经完成。
+
+Commit suggestion: feat!: manage project-local TUI worktrees

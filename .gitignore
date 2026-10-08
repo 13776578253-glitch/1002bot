@@ -11,6 +11,10 @@ coverage/
 .turbo/
 *.tsbuildinfo
 
+# Project-owned Git worktrees and their local registration
+/.worktrees/
+/.worktree-local/
+
 # Disposable work and retired ownerless documents (AGENTS-en.md)
 /scratch/
 /deprecated/
