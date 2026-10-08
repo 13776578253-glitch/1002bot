@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-08",
+  "source": "docs/agent-context/current-task",
+  "snapshotBeforeArchiveMarker": true,
+  "files": [
+    {
+      "file": "2026-10-03-p0决策问题合集.md",
+      "bytes": 2453,
+      "sha256": "a206f677211eb8cbbc2b878006ee6abebc6e056f817ae0f8a60bdc04c47ba296"
+    },
+    {
+      "file": "2026-10-04-m1-p1-baseline.md",
+      "bytes": 7974,
+      "sha256": "5d7035c45c508e50299062c51de71e111b1bcecde203c04b226659518e6f16e4"
+    },
+    {
+      "file": "2026-10-04-m1-p2-acceptance-cleanup.md",
+      "bytes": 1484,
+      "sha256": "4eb8260ba0a72f62795b27fc29715a9c2bb3f5fe45633b79b414717d8eb38ca9"
+    },
+    {
+      "file": "2026-10-04-m1交接整理.md",
+      "bytes": 1271,
+      "sha256": "c889e85ca1c99d1e982925602c0ce5b15bd802748dce851304f315c316a045a1"
+    },
+    {
+      "file": "2026-10-05-m1复核与下一阶段规划.md",
+      "bytes": 7243,
+      "sha256": "7027a23b99c1f3491ebf772ced54d6ab9df2e9a090a74d48351bbd144a3b51d2"
+    },
+    {
+      "file": "2026-10-05-m2独立审查.md",
+      "bytes": 4169,
+      "sha256": "b5e769dd65e04c3bf1ce4e763751f10fa0ace756df68aa52acb74224e6ab7f56"
+    },
+    {
+      "file": "2026-10-05-m2终端闭环实现.md",
+      "bytes": 9180,
+      "sha256": "249c83299aa5b39bfb94266f1c5c2b7e68d833095d89d68832187ce98ce62679"
+    },
+    {
+      "file": "2026-10-05-m2进度文档拆分与结构校正.md",
+      "bytes": 4495,
+      "sha256": "09123b8b8c8129c9fe1ef2248f0202556c027b0c45c36ed6b59232aee4174559"
+    },
+    {
+      "file": "2026-10-05-m2闭环方案设计.md",
+      "bytes": 2596,
+      "sha256": "6e4e5369988800ed82a40e2e74a017a91abe6227e61285d001f8bb29bd56dae0"
+    },
+    {
+      "file": "2026-10-05-注释规范与Cortico对照.md",
+      "bytes": 2504,
+      "sha256": "17489fb530181b759a12b93093e56b340a55b5747c8bafaec8e03350411d26ea"
+    },
+    {
+      "file": "2026-10-05-阶段汇报规范与文档对齐.md",
+      "bytes": 2970,
+      "sha256": "31b9da3f2f772c023308c1c9f357d4f7a91a16909deea40a79e87c5d9246d771"
+    },
+    {
+      "file": "2026-10-06-M2目标偏差与文档归类.md",
+      "bytes": 1972,
+      "sha256": "be805bef192a3e164e18f4092bcb0c68a8081de5f4c31c12ef96908d405dd7eb"
+    },
+    {
+      "file": "2026-10-06-agent-context目录迁移.md",
+      "bytes": 3144,
+      "sha256": "6e7bd25735430c5539dd8681467b9abba845f8b1f38c0798ff6f234816d9aea5"
+    },
+    {
+      "file": "2026-10-06-consoleTUI首批开发.md",
+      "bytes": 32448,
+      "sha256": "553024021c3650c525accc30638da175943e8f361f2a46f9902b9289a9981ce8"
+    },
+    {
+      "file": "2026-10-06-console全屏TUI规划.md",
+      "bytes": 1904,
+      "sha256": "f373822d74833c9a8442558bda65afb888f92522a69ed2e4c5391b40d431bc84"
+    },
+    {
+      "file": "2026-10-06-git仓库初始化.md",
+      "bytes": 2494,
+      "sha256": "44e37fee86c7d6d2c53ac9b48a0fad8be6d6119f6bc9c0deb9c08f373776fbdf"
+    },
+    {
+      "file": "2026-10-06-m2修复复核.md",
+      "bytes": 5086,
+      "sha256": "9eb8ef260a0ba1e7bcad8e4098f346685656bed2adc951d3e02fed5000738e5b"
+    },
+    {
+      "file": "2026-10-06-m3统一触发调度.md",
+      "bytes": 20562,
+      "sha256": "b2397d599b0369ef730312731556600eaaaef7c2f4c96976f522a89f31002ca8"
+    },
+    {
+      "file": "2026-10-06-首批验收与工作线拆分.md",
+      "bytes": 1368,
+      "sha256": "9cf7b465548a9073ca520c189cb2fbb46627b9d1fb38a2eb4798c42f7b753695"
+    },
+    {
+      "file": "2026-10-08-m4主线基座规划.md",
+      "bytes": 3570,
+      "sha256": "d943cf95706e30011db7528ccf55fec562ae924873950c3561e248b2129a4a95"
+    },
+    {
+      "file": "2026-10-08-阶段报告主线编号统一.md",
+      "bytes": 1800,
+      "sha256": "04a71d3b1c8b946f542d570f8ea8bcd4903b623151c075479ef011a22f863cca"
+    }
+  ]
+}

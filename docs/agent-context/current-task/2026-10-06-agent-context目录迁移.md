@@ -27,3 +27,8 @@ Verification: 扫描 51 份 Markdown，正式文档与管理记录没有缺失�
 Commit format: 本次改变仓库文档布局，按规范使用 docs!: move agent context into docs and update references，并在 BREAKING CHANGE 中说明旧前缀迁移为 docs/agent-context/。
 
 GitHub boundary: 本轮只有只读账号与仓库权限检查，没有创建远程仓库、配置 origin 或推送；本机 Git 认证是否可直接推送仍未验证。
+
+
+## 2026-10-08 记录快照归档
+
+Archive: 本记录截至此次标记前的完整内容已复制核验至 [归档快照](../finish-task/2026-10-08-M4规划启动快照/2026-10-06-agent-context目录迁移.md)，SHA-256 见该目录 manifest.json。原文保留，既有归档不覆盖；正文中的任务状态、待办与验收范围保持，后续更新仍可向本文件追加。

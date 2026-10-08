@@ -231,3 +231,8 @@ Verification: 三项临时真实 Git 仓库测试通过，覆盖独立文件和�
 Next operation: 本提交后才创建实际 .worktrees/TUI 并同步/清理分支；最终 Git 引用、路径和远端核验写入忽略的 scratch/git-maintenance-2026-10-08/final-state.json，并向负责人报告。这里的测试结果不表示实际远端操作已经完成。
 
 Commit suggestion: feat!: manage project-local TUI worktrees
+
+
+## 2026-10-08 记录快照归档
+
+Archive: 本记录截至此次标记前的完整内容已复制核验至 [归档快照](../finish-task/2026-10-08-M4规划启动快照/2026-10-06-consoleTUI首批开发.md)，SHA-256 见该目录 manifest.json。原文保留，既有归档不覆盖；正文中的任务状态、待办与验收范围保持，后续更新仍可向本文件追加。

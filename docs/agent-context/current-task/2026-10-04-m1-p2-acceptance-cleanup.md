@@ -15,3 +15,8 @@ Commit suggestion: docs(m1): close acceptance gaps and organize records
 Update: 已新增 `tests/integration/m1-vertical.test.ts` 的 `unknown` ToolOutcome 集成测试，验证 World 回执以原始 `callId` 写入 JSONL；已新增 `docs/1002bot-当前进度与架构图.md`；已完成当前任务记录和计划的分类归档。
 
 Verification: `pnpm test` 通过 10 项测试，`pnpm exec tsc --noEmit` 通过，`pnpm run sample` 输出 `status=stopped`、`value=1`、`entries=7`；5 组原件与归档副本的 SHA-256 均一致。
+
+
+## 2026-10-08 记录快照归档
+
+Archive: 本记录截至此次标记前的完整内容已复制核验至 [归档快照](../finish-task/2026-10-08-M4规划启动快照/2026-10-04-m1-p2-acceptance-cleanup.md)，SHA-256 见该目录 manifest.json。原文保留，既有归档不覆盖；正文中的任务状态、待办与验收范围保持，后续更新仍可向本文件追加。
