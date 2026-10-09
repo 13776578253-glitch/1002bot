@@ -2,14 +2,16 @@
 export type JsonPrimitive = string | number | boolean | null;
 import type { UserInput, RunResult } from './input.ts';
 import type { HeartbeatTrigger, HeartbeatRequest, RuntimeTrigger, TriggerKind, WorldEventSink } from './trigger.ts';
+import type { WorldDeliveryIdentity, WorldDeliveryPort, HistoryReader } from './delivery.ts';
 export * from './input.ts';
 export * from './trigger.ts';
+export * from './delivery.ts';
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 
 /** World 提供的事实；payload 保持可序列化，语义由产生方和 Agent 解释。 */
 export interface Event<TPayload extends JsonValue = JsonValue> {
-  /** 同种触发在 Runtime 实例内唯一；source 变化不会解除相同 ID 的去重。 */
+  /** 原始业务身份；ordered 投递使用来源元组，legacy 保留实例内 ID 去重。 */
   id: string;
   type: string;
   source: string;
@@ -60,6 +62,8 @@ export interface World {
   stop(signal: AbortSignal): Promise<void>;
   /** 同步装配订阅，返回退订函数；旧代 sink 在停止或重启后拒绝投递。 */
   subscribeEvents?(sink: WorldEventSink): () => void;
+  /** 已登记的 ordered 来源接收稳定信封投递口；同一装配不同时启用旧感知订阅。 */
+  subscribeDeliveries?(port: WorldDeliveryPort): () => void;
   /** 当前可用的工具声明；名称和参数语义由 World 定义。 */
   tools(): readonly ToolDefinition[];
   /** 回执须匹配调用标识与工具名；无法确认效果时必须保留 unknown。 */
@@ -125,8 +129,10 @@ export interface SessionDecl {
 /** Runtime supplies request facts; Agent owns semantic context assembly. */
 export interface AgentContext {
   readonly session: SessionDecl;
-  /** 执行器已过滤接收归档；历史内容选择与容量裁剪仍由 Agent 决定。 */
+  /** 有限完整运行候选及本轮事实；不含排队接收归档，语义裁剪仍由 Agent 决定。 */
   readonly history: readonly SessionEntry[];
+  /** 显式读取更早完整运行；有容量预算，不提前交付排队事实。 */
+  readonly readHistory?: HistoryReader;
   /** 区分当前运行与已结束历史分组，不代替 Runtime 生命周期代次。 */
   readonly runId?: string;
   readonly tools?: readonly ToolDefinition[];
@@ -159,7 +165,8 @@ export interface Agent {
  * Session records archive received facts and execution commits; Agent context excludes receipt-only records.
  * trigger_received 与排队终态可无 runId；终态 inputId 沿用旧字段名，值为对应触发 ID。
  */
-export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; triggerId?: string; source?: string; generation?: number } & (
+export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; triggerId?: string; source?: string; generation?: number; delivery?: WorldDeliveryIdentity } & (
+  | { kind: 'world_stream_registered'; at: string; schema: 1; sessionId: string; worldId: string; streamId: string; epoch: string }
   | { kind: 'trigger_received'; at: string; trigger: RuntimeTrigger; queueSequence: number }
   | { kind: 'heartbeat'; at: string; heartbeat: HeartbeatTrigger }
   | { kind: 'input'; at: string; input: UserInput; queueSequence: number }
@@ -176,6 +183,8 @@ export interface SessionStore {
   append(entry: SessionEntry): Promise<void>;
   /** 返回完成追加后的历史；读取失败不可伪装为空历史。 */
   read(): Promise<readonly SessionEntry[]>;
+  /** 逐条读取一个已确认文件视图；ordered 基座要求此能力，失败不能跳过记录。 */
+  scan?(signal?: AbortSignal): AsyncIterable<SessionEntry>;
 }
 
 /** State storage is separate from the append-only Session transcript. */

@@ -10,7 +10,7 @@ import { JsonlSessionStore } from '../../src/state/jsonl-session.ts';
 import { MemoryState } from '../../src/state/memory-state.ts';
 import { ScriptedProvider } from '../../src/providers/scripted-provider.ts';
 import type { Agent, Event, ExternalTrigger, HeartbeatSource, OutputEvent, ProviderResponse, SessionEntry, SessionStore, ToolCall, ToolExecutionContext, ToolOutcome, WorldEventSink } from '../../src/protocol/index.ts';
-import { STANDARD_TRIGGER_LIMITS } from '../../src/protocol/index.ts';
+import { STANDARD_TRIGGER_LIMITS, legacyWorldTriggerId } from '../../src/protocol/index.ts';
 import { FixtureWorld } from '../fixtures/fixture-world.ts';
 import { runTerminal } from '../../src/console/terminal.ts';
 
@@ -61,7 +61,7 @@ it('returns accepted before a blocked reception append and waits for it before m
   release.resolve(); await runtime.triggers.idle();
   assert.equal(receipt.status, 'accepted'); assert.equal(before, 0); assert.equal(requests, 1);
   assert.equal((await store.read())[0]?.kind, 'trigger_received');
-  assert.equal(runtime.triggers.inspect('world_event', 'blocked')?.result?.persisted, true);
+  assert.equal(runtime.triggers.inspect('world_event', legacyWorldTriggerId('blocked'))?.result?.persisted, true);
 });
 
 it('serializes Console, World and heartbeat without cancelling the active model or merging triggers', { timeout: 3000 }, async (t) => {
@@ -118,7 +118,7 @@ it('returns each handleEvent result independently of snapshot eviction', { timeo
   const { runtime, output } = await setup(t, (_request, index) => done(`reply-${index}`), { limits: { snapshotEntries: 1 } });
   const results = await Promise.all(['one', 'two', 'three'].map((id) => runtime.handleEvent(event(id))));
   assert.deepEqual(results.map((result) => result.reply), ['reply-0', 'reply-1', 'reply-2']);
-  assert.equal(runtime.triggers.inspect('world_event', 'one'), undefined);
+  assert.equal(runtime.triggers.inspect('world_event', legacyWorldTriggerId('one')), undefined);
   assert.equal(output.filter((value) => value.type === 'run_finished').length, 3);
 });
 
@@ -132,7 +132,7 @@ it('rejects a stale World sink and stale tick after restart and detaches both so
   oldTick(); assert.equal((await store.read()).length, before);
   assert.equal((await world.push('current')).status, 'accepted'); await runtime.triggers.idle();
   assert.equal(world.unsubscribed, 1); assert.equal(ticks.stops, 1);
-  assert.equal(runtime.triggers.inspect('world_event', 'current')?.result?.status, 'succeeded');
+  assert.equal(runtime.triggers.inspect('world_event', legacyWorldTriggerId('current'))?.result?.status, 'succeeded');
 });
 
 it('records no-action heartbeats without model calls or external identity exhaustion', { timeout: 3000 }, async (t) => {
@@ -142,7 +142,9 @@ it('records no-action heartbeats without model calls or external identity exhaus
   assert.equal(requests, 0);
   assert.equal((await runtime.inputs.submit(input('external'))).status, 'accepted'); await runtime.triggers.idle();
   assert.equal((await store.read()).filter((entry) => entry.kind === 'heartbeat').length, 4);
-  assert.equal((await runtime.triggers.submit({ kind: 'world_event', event: event('exhausted') }) as { code: string }).code, 'admission_limit');
+  assert.equal((await runtime.triggers.submit({ kind: 'world_event', event: event('separate-world') })).status, 'accepted');
+  await runtime.triggers.idle();
+  assert.equal((await runtime.inputs.submit(input('exhausted')) as { code: string }).code, 'admission_limit');
   assert.equal(runtime.status, 'running');
 });
 
@@ -204,7 +206,7 @@ it('retains old World facts by default, separates kind identities and rejects ch
   await runtime.inputs.submit(input('same'));
   assert.equal((await runtime.triggers.submit({ kind: 'world_event', event: event('same') })).status, 'accepted');
   await runtime.triggers.idle();
-  assert.equal(runtime.triggers.inspect('world_event', 'same')?.result?.status, 'succeeded');
+  assert.equal(runtime.triggers.inspect('world_event', legacyWorldTriggerId('same'))?.result?.status, 'succeeded');
   assert.equal((await runtime.triggers.submit({ kind: 'world_event', event: { ...event('same'), source: 'changed' } }) as { code: string }).code, 'duplicate_trigger');
   await runtime.stop(); await runtime.start();
   assert.equal((await runtime.triggers.submit({ kind: 'world_event', event: event('same') }) as { code: string }).code, 'duplicate_trigger');
@@ -215,7 +217,7 @@ it('diagnoses explicitly expired World facts and preserves their reception witho
   const { runtime, store } = await setup(t, () => { requests++; return done(); });
   await runtime.triggers.submit({ kind: 'world_event', event: event('expired'), expiresAt: '2020-01-02T00:00:00Z' });
   await runtime.triggers.idle();
-  assert.equal(requests, 0); assert.equal(runtime.triggers.inspect('world_event', 'expired')?.result?.code, 'trigger_expired');
+  assert.equal(requests, 0); assert.equal(runtime.triggers.inspect('world_event', legacyWorldTriggerId('expired'))?.result?.code, 'trigger_expired');
   assert.equal((await store.read()).filter((entry) => entry.kind === 'trigger_received').length, 1);
 });
 
@@ -278,7 +280,7 @@ for (const failReceipt of [false, true]) {
     assert.equal(runtime.inputs.inspect('waiting')?.result?.status, 'cancelled');
     const unknown = output.find((value) => value.type === 'tool_finished' && value.callId === 'effect');
     assert.equal(unknown?.status, 'unknown'); assert.equal(unknown?.error?.message, 'receipt lost');
-    assert.equal(unknown?.triggerKind, 'world_event'); assert.equal(unknown?.triggerId, 'effect-event');
+    assert.equal(unknown?.triggerKind, 'world_event'); assert.equal(unknown?.triggerId, legacyWorldTriggerId('effect-event'));
     assert.equal(output.filter((value) => value.type === 'run_finished').length, 3);
   });
 }
@@ -291,7 +293,7 @@ it('shows World and heartbeat identities in Console while EOF drains the shared 
   const terminal = runTerminal(runtime, { input: stream, output: new Writable({ write(chunk, _encoding, callback) { display += String(chunk); callback(); } }) });
   stream.write('console\n'); await started.promise;
   await world.push('visible-world'); ticks.tick(); stream.end(); release.resolve(); await terminal;
-  assert.match(display, /\[world_event:visible-world\] source=fixture/);
+  assert.ok(display.includes(`[world_event:${legacyWorldTriggerId('visible-world')}] source=fixture`));
   assert.match(display, /\[heartbeat:\d+:\d+\] source=runtime/);
   assert.equal(runtime.status, 'stopped');
 });
@@ -323,5 +325,5 @@ it('cleans up a failed World subscription and can start the next generation', { 
   await assert.rejects(runtime.start(), /subscription failed/);
   assert.equal(runtime.status, 'stopped'); assert.equal(world.lifecycle.at(-1), 'stop');
   await runtime.start(); assert.equal((await world.push('new-source')).status, 'accepted'); await runtime.triggers.idle();
-  assert.equal(runtime.triggers.inspect('world_event', 'new-source')?.result?.status, 'succeeded');
+  assert.equal(runtime.triggers.inspect('world_event', legacyWorldTriggerId('new-source'))?.result?.status, 'succeeded');
 });

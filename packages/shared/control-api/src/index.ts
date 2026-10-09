@@ -40,6 +40,8 @@ export interface OutputEvent {
   triggerKind?: TriggerKind | null;
   triggerId?: string | null;
   source?: string | null;
+  /** ordered World 的长期身份；原 Event.id 不代替投递元组。 */
+  delivery?: { worldId: string; streamId: string; epoch: string; sequence: number };
   /** 仅 UserInput 填写；其他来源使用 triggerKind/triggerId/source 关联。 */
   inputId: string | null;
   runId: string | null;

@@ -25,7 +25,7 @@ export interface InputLimits {
   toolCalls: number;
   /** 原始 HTTP 响应体或进程内响应 JSON 的上限。 */
   responseBytes: number;
-  /** UserInput 与 World Event 累计身份上限；内部心跳不占用，停止再启动不重置。 */
+  /** UserInput 累计身份上限；World 预算独立，停止再启动不重置。 */
   admissionIds: number;
   /** 诊断事件同时受条数和总字节数约束。 */
   outputEntries: number;

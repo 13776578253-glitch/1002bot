@@ -147,7 +147,7 @@ for (const kind of ['event', 'provider_request', 'provider_response', 'tool_call
   });
 }
 
-it('drops a late World receipt across restart without losing the new generation', { timeout: 2000 }, async () => {
+it('blocks restart after an unknown effect and drops its late World receipt', { timeout: 2000 }, async () => {
   const executing = gate();
   const release = gate();
   class World extends FixtureWorld {
@@ -166,15 +166,18 @@ it('drops a late World receipt across restart without losing the new generation'
   const handling = runtime.handleEvent(event);
   await executing.promise;
   await runtime.stop();
-  await runtime.start();
+  await assert.rejects(runtime.start(), /diagnosis/);
+  const before = await store.read();
   release.resolve();
   await handling;
-  await runtime.handleEvent({ ...event, id: 'new' });
+  assert.deepEqual(await store.read(), before);
+  assert.equal(runtime.diagnosis.status, 'blocked');
+  assert.equal(runtime.diagnosis.issues.some(issue => issue.code === 'tool_unknown'), true);
   await runtime.stop();
   const old = (await store.read()).flatMap((entry) => entry.kind === 'tool_outcome' && entry.outcome.callId === 'old' ? [entry.outcome] : []);
   assert.equal(old.length, 1);
   assert.equal(old[0]?.status, 'unknown');
-  assert.equal(runtime.trace.some((entry) => entry.kind === 'event' && entry.event.id === 'new'), true);
+  assert.equal(runtime.trace.some((entry) => entry.kind === 'event' && entry.event.id === 'new'), false);
 });
 
 it('drops a late Provider result after a new generation has handled its own event', { timeout: 2000 }, async () => {

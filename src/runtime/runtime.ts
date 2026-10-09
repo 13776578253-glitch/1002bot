@@ -1,8 +1,11 @@
 /** Runtime owns lifecycle, source leases and write barriers; one channel executes all Session triggers. */
-import type { Agent, Event, Provider, SessionEntry, SessionStore, StateStore, World, InputLimits, HeartbeatOptions, RunResult, WorldEventSink, TriggerChannel } from '../protocol/index.ts';
-import { STANDARD_TRIGGER_LIMITS } from '../protocol/index.ts';
+import type { Agent, Event, Provider, SessionEntry, SessionStore, StateStore, World, InputLimits, HeartbeatOptions, RunResult, WorldEventSink, TriggerChannel, WorldStream, DeliveryLimits, HistoryLimits, SessionDiagnosis, WorldDeliveryPort, HistoryQuery } from '../protocol/index.ts';
+import { InputError, STANDARD_TRIGGER_LIMITS, legacyWorldTriggerId } from '../protocol/index.ts';
 import { RuntimeInputChannel } from './input-channel.ts';
 import { RuntimeTriggerChannel } from './trigger-channel.ts';
+import { WorldDeliveryState } from './world-delivery-state.ts';
+import { HistoryWindow, queryHistory } from '../state/history-window.ts';
+import { preflightSession, diagnoseSession } from './session-preflight.ts';
 
 export type RuntimeStatus = 'new' | 'starting' | 'running' | 'stopping' | 'failed' | 'stopped';
 /** Composition injects collaborators; Runtime owns their shared lifecycle and source wiring. */
@@ -21,6 +24,10 @@ export interface RuntimeOptions {
   eventBytes?: number;
   /** 不提供配置时关闭心跳；source 可注入手动 tick 源。 */
   heartbeat?: HeartbeatOptions;
+  /** 装配认可的稳定来源，空值保留旧裸 Event 兼容路径。 */
+  worldStreams?: readonly WorldStream[];
+  deliveryLimits?: Partial<DeliveryLimits>;
+  historyLimits?: Partial<HistoryLimits>;
 }
 export class Runtime {
   private statusValue: RuntimeStatus = 'new';
@@ -39,23 +46,56 @@ export class Runtime {
   private readonly options: RuntimeOptions;
   private readonly subscriptions: (() => void)[] = [];
   private heartbeatSequence = 0;
+  private worldNeedsCleanup = false;
   private readonly channel: RuntimeTriggerChannel;
+  private deliveryState: WorldDeliveryState;
+  private window: HistoryWindow | undefined;
+  private readonly historyLimits: HistoryLimits;
+  private traceBytes = 0;
+  private diagnosisValue: SessionDiagnosis = { status: 'ready', records: 0, issueCount: 0, issues: [], history: { runs: 0, bytes: 0, omittedRuns: 0 } };
   get triggers(): TriggerChannel { return this.channel; }
   readonly inputs: RuntimeInputChannel;
 
   constructor(options: RuntimeOptions) {
     this.options = options;
+    this.historyLimits = new HistoryWindow(options.historyLimits).limits;
+    this.deliveryState = this.newDeliveryState();
+    if (this.deliveryState.ordered && options.world.subscribeEvents) throw new Error('Ordered World must not also subscribe legacy events');
+    if (!this.deliveryState.ordered && options.world.subscribeDeliveries) throw new Error('Ordered subscription requires declared World streams');
     const heartbeat = options.heartbeat;
     for (const [name, value] of Object.entries({ intervalMs: heartbeat?.intervalMs ?? STANDARD_TRIGGER_LIMITS.heartbeatIntervalMs, validityMs: heartbeat?.validityMs ?? STANDARD_TRIGGER_LIMITS.heartbeatValidityMs })) {
       if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) throw new Error(`Invalid heartbeat ${name}`);
     }
     this.channel = new RuntimeTriggerChannel({ ...options, append: (entry) => this.appendLifecycle(entry),
-      status: () => this.status, generation: () => this.generation, stop: () => this.stop() }, options.inputLimits, options.eventBytes);
+      readHistory: async () => this.window ? this.window.snapshot() : options.session.read(),
+      ...(options.session.scan ? { queryHistory: (query?: HistoryQuery) => queryHistory(options.session, this.historyLimits, query) } : {}),
+      status: () => this.status, generation: () => this.generation, stop: () => this.stop(), issue: (code, message) => this.recordIssue(code, message) }, options.inputLimits, options.eventBytes);
+    this.channel.bindDeliveries(this.deliveryState);
     this.inputs = new RuntimeInputChannel(this.channel);
   }
   get status(): RuntimeStatus { return this.statusValue; }
   get generation(): number { return this.generationValue; }
-  get trace(): readonly SessionEntry[] { return this.entries; }
+  get trace(): readonly SessionEntry[] { return structuredClone(this.entries); }
+  get diagnosis(): SessionDiagnosis { return structuredClone({ ...this.diagnosisValue, history: this.window?.stats ?? this.diagnosisValue.history }); }
+  inspectSession(): Promise<SessionDiagnosis> {
+    return diagnoseSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
+      worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds });
+  }
+  /** 读取口不拥有生命周期；旧口只能等待原保存，不能向新代投递。 */
+  get deliveries(): WorldDeliveryPort {
+    const generation = this.generationValue, state = this.deliveryState;
+    return {
+      submit: (delivery) => generation === this.generationValue ? this.channel.submitDelivery(delivery)
+        : Promise.resolve({ status: 'rejected', triggerId: '', code: 'stale_generation', message: 'World delivery port no longer owns this lifecycle' }),
+      waitSaved: (identity) => state.waitSaved(identity),
+      progress: (streamId) => {
+        const accepting = generation === this.generationValue && this.channel.accepting;
+        const issue = this.diagnosisValue.status === 'blocked' ? this.diagnosisValue.issues[0] : undefined;
+        const blocking = issue ? { code: issue.code, message: issue.message } : !accepting ? { code: generation === this.generationValue ? 'not_running' : 'stale_generation', message: 'World delivery admission is closed' } : undefined;
+        return { ...state.progress(streamId, accepting), ...(blocking ? { blocking } : {}) };
+      },
+    };
+  }
 
   /** 完成表示 World 已启动且来源已装配；单次触发结束不改变该生命周期。 */
   async start(): Promise<void> {
@@ -71,6 +111,9 @@ export class Runtime {
     const operation = Promise.resolve().then(async () => {
       try {
         if (controller.signal.aborted || !lease.active) throw new Error('Runtime start was cancelled');
+        await this.prepareSession(controller, lease, generation);
+        if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
+        this.worldNeedsCleanup = true;
         await this.options.world.start(controller.signal);
         if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
         // 同步订阅可能立即投递，先开放受理；状态监听器也可能在此重入 stop。
@@ -121,7 +164,7 @@ export class Runtime {
   /** Sources hold lifecycle-bound delivery callbacks; only the channel owns execution. */
   private connectSources(generation: number, lease: Lease): void {
     const sink: WorldEventSink = (event, options) => {
-      if (!this.isActive(generation, lease)) return Promise.resolve({ status: 'rejected', triggerKind: 'world_event', triggerId: event.id, code: 'stale_generation', message: 'World sink no longer owns this lifecycle' });
+      if (!this.isActive(generation, lease)) return Promise.resolve({ status: 'rejected', triggerKind: 'world_event', triggerId: legacyWorldTriggerId(event.id), code: 'stale_generation', message: 'World sink no longer owns this lifecycle' });
       return this.channel.submit({ kind: 'world_event', event, ...options });
     };
     const retain = (off: () => void): void => {
@@ -129,6 +172,7 @@ export class Runtime {
       if (this.isActive(generation, lease)) this.subscriptions.push(off); else off();
     };
     if (this.options.world.subscribeEvents) retain(this.options.world.subscribeEvents(sink));
+    if (this.options.world.subscribeDeliveries && this.isActive(generation, lease)) retain(this.options.world.subscribeDeliveries(this.deliveries));
     if (!this.options.heartbeat || !this.isActive(generation, lease)) return;
     const options = this.options.heartbeat;
     const tick = (): void => {
@@ -143,17 +187,55 @@ export class Runtime {
   }
   /** 停止等待已进入的写入；收束记录允许在 stopping 期间追加。 */
   private async appendLifecycle(entry: SessionEntry): Promise<void> {
-    if (this.statusValue !== 'running' && this.statusValue !== 'stopping') throw new Error('Runtime no longer permits Session writes');
-    const write = this.options.session.append(entry);
+    if (this.statusValue !== 'running' && this.statusValue !== 'stopping' && !(this.statusValue === 'starting' && entry.kind === 'world_stream_registered')) throw new Error('Runtime no longer permits Session writes');
+    let append: Promise<void>;
+    // 同步抛错也进入被跟踪的结算链，保持受理即调用存储的顺序。
+    try { append = this.options.session.append(entry); } catch (error) { append = Promise.reject(error); }
+    const write = append.then(() => {
+      this.deliveryState.observe(entry);
+      this.window?.append(entry);
+      this.entries.push(structuredClone(entry));
+      this.traceBytes += Buffer.byteLength(JSON.stringify(entry));
+      while (this.entries.length > this.historyLimits.traceEntries || this.traceBytes > this.historyLimits.traceBytes) this.traceBytes -= Buffer.byteLength(JSON.stringify(this.entries.shift()!));
+    });
     this.pendingWrites.add(write);
     try { await write; }
-    catch (error) { this.channel.closeAdmission(); throw error; }
+    catch (error) { this.channel.closeAdmission(); this.recordIssue('storage_error', error instanceof Error ? error.message : String(error)); throw error; }
     finally { this.pendingWrites.delete(write); }
-    // 已确认的停止期事实仍进入 trace；执行是否继续由通道的取消边界判断。
-    this.entries.push(entry);
+  }
+  private newDeliveryState(): WorldDeliveryState { return new WorldDeliveryState(this.options.world.id, this.options.agent.declareSession().sessionId, this.options.worldStreams ?? [], this.options.deliveryLimits); }
+  private recordIssue(code: string, detail: string): void {
+    this.diagnosisValue.status = 'blocked'; ++this.diagnosisValue.issueCount;
+    if (this.diagnosisValue.issues.length < 64) this.diagnosisValue = { ...this.diagnosisValue, issues: [...this.diagnosisValue.issues, { code, message: detail.slice(0, 1024) }] };
+  }
+  private async prepareSession(controller: AbortController, lease: Lease, generation: number): Promise<void> {
+    let inspected;
+    try {
+      inspected = await preflightSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
+        worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds }, controller.signal);
+    } catch (error) {
+      if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
+      throw error;
+    }
+    if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
+    const { state, window, diagnosis } = inspected;
+    this.deliveryState = state; this.channel.bindDeliveries(state); this.window = window;
+    this.diagnosisValue = diagnosis;
+    if (diagnosis.status === 'blocked') {
+      if (diagnosis.issues[0]?.code === 'session_capability') throw new InputError('session_capability', 'Ordered World requires Session.scan');
+      this.channel.recoveryFailed('recovery_blocked', diagnosis.issues[0]?.message ?? 'Session requires diagnosis'); throw new InputError('recovery_blocked', 'Session requires diagnosis before execution');
+    }
+    for (const registration of state.registrations()) {
+      if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
+      await this.appendLifecycle(registration);
+    }
   }
   private isActive(generation: number, lease: Lease): boolean { return this.statusValue === 'running' && generation === this.generationValue && lease.active; }
-  private async cleanupWorld(): Promise<void> { await withDeadline((signal) => this.options.world.stop(signal), this.options.cleanupDeadlineMs ?? 100); }
+  private async cleanupWorld(): Promise<void> {
+    if (!this.worldNeedsCleanup) return;
+    this.worldNeedsCleanup = false;
+    await withDeadline((signal) => this.options.world.stop(signal), this.options.cleanupDeadlineMs ?? 100);
+  }
 }
 class Lease {
   active = true;

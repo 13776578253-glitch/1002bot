@@ -1,6 +1,7 @@
 /** Trigger contracts preserve source facts while sharing one Session admission and execution boundary. */
 import type { Event, ProviderRequest, AgentContext } from './index.ts';
 import type { UserInput, RunResult, OutputEvent, InputSnapshot } from './input.ts';
+import { legacyWorldTriggerId, worldTriggerId, type WorldDeliveryIdentity } from './delivery.ts';
 
 import type { TriggerKind } from '@1002bot/control-api';
 export type { TriggerKind } from '@1002bot/control-api';
@@ -10,12 +11,15 @@ export type ExternalTrigger =
   | { kind: 'world_event'; event: Event; expiresAt?: string };
 /** 身份由 Runtime 代次与序号生成；外部提交入口不接受心跳身份。 */
 export interface HeartbeatTrigger { kind: 'heartbeat'; id: string; source: string; occurredAt: string; expiresAt: string }
-export type RuntimeTrigger = ExternalTrigger | HeartbeatTrigger;
+/** 只有已绑定 World 的投递口能构造带长期身份的内部触发。 */
+export type OrderedWorldTrigger = { kind: 'world_event'; event: Event; expiresAt?: string; delivery: WorldDeliveryIdentity };
+export type RuntimeTrigger = ExternalTrigger | OrderedWorldTrigger | HeartbeatTrigger;
 /** accepted 只确认内存受理；执行等待接收记录追加确认。 */
 export type TriggerReceipt =
   | { status: 'accepted'; triggerKind: TriggerKind; triggerId: string; queueSequence: number }
   | { status: 'rejected'; triggerKind: TriggerKind; triggerId: string; code: string; message: string };
 export interface TriggerSnapshot {
+  delivery?: WorldDeliveryIdentity;
   triggerKind: TriggerKind;
   triggerId: string;
   source: string;
@@ -57,7 +61,8 @@ export type HeartbeatRequest = (tick: HeartbeatTrigger, context: AgentContext) =
 export const STANDARD_TRIGGER_LIMITS = Object.freeze({ eventBytes: 64 * 1024, heartbeatIntervalMs: 30_000, heartbeatValidityMs: 5_000 });
 
 export function triggerId(trigger: RuntimeTrigger): string {
-  return trigger.kind === 'user_input' ? trigger.input.inputId : trigger.kind === 'world_event' ? trigger.event.id : trigger.id;
+  return trigger.kind === 'user_input' ? trigger.input.inputId : trigger.kind === 'world_event'
+    ? 'delivery' in trigger ? worldTriggerId(trigger.delivery) : legacyWorldTriggerId(trigger.event.id) : trigger.id;
 }
 export function triggerSource(trigger: RuntimeTrigger): string {
   return trigger.kind === 'user_input' ? trigger.input.source : trigger.kind === 'world_event' ? trigger.event.source : trigger.source;

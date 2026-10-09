@@ -1,6 +1,7 @@
 /** Executes one admitted trigger; queue ownership and terminal persistence stay with the channel. */
 import type { Agent, AgentContext, InputLimits, Provider, ProviderResponse, RunProgress, RunResult, SessionEntry, SessionStore, ToolCall, ToolOutcome, RuntimeTrigger, World } from '../protocol/index.ts';
 import { InputError, triggerId, triggerSource } from '../protocol/index.ts';
+import type { HistoryReader } from '../protocol/index.ts';
 
 /** Runtime owns the collaborators and tracked writes used by one trigger execution. */
 export interface TriggerRunHost {
@@ -10,6 +11,8 @@ export interface TriggerRunHost {
   session: SessionStore;
   /** 由 Runtime 跟踪的写入入口；停止时仍等待已进入的写入与收束记录。 */
   append(entry: SessionEntry): Promise<void>;
+  readHistory?: () => Promise<readonly SessionEntry[]>;
+  queryHistory?: HistoryReader;
 }
 export interface TriggerRun {
   trigger: RuntimeTrigger;
@@ -31,7 +34,8 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   let executing: string | undefined;
   let halt = false;
   let round = 0;
-  const association = { runId: run.runId, triggerKind: run.trigger.kind, triggerId: triggerId(run.trigger), source: triggerSource(run.trigger), generation: run.generation };
+  const association = { runId: run.runId, triggerKind: run.trigger.kind, triggerId: triggerId(run.trigger), source: triggerSource(run.trigger), generation: run.generation,
+    ...(run.trigger.kind === 'world_event' && 'delivery' in run.trigger ? { delivery: run.trigger.delivery } : {}) };
   const append = async (entry: SessionEntry): Promise<void> => {
     // 写入前后都检查取消，避免已失效的触发在等待存储后继续调用外部服务。
     check(run.signal);
@@ -44,6 +48,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     session: host.agent.declareSession(), history, runId: run.runId, tools: host.world.tools(),
     ...(host.provider.measureRequest ? { measureRequest: (request) => host.provider.measureRequest!(request) } : {}),
     requestBytes: run.limits.requestBytes, reserveBytes: run.limits.reserveBytes,
+    ...(host.queryHistory ? { readHistory: host.queryHistory } : {}),
   });
   const commitOutcome = async (call: ToolCall, outcome: ToolOutcome): Promise<void> => {
     if (outcome.status === 'unknown') halt = true;
@@ -57,7 +62,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   };
   try {
     // 读取时过滤接收归档，避免 Agent 提前使用尚未出队的原始输入。
-    try { history.push(...(await guarded(() => host.session.read(), run.signal)).filter((entry) => entry.kind !== 'trigger_received')); }
+    try { history.push(...(await guarded(() => host.readHistory ? host.readHistory() : host.session.read(), run.signal)).filter((entry) => entry.kind !== 'trigger_received' && entry.kind !== 'world_stream_registered')); }
     catch (error) { if (run.signal.aborted) throw error; throw new InputError('storage_error', message(error)); }
     if (run.trigger.kind === 'user_input') await append({ kind: 'input', at: now(), input: run.trigger.input, queueSequence: run.queueSequence });
     else if (run.trigger.kind === 'world_event') await append({ kind: 'event', at: now(), event: run.trigger.event });

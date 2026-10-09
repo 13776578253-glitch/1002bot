@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import type { ExternalTrigger, RuntimeTrigger, TriggerKind, TriggerChannel, TriggerReceipt, TriggerSnapshot, HeartbeatTrigger, InputLimits, OutputEvent, RunResult } from '../protocol/index.ts';
 import { InputError, STANDARD_INPUT_LIMITS, STANDARD_TRIGGER_LIMITS, triggerId, triggerSource } from '../protocol/index.ts';
 import { bytes, executeTrigger, message, type TriggerRunHost } from './trigger-run.ts';
+import type { WorldDelivery, WorldReceipt } from '../protocol/index.ts';
+import { WorldDeliveryState } from './world-delivery-state.ts';
 
 /** Runtime supplies lifecycle authority and the tracked write boundary to its Session channel. */
-interface ChannelHost extends TriggerRunHost { status(): string; generation(): number; stop(): Promise<void> }
+interface ChannelHost extends TriggerRunHost { status(): string; generation(): number; stop(): Promise<void>; issue(code: string, message: string): void }
 interface Queued {
   /** 受理时保存副本；后续记录和执行沿用同一份来源事实。 */
   trigger: RuntimeTrigger;
@@ -36,6 +38,8 @@ export class RuntimeTriggerChannel implements TriggerChannel {
   readonly eventBytes: number;
   /** 精确外部身份不随快照淘汰；内部心跳使用 Runtime 生成的身份。 */
   private readonly seen = new Set<string>();
+  private readonly legacySeen = new Set<string>();
+  private deliveryState: WorldDeliveryState | undefined;
   private readonly queue: Queued[] = [];
   private readonly snapshots = new Map<string, TriggerSnapshot>();
   private readonly listeners = new Set<(event: OutputEvent) => void>();
@@ -61,6 +65,20 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     if (this.limits.reserveBytes >= this.limits.requestBytes) throw new Error('reserveBytes must be smaller than requestBytes');
   }
   async submit(trigger: ExternalTrigger): Promise<TriggerReceipt> { return this.admit(trigger).receipt; }
+  get accepting(): boolean { return this.host.status() === 'running' && !this.closing; }
+  bindDeliveries(state: WorldDeliveryState): void { this.deliveryState = state; }
+  async submitDelivery(delivery: WorldDelivery): Promise<WorldReceipt> {
+    if (!delivery || typeof delivery !== 'object' || Object.keys(delivery).some(name => !['streamId', 'epoch', 'sequence', 'event', 'expiresAt'].includes(name))) return { status: 'rejected', triggerId: '', code: 'invalid_delivery', message: 'Expected a World delivery envelope' };
+    const state = this.deliveryState!;
+    const trigger: RuntimeTrigger = { kind: 'world_event', event: delivery.event, delivery: state.identity(delivery), ...(delivery.expiresAt !== undefined ? { expiresAt: delivery.expiresAt } : {}) };
+    const invalid = validate(trigger, this.limits.textBytes, this.eventBytes, true);
+    if (invalid) return { status: 'rejected', triggerId: triggerId(trigger), code: 'invalid_input', message: invalid };
+    if (!this.accepting) return { status: 'rejected', triggerId: triggerId(trigger), code: 'not_running', message: 'Runtime is not accepting deliveries' };
+    const existing = state.assess(delivery);
+    if (existing) return existing;
+    const { receipt } = this.admit(trigger, true);
+    return receipt.status === 'accepted' ? { status: 'accepted', triggerId: receipt.triggerId, queueSequence: receipt.queueSequence } : receipt;
+  }
   /** 完成 Promise 属于受理项，兼容入口等待它，不依赖可淘汰快照。 */
   async submitAndWait(trigger: ExternalTrigger): Promise<RunResult> {
     const admission = this.admit(trigger);
@@ -78,27 +96,32 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     }
   }
   private admit(trigger: RuntimeTrigger, internal = false): { receipt: TriggerReceipt; item?: Queued } {
-    const invalid = !internal && trigger?.kind === 'heartbeat' ? 'Heartbeat identities belong to Runtime' : validate(trigger, this.limits.textBytes, this.eventBytes);
+    const invalid = !internal && trigger?.kind === 'heartbeat' ? 'Heartbeat identities belong to Runtime' : validate(trigger, this.limits.textBytes, this.eventBytes, internal);
     const kind = trigger?.kind;
     const id = invalid ? safeId(trigger) : triggerId(trigger);
     const reject = (code: string, text: string) => ({ receipt: { status: 'rejected', triggerKind: kind, triggerId: id, code, message: text } as TriggerReceipt });
     if (invalid) return reject('invalid_input', invalid);
     if (this.host.status() !== 'running' || this.closing) return reject('not_running', 'Runtime is not accepting triggers');
+    if (kind === 'world_event' && !internal && this.deliveryState?.ordered) return reject('ordered_required', 'World uses registered delivery envelopes');
     const identity = key(kind, id);
-    if (kind !== 'heartbeat' && this.seen.has(identity)) return reject(kind === 'user_input' ? 'duplicate_input' : 'duplicate_trigger', 'Trigger ID was already accepted');
-    if (kind !== 'heartbeat' && this.seen.size >= this.limits.admissionIds) return reject('admission_limit', 'External trigger ID capacity reached');
+    const ordered = kind === 'world_event' && 'delivery' in trigger;
+    const identities = kind === 'user_input' ? this.seen : !ordered && kind === 'world_event' ? this.legacySeen : undefined;
+    if (identities?.has(identity)) return reject(kind === 'user_input' ? 'duplicate_input' : 'duplicate_trigger', 'Trigger ID was already accepted');
+    const idLimit = kind === 'user_input' ? this.limits.admissionIds : this.deliveryState?.limits.legacyIds;
+    if (identities && idLimit !== undefined && identities.size >= idLimit) return reject('admission_limit', 'Trigger ID capacity reached');
     if (this.queue.length >= this.limits.pendingInputs) return reject('queue_full', 'Trigger queue is full');
     // 拒绝检查结束后才占用身份和序号；通知监听器前已经建立接收写入与完成 Promise。
     let resolve!: (result: RunResult) => void;
     const done = new Promise<RunResult>((yes) => { resolve = yes; });
     const item: Queued = { trigger: structuredClone(trigger), sequence: ++this.sequence, generation: this.host.generation(), received: Promise.resolve(), done, resolve, finalized: false };
-    if (kind !== 'heartbeat') this.seen.add(identity);
-    else this.heartbeatPending = true;
+    identities?.add(identity);
+    if (ordered) this.deliveryState!.reserve({ ...trigger.delivery, event: trigger.event, ...(trigger.expiresAt !== undefined ? { expiresAt: trigger.expiresAt } : {}) });
+    if (kind === 'heartbeat') this.heartbeatPending = true;
     this.queue.push(item);
     // 先启动追加，再通知可重入监听器。失败立即关闭受理并请求停止。
     try { item.received = this.host.append({ kind: 'trigger_received', at: now(), trigger: item.trigger, queueSequence: item.sequence, ...this.association(item) }); }
     catch (error) { item.received = Promise.reject(error); }
-    void item.received.catch(() => { this.closeAdmission(); this.requestStop(); });
+    void item.received.catch((error) => { if (ordered) this.deliveryState!.fail(trigger.delivery, error); this.closeAdmission(); this.requestStop(); });
     this.cache(item, null, 'queued');
     const deadline = kind === 'user_input' ? Date.now() + this.limits.queueMs : 'expiresAt' in trigger && trigger.expiresAt ? Date.parse(trigger.expiresAt) : undefined;
     if (deadline !== undefined) {
@@ -121,7 +144,7 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     if (item) { this.remove(item); await this.track(this.finish(item, null, { status: 'cancelled', code: 'cancelled', persisted: false })); status = 'cancelled'; }
     else if (this.active && key(this.active.item.trigger.kind, triggerId(this.active.item.trigger)) === identity && !this.active.finishing) {
       this.active.controller.abort(new InputError('cancelled', 'Trigger cancelled')); status = 'cancelled';
-    } else status = this.seen.has(identity) || this.snapshots.has(identity) ? 'already_finished' : 'not_found';
+    } else status = this.seen.has(identity) || this.legacySeen.has(identity) || this.snapshots.has(identity) ? 'already_finished' : 'not_found';
     return { triggerKind: kind, triggerId: id, status };
   }
   inspect(kind: TriggerKind, id: string): TriggerSnapshot | undefined { const value = this.snapshots.get(key(kind, id)); return value ? structuredClone(value) : undefined; }
@@ -131,6 +154,7 @@ export class RuntimeTriggerChannel implements TriggerChannel {
   opened(): void { this.closing = false; this.statusChanged(); }
   closeAdmission(): void { this.closing = true; }
   statusChanged(): void { this.emit('runtime_status', null, null, { status: this.host.status() }); }
+  recoveryFailed(code: string, detail: string): void { this.emit('runtime_status', null, null, { status: 'blocked', error: { code, message: detail } }); }
   shutdown(): Promise<void> {
     // 先封闭受理和请求取消，再等待收束；到达的新事实不能抢占停止流程。
     this.closeAdmission();
@@ -163,7 +187,7 @@ export class RuntimeTriggerChannel implements TriggerChannel {
             progress: (event) => {
               run.round = event.round;
               // unknown 监听器可能同步提交新项，关闭受理必须先于通知。
-              if (event.type === 'tool_finished' && event.status === 'unknown') this.closeAdmission();
+              if (event.type === 'tool_finished' && event.status === 'unknown') { this.closeAdmission(); this.host.issue('tool_unknown', event.error?.message ?? 'Tool effect is unknown'); }
               this.cache(item, run.id, 'running', undefined, run.round);
               this.emit(event.type, item, run.id, event);
             },
@@ -211,7 +235,8 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     return operation;
   }
   private remove(item: Queued): void { if (item.timer) clearTimeout(item.timer); const index = this.queue.indexOf(item); if (index >= 0) this.queue.splice(index, 1); }
-  private association(item: Queued) { return { triggerKind: item.trigger.kind, triggerId: triggerId(item.trigger), source: triggerSource(item.trigger), generation: item.generation }; }
+  private association(item: Queued) { return { triggerKind: item.trigger.kind, triggerId: triggerId(item.trigger), source: triggerSource(item.trigger), generation: item.generation,
+    ...(item.trigger.kind === 'world_event' && 'delivery' in item.trigger ? { delivery: item.trigger.delivery } : {}) }; }
   private cache(item: Queued, runId: string | null, status: TriggerSnapshot['status'], result?: RunResult, round?: number): void {
     // 更新已有 Map 项不改变插入次序；按最早保留项淘汰，不释放外部去重身份。
     this.snapshots.set(key(item.trigger.kind, triggerId(item.trigger)), { ...this.association(item), runId, queueSequence: item.sequence, status, ...(result ? { result } : {}), ...(round !== undefined ? { round } : {}) });
@@ -221,6 +246,7 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     const event: OutputEvent = { type, inputId: item?.trigger.kind === 'user_input' ? item.trigger.input.inputId : null, runId,
       sessionId: this.host.agent.declareSession().sessionId, generation: item?.generation ?? this.host.generation(),
       triggerKind: item?.trigger.kind ?? null, triggerId: item ? triggerId(item.trigger) : null, source: item ? triggerSource(item.trigger) : null,
+      ...(item?.trigger.kind === 'world_event' && 'delivery' in item.trigger ? { delivery: item.trigger.delivery } : {}),
       seq: ++this.outputSequence, at: now(), ...extra };
     this.output.push(event);
     while (this.output.length > this.limits.outputEntries || bytes(this.output) > this.limits.outputBytes) this.output.shift();
@@ -234,7 +260,7 @@ function safeId(trigger: RuntimeTrigger): string {
   return typeof value === 'string' ? value : '';
 }
 /** 外部受理边界校验形状、JSON 和容量；World 工具负责领域参数与动作语义。 */
-function validate(trigger: RuntimeTrigger, textLimit: number, eventLimit: number): string | undefined {
+function validate(trigger: RuntimeTrigger, textLimit: number, eventLimit: number, internal = false): string | undefined {
   if (!trigger || typeof trigger !== 'object' || Array.isArray(trigger)) return 'Expected a trigger object';
   if (trigger.kind === 'user_input') {
     const input = trigger.input;
@@ -243,7 +269,7 @@ function validate(trigger: RuntimeTrigger, textLimit: number, eventLimit: number
     if (!input.content || Object.keys(input.content).sort().join(',') !== 'kind,text' || input.content.kind !== 'text' || typeof input.content.text !== 'string' || !input.content.text.trim()) return 'Expected nonempty text content';
     if (Buffer.byteLength(input.content.text) > textLimit) return `Text exceeds ${textLimit} UTF-8 bytes`;
   } else if (trigger.kind === 'world_event') {
-    if (Object.keys(trigger).some((name) => !['kind', 'event', 'expiresAt'].includes(name))) return 'Unexpected trigger field';
+    if (Object.keys(trigger).some((name) => !['kind', 'event', 'expiresAt', ...(internal ? ['delivery'] : [])].includes(name))) return 'Unexpected trigger field';
     const event = trigger.event;
     if (!event || typeof event !== 'object' || Array.isArray(event) || !validLabel(event.id) || !validLabel(event.source) || !validLabel(event.type) || !validTime(event.occurredAt) || !('payload' in event)) return 'Expected a valid World Event';
     if (Object.keys(event).some((name) => !['id', 'type', 'source', 'occurredAt', 'payload', 'meta'].includes(name))) return 'Unexpected event field';

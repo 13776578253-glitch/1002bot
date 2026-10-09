@@ -46,17 +46,23 @@ Agent 的入口分别为 initialInputRequest、initialRequest 和可选 initialH
 | 每批工具；Provider 响应体 | 8 个；1 MiB |
 | Provider；工具时限 | 30 秒；10 秒 |
 | 执行；排队时限 | 各 120 秒 |
-| 外部受理 ID | UserInput 与 World Event 合计每个 Runtime 最多 4096；内部心跳不占用 |
+| 受理 ID | UserInput 每个 Runtime 累计最多 4096；legacy World 独立 4096；ordered World 使用有限位置，内部心跳不占用 |
 | 事件缓存；输入快照 | 256 条/4 MiB；128 条/4 MiB |
 
 容量由 STANDARD_INPUT_LIMITS 定义；组合根可以覆盖正整数参数。Responses 适配器使用同一序列化方法计量与发送，请求体包含消息、工具 schema 和原始输出项，凭据头不计入。响应读取有独立 responseBytes 上限，默认同为 1 MiB；调整运行容量时，应同步配置适配器的响应读取上限。进程内 Provider 按响应结构的序列化字节数计量。
 
 ConversationAgent 只选择配对完整的成功历史轮次，原始输出项随整轮保留或淘汰。当前活动轮次超限时发布 context_limit，已确认的工具成功仍按 succeeded 记录，不重试。旧 M1 日志保留，不纳入首批用户上下文；没有自动摘要。
 
-accepted 在内存受理后返回，随受理启动 trigger_received 追加，执行等待追加确认。首批没有崩溃恢复、跨进程去重或结果投递保证。run_finished 在 JSONL 终态追加成功或明确失败后发布；写入失败标记 persisted=false 并停止后续处理，存储持续挂起阻塞 stop。现有 JSONL 追加未增加 fsync 或事务保证。
+accepted 在内存受理后返回，随受理启动 trigger_received 追加，执行等待追加确认。UserInput 和 legacy World 没有跨进程去重或结果投递保证；M4 ordered World 的保存与前缀重建见后补迁移说明，没有自动恢复执行。run_finished 在 JSONL 终态追加成功或明确失败后发布；写入失败标记 persisted=false 并停止后续处理，存储持续挂起阻塞 stop。现有 JSONL 追加未增加 fsync 或事务保证。
 
 M2 工具已经进入 World 执行后抛异常，无法确认结果，按 unknown 收束；明确领域失败应由 World 返回 failed 回执。unknown 诊断保留原 callId 与原因，缺少原因时标记 tool_unknown。取消、工具超时和回执 ID 错配分别保留对应错误代码，未开始的同批调用标记 cancelled/not_executed。
 
 tool_finished 描述执行结果，在依赖 Session 写入前发布；回执存储失败也保留实时诊断。unknown 的停止决定在写入前锁定，立即关闭输入受理，收束后停止 Runtime 并取消剩余输入。run_finished.persisted 表示终态记录的追加结果，回执追加失败仍报告 storage_error；不是整轮事务成功的承诺。公共 error 只复制 code/message，不附带错误对象的其他元数据、Provider 原始项或凭据字段。
 
 迟到 Provider/World 结果不会写入新代。World 仍须遵守取消与 cleanup 信号；正常启动不能撤销外部副作用。
+
+## M4 启动与历史边界
+
+具备 scan 的 Session 在 start 时先检查归档。未结清、unknown、悬空调用或损坏记录会阻止重新开放执行；`/start` 不会解除这些问题。只读诊断及离线 World 来源 Console 见 [M4 顺序投递与迁移](M4顺序投递与迁移.md)。原行式 Console 的命令与 UserInput 身份不变。
+
+Agent.history 改为近期完整运行候选加本项记录；Runtime.trace 改为有限近期视图。完整记录留在 Session；默认单条 JSONL 记录为 16 MiB。World 通用取消/查询使用回执 triggerId，不能继续直接使用原 Event.id。新来源契约不改变混合 FIFO、固定输入或心跳跳过策略。
