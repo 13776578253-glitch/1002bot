@@ -26,7 +26,9 @@ Historical records may retain project-root paths from before the 2026-10-06 migr
 - Store new content and records of major changes in `current-task/`.
 - Store task records by appending. When correcting an existing conclusion, append a correction instead of overwriting the original record.
 - When `current-task/` has more than 20 entries, or the repository owner explicitly requests migration, copy the task records to `finish-task/`, verify the copy, and mark the originals as archived. Migration must not lose history.
-- Put plans in `plans/`. After completion, copy them to `history/plans/` and mark the archive location in the original plan.
+- Put plans in `plans/`. Plans describe intended scope, design, and implementation arrangements; they are not execution records. Do not append progress, test results, review findings, acceptance conclusions, or rolling status to plans. Record these in task records or operator-facing milestone reports.
+- Revise a plan only when the repository owner explicitly asks to change its scope or design. Implementation or acceptance alone does not authorize rewriting the plan.
+- After completion, copy the plan unchanged to `history/plans/` and record the archive location in the task record. Preserve the original plan text; do not add completion or archive markers to it. Follow an explicit owner instruction about whether to archive.
 
 ## 3. Writing
 
