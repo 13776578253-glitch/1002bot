@@ -1,4 +1,4 @@
-Owner: `packages/apps/tui/src/`、`examples/tui/sample.ts`、`packages/apps/tui/package.json`
+Owner: `packages/apps/tui/src/`、`examples/tui/sample.ts`、`examples/tui/tsconfig.json`、`packages/apps/tui/package.json`
 
 # 全屏 TUI
 
@@ -7,6 +7,10 @@ Owner: `packages/apps/tui/src/`、`examples/tui/sample.ts`、`packages/apps/tui/
 首次运行先按 [包安装与迁移](包安装与迁移.md) 执行 `pnpm install:all`；只安装核心时不包含 TUI、组合样例和前端依赖。
 
 在项目目录运行 `pnpm dev:tui`。样例在同一进程内装配 Runtime、FixtureWorld、脚本 Provider 和真实临时 JSONL，会话日志路径显示在初始活动中。它用于离线调试，不需要模型凭据。
+
+样例直接引用仓库内的 Console 和测试 Fixture，因此 examples/tui/tsconfig.json 将源码根设为仓库根；该配置只用于样例类型检查，继承 noEmit，不生成构建产物。
+
+2026-10-10 本机 TypeScript 5.9.3 复核：配置省略或保留 rootDir 均通过。这里显式固定源码根范围，当前环境未复现兼容报错。
 
 运行状态、活动时间线和草稿编辑区同时显示。输入处理完成后 Runtime 继续等待触发，新的诊断不改写草稿或光标。组合样例显式注入 [内部行式 Console](终端Console.md)，重定向时保留原 `/begin`、`/send` 与 EOF 行为；直接调用 TUI 包时，非原始 TTY 需自行提供 fallback，否则拒绝启动。
 
