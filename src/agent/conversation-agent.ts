@@ -7,11 +7,15 @@ export class ConversationAgent implements Agent {
   readonly id = 'conversation';
   private readonly sessionId: string;
   private readonly instructions: string;
+  private readonly persistent: boolean;
+  private readonly includeUnsuccessfulHistory: boolean;
   readonly initialHeartbeatRequest: HeartbeatRequest;
   readonly taskTools?: AgentTaskTools;
-  constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest; tasks?: boolean }) {
+  constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest; tasks?: boolean; persistent?: boolean; includeUnsuccessfulHistory?: boolean }) {
     this.sessionId = options.sessionId;
     this.instructions = options.instructions ?? 'Respond to the user. Use the available tools when needed. Report tool failures accurately.';
+    this.persistent = options.persistent ?? true;
+    this.includeUnsuccessfulHistory = options.includeUnsuccessfulHistory ?? false;
     if (options.tasks) this.taskTools = new TaskTools();
     this.initialHeartbeatRequest = async (tick, context) => {
       if (options.tasks && context.tasks) {
@@ -29,7 +33,7 @@ export class ConversationAgent implements Agent {
       return options.heartbeatRequest?.(tick, context);
     };
   }
-  declareSession() { return { sessionId: this.sessionId, maxTurns: STANDARD_INPUT_LIMITS.providerCalls, persistent: true }; }
+  declareSession() { return { sessionId: this.sessionId, maxTurns: STANDARD_INPUT_LIMITS.providerCalls, persistent: this.persistent }; }
   /** Compatibility fallback serves direct callers without runId; Runtime uses grouped execution facts. */
   async initialRequest(event: Event, context: AgentContext): Promise<ProviderRequest> {
     return this.build(context, context.runId ? [] : [{ role: 'user', content: JSON.stringify(event) }]);
@@ -56,9 +60,9 @@ export class ConversationAgent implements Agent {
     const completed: ModelMessage[][] = [];
     let active = fallback;
     for (const [id, entries] of groups) {
-      // 当前轮完整保留；旧轮只有成功结束且调用配对完整时才进入上下文。
+      // 当前轮完整保留；旧轮须结清且配对完整，装配可显式保留失败轮次的效果证据。
       if (id === context.runId) active = transcript(entries);
-      else if (entries.some((entry) => entry.kind === 'run_finished' && entry.result.status === 'succeeded') && paired(entries)) completed.push(transcript(entries));
+      else if (entries.some((entry) => entry.kind === 'run_finished' && (entry.result.status === 'succeeded' || this.includeUnsuccessfulHistory)) && paired(entries)) completed.push(transcript(entries));
     }
     // 续轮重读已确认任务视图；固定的输入历史边界与排队事实隔离继续保留。
     const request = (): ProviderRequest => ({

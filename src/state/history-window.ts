@@ -1,4 +1,4 @@
-/** A bounded projection retains whole successful runs; the append-only Session remains the archive. */
+/** A bounded projection retains whole settled runs under the selected history policy. */
 import type { HistoryLimits, HistoryQuery, HistoryStats, SessionEntry, SessionStore } from '../protocol/index.ts';
 import { InputError, STANDARD_HISTORY_LIMITS } from '../protocol/index.ts';
 

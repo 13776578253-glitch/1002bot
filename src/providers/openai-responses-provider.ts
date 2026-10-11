@@ -1,6 +1,7 @@
 /** Responses transport owns wire conversion and native replay; it does not own Session or Runtime lifecycle. */
 import type { JsonObject, ModelMessage, Provider, ProviderRequest, ProviderResponse, ToolCall } from '../protocol/index.ts';
 import { InputError, STANDARD_INPUT_LIMITS } from '../protocol/index.ts';
+import { responsesToolNames } from './responses-tool-names.ts';
 
 export interface OpenAIResponsesOptions {
   /** 仅用于传输认证头，不进入公共请求契约或 Session 记录。 */
@@ -28,15 +29,17 @@ export class OpenAIResponsesProvider implements Provider {
 
   /** 测量与实际发送共用这一序列化入口，包含模型名、工具声明和原生响应重放。 */
   serializeRequest(request: ProviderRequest): string {
+    const names = responsesToolNames(request, this.id);
     return JSON.stringify({
       model: this.options.model,
-      input: request.messages.flatMap((message) => toResponsesInput(message, this.id)),
-      tools: request.tools.map((tool) => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.inputSchema })),
+      input: request.messages.flatMap((message) => toResponsesInput(message, this.id, names.toWire)),
+      tools: request.tools.map((tool) => ({ type: 'function', name: names.toWire(tool.name), description: tool.description, parameters: tool.inputSchema })),
     });
   }
   measureRequest(request: ProviderRequest): number { return Buffer.byteLength(this.serializeRequest(request), 'utf8'); }
 
   async complete(request: ProviderRequest, signal: AbortSignal): Promise<ProviderResponse> {
+    const names = responsesToolNames(request, this.id);
     const response = await this.fetchImpl(`${this.baseUrl}/responses`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.options.apiKey}`, 'content-type': 'application/json' },
@@ -45,26 +48,32 @@ export class OpenAIResponsesProvider implements Provider {
     });
     if (!response.ok) { await response.body?.cancel(); throw new Error(`Responses request failed with HTTP ${response.status}`); }
     const body = await readBody(response, this.options.responseBytes ?? STANDARD_INPUT_LIMITS.responseBytes, signal);
-    return { ...parseResponses(body.value, this.id), bodyBytes: body.bytes };
+    return { ...parseResponses(body.value, this.id, names.fromWire), bodyBytes: body.bytes };
   }
 }
 
-function toResponsesInput(message: ModelMessage, providerId: string): JsonObject[] {
+function toResponsesInput(message: ModelMessage, providerId: string, toWire: (name: string) => string): JsonObject[] {
   // 原生项已包含文本和调用，优先整体重放；再次展开通用字段会重复消息。
-  if (message.providerData?.providerId === providerId) return [...message.providerData.output];
+  if (message.providerData?.providerId === providerId) return message.providerData.output.map(item => {
+    if (item.type !== 'function_call' || typeof item.name !== 'string') return item;
+    // 通用调用的内部身份同时兼容旧样例保存的原生线名，原归档保持不变。
+    const declared = message.toolCalls?.find(call => call.callId === item.call_id);
+    return { ...item, name: toWire(declared?.toolName ?? item.name) };
+  });
   if (message.role === 'tool') {
     if (!message.toolCallId) throw new Error('Tool result is missing toolCallId');
     return [{ type: 'function_call_output', call_id: message.toolCallId, output: message.content }];
   }
   return [
     ...(message.content ? [{ role: message.role, content: message.content }] : []),
-    ...(message.toolCalls ?? []).map((call) => ({ type: 'function_call', call_id: call.callId, name: call.toolName, arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments) })),
+    ...(message.toolCalls ?? []).map((call) => ({ type: 'function_call', call_id: call.callId, name: toWire(call.toolName), arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments) })),
   ];
 }
 
 /** 提取通用文本与调用，同时保留全部对象形式的 output 项供下一轮原生重放。 */
-function parseResponses(body: JsonObject, providerId: string): ProviderResponse {
-  const output = Array.isArray(body.output) ? body.output.filter(isObject) : [];
+function parseResponses(body: JsonObject, providerId: string, fromWire: (name: string) => string): ProviderResponse {
+  // Session 与 Agent 保存内部身份；不透明原生项除函数名编码外保持完整。
+  const output = Array.isArray(body.output) ? body.output.filter(isObject).map(item => item.type === 'function_call' && typeof item.name === 'string' ? { ...item, name: fromWire(item.name) } : item) : [];
   const toolCalls: ToolCall[] = [];
   const text: string[] = [];
   for (const item of output) {

@@ -12,6 +12,7 @@ export interface SessionInspectionOptions {
   worldStreams?: readonly WorldStream[];
   deliveryLimits?: Partial<DeliveryLimits>;
   historyLimits?: Partial<HistoryLimits>;
+  includeUnsuccessfulHistory?: boolean;
   admissionIds?: number;
   taskLimits?: Partial<TaskLimits>;
   /** 启用任务能力时必须具有流式归档扫描口。 */
@@ -19,7 +20,7 @@ export interface SessionInspectionOptions {
 }
 export async function preflightSession(store: SessionStore, options: SessionInspectionOptions, signal?: AbortSignal) {
   const state = new WorldDeliveryState(options.worldId, options.sessionId, options.worldStreams ?? [], options.deliveryLimits);
-  const window = new HistoryWindow(options.historyLimits);
+  const window = new HistoryWindow(options.historyLimits, options.includeUnsuccessfulHistory);
   const tasks = new TaskProjection(options.sessionId, options.taskLimits);
   const audit = new SessionAudit((options.admissionIds ?? STANDARD_INPUT_LIMITS.admissionIds) + state.limits.legacyIds + state.limits.positions + 1);
   if (!store.scan) {

@@ -15,6 +15,7 @@ export interface ComposeOptions {
   worldStreams?: readonly WorldStream[];
   deliveryLimits?: Partial<DeliveryLimits>;
   historyLimits?: Partial<HistoryLimits>;
+  includeUnsuccessfulHistory?: boolean;
   taskLimits?: Partial<TaskLimits>;
   taskClock?: () => number;
 }

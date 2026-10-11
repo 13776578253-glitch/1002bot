@@ -10,4 +10,6 @@ export { ScriptedProvider } from './providers/scripted-provider.ts';
 export { OpenAIResponsesProvider } from './providers/openai-responses-provider.ts';
 export type { OpenAIResponsesOptions } from './providers/openai-responses-provider.ts';
 export { JsonlSessionStore } from './state/jsonl-session.ts';
+export { MemorySessionStore, STANDARD_MEMORY_SESSION_BYTES } from './state/memory-session.ts';
+export type { MemorySessionLimits } from './state/memory-session.ts';
 export { MemoryState } from './state/memory-state.ts';

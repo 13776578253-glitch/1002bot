@@ -27,7 +27,10 @@ it('replays native response items and paired tool outputs across two tool rounds
     fetchImpl: (async (_url, init) => {
       const body = JSON.parse(String(init?.body)) as { input: JsonObject[] };
       inputs.push(body.input);
-      const output = inputs.length === 1 ? firstOutput : inputs.length === 2 ? secondOutput : [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'value=7; failure observed' }] }];
+      const serialized = JSON.parse(provider.serializeRequest({ sessionId: 'fixture', messages: [], tools: world.tools() })) as { tools: { name: string }[] };
+      const names = new Map(world.tools().map((tool, index) => [tool.name, serialized.tools[index]!.name]));
+      const native: JsonObject[] = inputs.length === 1 ? firstOutput : inputs.length === 2 ? secondOutput : [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'value=7; failure observed' }] }];
+      const output = native.map(item => item.type === 'function_call' ? { ...item, name: names.get(item.name as string) } : item);
       return new Response(JSON.stringify({ output }), { status: 200 });
     }) as typeof fetch,
   });
@@ -42,8 +45,11 @@ it('replays native response items and paired tool outputs across two tool rounds
   assert.deepEqual(outcomes.map((outcome) => [outcome.callId, outcome.status]), [['write', 'succeeded'], ['fail', 'failed'], ['read', 'succeeded']]);
   const firstInput = inputs[0]!;
   const results = outcomes.map((outcome) => ({ type: 'function_call_output', call_id: outcome.callId, output: JSON.stringify(outcome) }));
-  assert.deepEqual(inputs[1], [...firstInput, ...firstOutput, results[0], results[1]]);
-  assert.deepEqual(inputs[2], [...firstInput, ...firstOutput, results[0], results[1], ...secondOutput, results[2]]);
+  const declarations = JSON.parse(provider.serializeRequest({ sessionId: 'fixture', messages: [], tools: world.tools() })) as { tools: { name: string }[] };
+  const aliases = new Map(world.tools().map((tool, index) => [tool.name, declarations.tools[index]!.name]));
+  const wire = (items: JsonObject[]) => items.map(item => item.type === 'function_call' ? { ...item, name: aliases.get(item.name as string) } : item);
+  assert.deepEqual(inputs[1], [...firstInput, ...wire(firstOutput), results[0], results[1]]);
+  assert.deepEqual(inputs[2], [...firstInput, ...wire(firstOutput), results[0], results[1], ...wire(secondOutput), results[2]]);
   assert.equal(entries.filter((entry) => entry.kind === 'provider_response').at(-1)?.response.message?.content, 'value=7; failure observed');
   // The adapter's continuation data must survive JSONL serialization for replay.
   assert.deepEqual(await new JsonlSessionStore(join(directory, 'session.jsonl')).read(), entries);

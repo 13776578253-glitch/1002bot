@@ -30,6 +30,8 @@ export interface RuntimeOptions {
   worldStreams?: readonly WorldStream[];
   deliveryLimits?: Partial<DeliveryLimits>;
   historyLimits?: Partial<HistoryLimits>;
+  /** 向 Agent 提供配对完整的失败/取消历史候选，效果判断仍由 Agent 承担。 */
+  includeUnsuccessfulHistory?: boolean;
   taskLimits?: Partial<TaskLimits>;
   /** 仅任务到期判断使用此时钟；来源接收/过期仍沿用 Runtime 的真实期限。 */
   taskClock?: () => number;
@@ -92,7 +94,7 @@ export class Runtime {
   inspectSession(): Promise<SessionDiagnosis> {
     return diagnoseSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
       worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds,
-      ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools });
+      ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools, includeUnsuccessfulHistory: !!this.options.includeUnsuccessfulHistory });
   }
   /** 读取口不拥有生命周期；旧口只能等待原保存，不能向新代投递。 */
   get deliveries(): WorldDeliveryPort {
@@ -228,7 +230,7 @@ export class Runtime {
     try {
       inspected = await preflightSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
         worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds,
-        ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools }, controller.signal);
+        ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools, includeUnsuccessfulHistory: !!this.options.includeUnsuccessfulHistory }, controller.signal);
     } catch (error) {
       if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
       throw error;
