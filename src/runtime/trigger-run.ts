@@ -40,6 +40,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   let round = 0;
   const association = { runId: run.runId, triggerKind: run.trigger.kind, triggerId: triggerId(run.trigger), source: triggerSource(run.trigger), generation: run.generation,
     ...(run.trigger.kind === 'world_event' && 'delivery' in run.trigger ? { delivery: run.trigger.delivery } : {}) };
+  // 本轮授权供 Agent 选择心跳任务，工具调用再派生携带单次期限的子权限。
   const taskLease = host.tasks?.open(association, run.signal);
   let registry!: ReturnType<typeof toolRegistry>;
   const append = async (entry: SessionEntry): Promise<void> => {
@@ -75,6 +76,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     else if (run.trigger.kind === 'world_event') await append({ kind: 'event', at: now(), event: run.trigger.event });
     else await append({ kind: 'heartbeat', at: now(), heartbeat: run.trigger });
     await append({ kind: 'run_started', at: now(), inputId: triggerId(run.trigger) });
+    // 工具归属固定到本轮结束，Session 调用与回执使用同一 owner。
     registry = toolRegistry(host.agent, host.world);
     // 入口保留来源语义；心跳是否请求模型由 Agent 决定，Runtime 只执行其决定。
     const initial = await guarded(() => {
@@ -203,10 +205,13 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     const detail = diagnostic(finalCause);
     // Provider 等普通失败只结束本项；未知效果或必要存储故障停止共享通道。
     return { result: { status: cancellation(finalCause) ? 'cancelled' : 'failed', ...detail, persisted: false }, halt: halt || detail.code === 'storage_error' };
-  } finally { await taskLease?.finish(); }
+  } finally {
+    // 通道写 run_finished 前撤权并结算任务操作，避免终态越过任务确认。
+    await taskLease?.finish();
+  }
 }
 
-/** 进入 World 之前可确定的参数或工具名错误，返回 failed，不产生外部效果。 */
+/** 工具分流前可确定的参数或工具名错误，返回 failed，不产生提交或外部效果。 */
 function normalize(call: ToolCall, declarations: readonly import('../protocol/index.ts').ToolDefinition[]): ToolCall | ToolOutcome {
   try {
     const argumentsValue: unknown = typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments;

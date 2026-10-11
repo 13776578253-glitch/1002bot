@@ -51,6 +51,7 @@ export class SessionAudit {
       if (entry.kind === 'tool_outcome') {
         const declared = run.calls.get(entry.outcome.callId);
         if (declared?.name !== entry.outcome.toolName && entry.outcome.status !== 'cancelled') this.issue('tool_pairing', 'Tool outcome has no matching declared call', entry);
+        // 新记录的调用和回执必须保持归属；旧日志未声明 owner 时沿用兼容配对。
         if (declared?.owner !== undefined && declared.owner !== entry.owner) this.issue('tool_owner', 'Tool outcome changed its declared owner', entry);
         run.calls.delete(entry.outcome.callId);
         if (entry.outcome.status === 'unknown') this.issue('tool_unknown', 'Archived tool effect is unknown', entry);

@@ -14,6 +14,7 @@ export interface SessionInspectionOptions {
   historyLimits?: Partial<HistoryLimits>;
   admissionIds?: number;
   taskLimits?: Partial<TaskLimits>;
+  /** 启用任务能力时必须具有流式归档扫描口。 */
   requireTasks?: boolean;
 }
 export async function preflightSession(store: SessionStore, options: SessionInspectionOptions, signal?: AbortSignal) {
@@ -28,6 +29,7 @@ export async function preflightSession(store: SessionStore, options: SessionInsp
     return { state, window: undefined, tasks, diagnosis };
   }
   try {
+    // 同一遍归档扫描校验配对并重建各投影，认领事实保留原消费身份。
     for await (const entry of store.scan(signal)) {
       signal?.throwIfAborted();
       audit.append(entry); state.observe(entry); tasks.observe(entry); window.append(entry);

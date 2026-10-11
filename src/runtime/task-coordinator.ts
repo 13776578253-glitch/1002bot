@@ -4,7 +4,17 @@ import { InputError } from '../protocol/index.ts';
 import { TaskProjection, stateOnly } from '../state/task-projection.ts';
 
 interface Origin { runId: string; generation: number; triggerKind: TriggerKind; triggerId: string; source: string; delivery?: WorldDeliveryIdentity }
-export interface TaskLease { port: TaskRunPort; forCall(callId: string, signal: AbortSignal): TaskRunPort; revokeCall(callId: string): void; settle(): Promise<void>; finish(): Promise<void> }
+/** The executor owns run and call grants; settlement joins task operations before terminal persistence. */
+export interface TaskLease {
+  port: TaskRunPort;
+  /** 工具子权限携带 callId 和单次期限，迟到调用不能提交。 */
+  forCall(callId: string, signal: AbortSignal): TaskRunPort;
+  revokeCall(callId: string): void;
+  /** 等待已登记操作，并传递必要追加失败。 */
+  settle(): Promise<void>;
+  /** 先关闭本轮提交权限，再等待结算。 */
+  finish(): Promise<void>
+}
 export class TaskCoordinator implements TaskInspector {
   private projection: TaskProjection;
   private readonly sessionId: string;
@@ -20,12 +30,14 @@ export class TaskCoordinator implements TaskInspector {
   replace(projection: TaskProjection): void { this.projection = projection; }
   observe(entry: SessionEntry): void { this.projection.observe(entry); }
   snapshot(): readonly TaskSnapshot[] { return this.projection.snapshot(); }
+  /** 归档查询独立重建指定任务；按日志长度扫描，内存受任务容量约束。 */
   async read(taskId: string, signal?: AbortSignal): Promise<TaskSnapshot | undefined> {
     if (!this.store.scan) throw new InputError('session_capability', 'Task archive queries require Session.scan');
     const projection = new TaskProjection(this.sessionId, this.projection.limits, taskId);
     for await (const entry of this.store.scan(signal)) projection.observe(entry);
     return projection.watchedTask;
   }
+  /** 明确读取一次已结清尝试，保留失败 run 的真实效果；超预算不返回部分记录。 */
   async evidence(taskId: string, runId: string, budget = this.projection.limits.evidenceBytes, signal?: AbortSignal): Promise<readonly SessionEntry[]> {
     if (!Number.isSafeInteger(budget) || budget < 1 || budget > this.projection.limits.evidenceBytes) throw new InputError('task_evidence_limit', 'Evidence budget exceeds its configured limit');
     if (!this.store.scan) throw new InputError('session_capability', 'Task evidence queries require Session.scan');
@@ -42,6 +54,7 @@ export class TaskCoordinator implements TaskInspector {
     if (!associated || !finished) throw new InputError('task_evidence_missing', 'No complete attempt belongs to this task/run');
     return structuredClone(entries);
   }
+  /** 当前代次、run 与单次工具权限共同限制提交；进入追加后等待原确认结果。 */
   open(origin: Origin, signal: AbortSignal): TaskLease {
     let open = true;
     let selected: string | undefined;
@@ -50,6 +63,7 @@ export class TaskCoordinator implements TaskInspector {
     let storageError: unknown;
     const authorize = (): void => { if (!open || signal.aborted || !this.alive(origin.generation)) throw new InputError('task_revoked', 'Task commit grant no longer owns this run'); };
     const track = <T>(operation: Promise<T>): Promise<T> => {
+      // 调用方即使放弃等待，收束仍能发现该操作的必要追加失败。
       pending.add(operation);
       void operation.then(() => pending.delete(operation), error => {
         if (error instanceof InputError && error.code === 'storage_error') storageError ??= error;
@@ -59,6 +73,7 @@ export class TaskCoordinator implements TaskInspector {
     };
     const commit = <T>(check: () => void, operation: () => Promise<T>): Promise<T> => {
       check();
+      // 串行提交出队时再次验权，排队中的操作可撤销，已进入追加的操作须等待确认。
       const result = this.tail.then(() => { check(); return operation(); });
       this.tail = result.catch(() => undefined);
       return track(result);
@@ -77,6 +92,7 @@ export class TaskCoordinator implements TaskInspector {
       read: taskId => { check(); return track(this.read(taskId, callSignal)); },
       evidence: (taskId, runId, bytes) => { check(); return track(this.evidence(taskId, runId, bytes, callSignal)); },
       create: (value: TaskCreate) => { const input = structuredClone(value); return commit(check, async () => {
+        // 入队前复制参数；出队时按最新确认投影分配身份并校验。
         const task = { taskId: this.projection.nextId(), revision: 1, intent: input.intent, data: input.data ?? {}, status: input.status,
           scheduleRevision: input.schedule ? 1 : 0, ...(input.schedule ? { schedule: { revision: 1, wakeAt: input.schedule.wakeAt } } : {}) };
         const entry: SessionEntry = { kind: 'task_changed', at: new Date().toISOString(), schema: 1, sessionId: this.sessionId, expectedRevision: 0, task, ...origin, ...(callId ? { callId } : {}) };
@@ -93,6 +109,7 @@ export class TaskCoordinator implements TaskInspector {
         if (input.data !== undefined) task.data = input.data;
         if (input.status !== undefined) task.status = input.status;
         if (input.schedule !== undefined) {
+          // 只有显式重排或清除才推进安排版本；内容更新保留消费事实。
           ++task.scheduleRevision;
           if (input.schedule === null) delete task.schedule;
           else task.schedule = { revision: task.scheduleRevision, wakeAt: input.schedule.wakeAt };
@@ -109,6 +126,7 @@ export class TaskCoordinator implements TaskInspector {
         const task = this.projection.get(taskId)!;
         if (Date.parse(task.schedule!.wakeAt) > this.clock()) throw new InputError('task_not_due', 'Arrangement is not due');
         await save(entry);
+        // 模型请求只能在消费确认后建立，重启沿用同一条消费事实。
         selected = taskId;
         return this.projection.get(taskId)!;
       }),

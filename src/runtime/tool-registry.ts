@@ -4,6 +4,7 @@ import { InputError } from '../protocol/index.ts';
 export function toolRegistry(agent: Agent, world: World) {
   const owned = agent.taskTools?.tools() ?? [];
   const declarations = [...world.tools(), ...owned];
+  // 同一份声明用于模型请求、名称校验与执行分流；重名在模型调用前拒绝。
   const names = new Set<string>();
   for (const tool of declarations) {
     if (names.has(tool.name)) throw new InputError('tool_name_conflict', `Tool has more than one owner: ${tool.name}`);

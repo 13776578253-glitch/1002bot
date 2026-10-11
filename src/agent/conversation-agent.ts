@@ -12,10 +12,10 @@ export class ConversationAgent implements Agent {
   constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest; tasks?: boolean }) {
     this.sessionId = options.sessionId;
     this.instructions = options.instructions ?? 'Respond to the user. Use the available tools when needed. Report tool failures accurately.';
-    // 没有周期任务策略时，心跳正常无动作结束；装配方可提供语义策略。
     if (options.tasks) this.taskTools = new TaskTools();
     this.initialHeartbeatRequest = async (tick, context) => {
       if (options.tasks && context.tasks) {
+        // 每个合法心跳按到期时间、任务 ID 选择一个未消费安排，全程使用任务时钟。
         const at = Date.parse(context.tasks.now());
         const due = context.tasks.snapshot().filter(task => task.status === 'waiting' && task.schedule && !task.schedule.consumedByRunId && Date.parse(task.schedule.wakeAt) <= at)
           .sort((a, b) => Date.parse(a.schedule!.wakeAt) - Date.parse(b.schedule!.wakeAt) || a.taskId.localeCompare(b.taskId))[0];
@@ -25,6 +25,7 @@ export class ConversationAgent implements Agent {
           return this.build(context);
         }
       }
+      // 没有到期安排时交给装配策略；未提供策略便零模型调用结束。
       return options.heartbeatRequest?.(tick, context);
     };
   }
@@ -59,6 +60,7 @@ export class ConversationAgent implements Agent {
       if (id === context.runId) active = transcript(entries);
       else if (entries.some((entry) => entry.kind === 'run_finished' && entry.result.status === 'succeeded') && paired(entries)) completed.push(transcript(entries));
     }
+    // 续轮重读已确认任务视图；固定的输入历史边界与排队事实隔离继续保留。
     const request = (): ProviderRequest => ({
       sessionId: context.session.sessionId,
       messages: [{ role: 'system', content: this.instructions }, ...(this.taskTools && context.tasks ? [{ role: 'system' as const,

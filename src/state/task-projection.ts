@@ -8,8 +8,11 @@ export class TaskProjection {
   readonly limits: Readonly<TaskLimits>;
   private readonly sessionId: string;
   private readonly active = new Map<string, TaskSnapshot>();
+  /** 从已确认创建事实重建标量计数器，终态任务不占累计身份集合。 */
   private allocated = 0;
+  /** 本轮关联任务保留至 run_finished，已移出活跃表的终态也能接收最终尝试摘要。 */
   private run: { id: string; origin: SessionEntry; calls: Map<string, string | undefined>; attempt: TaskAttempt; tasks: Map<string, TaskSnapshot> } | undefined;
+  /** 归档查询仅保留指定任务的最终视图，驻留投影默认不保存终态。 */
   private readonly watchId: string | undefined;
   private watched: TaskSnapshot | undefined;
   constructor(sessionId: string, limits: Partial<TaskLimits> = {}, watchId?: string) {
@@ -24,6 +27,7 @@ export class TaskProjection {
   get(taskId: string): TaskSnapshot | undefined { const task = this.active.get(taskId); return task ? structuredClone(task) : undefined; }
   confirmed(taskId: string): TaskSnapshot | undefined { const task = this.active.get(taskId) ?? this.run?.tasks.get(taskId); return task ? structuredClone(task) : undefined; }
   get watchedTask(): TaskSnapshot | undefined { return this.watched ? structuredClone(this.watched) : undefined; }
+  /** 检查候选记录，不发布状态；提交与启动扫描使用同一套修订、关联和容量规则。 */
   validateChange(entry: Change): void {
     this.control(entry);
     const task = entry.task;
@@ -50,6 +54,7 @@ export class TaskProjection {
     if (typeof entry.checkedAt !== 'string' || !Number.isFinite(Date.parse(entry.checkedAt)) || Date.parse(entry.checkedAt) < Date.parse(task.schedule.wakeAt)) fail('task_not_due', 'Claim precedes its declared task clock deadline');
     if (!this.run!.tasks.has(task.taskId) && this.run!.tasks.size >= this.limits.activeTasks) fail('task_capacity', 'Run task association capacity reached');
   }
+  /** 仅接收已确认的 Session 事实；重建时沿用原始 run 顺序及消费事实。 */
   observe(entry: SessionEntry): void {
     if (entry.kind === 'run_started' && entry.runId) {
       if (this.run) fail('task_run_overlap', 'Task projection requires one active run');
@@ -75,6 +80,7 @@ export class TaskProjection {
       if (task.taskId === this.watchId) this.watched = task;
     } else if (entry.kind === 'tool_outcome' && this.run && this.run.id === entry.runId) {
       this.run.calls.delete(entry.outcome.callId);
+      // 任务工具回执保留在归档；效果摘要只引用 World 回执。
       if (entry.owner === 'agent') return;
       const effect: TaskEffect = { callId: entry.outcome.callId, toolName: entry.outcome.toolName, status: entry.outcome.status,
         ...(entry.outcome.error ? { error: { code: entry.outcome.error.code.slice(0, 128), message: entry.outcome.error.message.slice(0, 256) } } : {}) };
@@ -98,6 +104,7 @@ export class TaskProjection {
     if (entry.schema !== 1 || entry.sessionId !== this.sessionId || !entry.runId || this.run?.id !== entry.runId || !Number.isSafeInteger(entry.generation) || !entry.triggerId || !entry.triggerKind) fail('task_record', 'Task control lacks its active Session/run association');
     const origin = this.run.origin;
     if (entry.generation !== origin.generation || entry.triggerKind !== origin.triggerKind || entry.triggerId !== origin.triggerId || entry.source !== origin.source) fail('task_record', 'Task control changed its run association');
+    // 自动心跳认领可无 callId；工具提交必须关联本轮尚未取得回执的 Agent 调用。
     if (entry.callId !== undefined && (!this.run.calls.has(entry.callId) || this.run.calls.get(entry.callId) === 'world')) fail('task_record', 'Task control has no declared Agent call');
     const base = { ...this.run.attempt, effects: [] };
     if (size(base) > this.limits.stateBytes) fail('task_limit', 'Run association cannot fit the task attempt budget');

@@ -170,6 +170,7 @@ export interface Agent {
 /**
  * Session records archive received facts and execution commits; Agent context excludes receipt-only records.
  * trigger_received 与排队终态可无 runId；终态 inputId 沿用旧字段名，值为对应触发 ID。
+ * 工具调用与回执的 owner 必须配对；旧记录可省略，任务效果摘要将未声明归属的回执视为 World。
  */
 export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; triggerId?: string; source?: string; generation?: number; delivery?: WorldDeliveryIdentity } & (
   | TaskRecord

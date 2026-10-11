@@ -16,6 +16,7 @@ import { STANDARD_TRIGGER_LIMITS } from '../src/protocol/index.ts';
 
 const directory = process.argv[2] ?? await mkdtemp(join(tmpdir(), 'bot-m5-console-'));
 const stream = { streamId: 'facts', epoch: 'task-console-1' };
+// 手动推进任务时钟；来源接收与过期仍遵守 Runtime 的真实时间期限。
 let clock = Date.parse('2029-01-01T00:00:00Z');
 let modelCalls = 0;
 const ticks = new ManualHeartbeat();
@@ -29,6 +30,7 @@ function build() {
     const selected = view.items.find(task => task.taskId === view.selectedTaskId);
     const call = (toolName: string, args: JsonObject): ProviderResponse => ({ finishReason: 'tool_calls', toolCalls: [{ callId: randomUUID(), toolName, arguments: args }] });
     const reply = (content: string): ProviderResponse => ({ finishReason: 'stop', toolCalls: [], message: { role: 'assistant', content } });
+    // 此脚本模型固定执行观察、写入、完成链；生产 Agent 的判断由实际 Provider 承担。
     if (last.role === 'tool') {
       const outcome = JSON.parse(last.content) as ToolOutcome;
       if (outcome.status !== 'succeeded') return reply(last.content);
@@ -54,6 +56,7 @@ function build() {
 let { world, runtime } = build();
 const output = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n');
 const lines = createInterface({ input: process.stdin });
+// 启动等待前建立消费迭代器，保留管道输入在启动期间到达的命令与 EOF。
 const commands = lines[Symbol.asyncIterator]();
 try {
   await runtime.start();

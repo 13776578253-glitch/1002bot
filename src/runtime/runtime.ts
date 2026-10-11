@@ -1,4 +1,4 @@
-/** Runtime owns lifecycle, source leases and write barriers; one channel executes all Session triggers. */
+/** Runtime owns lifecycle, source and task grants, and confirmed projections; one channel executes all Session triggers. */
 import type { Agent, Event, Provider, SessionEntry, SessionStore, StateStore, World, InputLimits, HeartbeatOptions, RunResult, WorldEventSink, TriggerChannel, WorldStream, DeliveryLimits, HistoryLimits, SessionDiagnosis, WorldDeliveryPort, HistoryQuery, TaskLimits, TaskInspector } from '../protocol/index.ts';
 import { InputError, STANDARD_TRIGGER_LIMITS, legacyWorldTriggerId } from '../protocol/index.ts';
 import { RuntimeInputChannel } from './input-channel.ts';
@@ -204,6 +204,7 @@ export class Runtime {
     let append: Promise<void>;
     // 同步抛错也进入被跟踪的结算链，保持受理即调用存储的顺序。
     try { append = this.options.session.append(entry); } catch (error) { append = Promise.reject(error); }
+    // 保存确认后一起推进来源、任务和历史投影；追加失败不会发布候选变更。
     const write = append.then(() => {
       this.deliveryState.observe(entry);
       this.taskCoordinator.observe(entry);
@@ -233,6 +234,7 @@ export class Runtime {
       throw error;
     }
     if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
+    // 安装本次扫描的事实视图供诊断使用，审计阻断时仍不开放受理或启动 World。
     const { state, window, tasks, diagnosis } = inspected;
     this.deliveryState = state; this.channel.bindDeliveries(state); this.window = window;
     this.taskCoordinator.replace(tasks);

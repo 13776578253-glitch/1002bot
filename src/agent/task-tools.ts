@@ -16,6 +16,7 @@ export class TaskTools implements AgentTaskTools {
   tools(): readonly ToolDefinition[] { return structuredClone(definitions); }
   async executeTool(call: ToolCall, context: AgentContext): Promise<ToolOutcome> {
     try {
+      // 模型参数在此校验语义，提交权限、修订冲突和确认顺序由 Runtime 端口约束。
       const port = context.tasks;
       if (!port) throw new InputError('task_capability', 'This run has no task commit capability');
       const args = call.arguments;
@@ -50,6 +51,7 @@ export class TaskTools implements AgentTaskTools {
     }
   }
 }
+/** 将完整任务项装入模型预算，认领项优先；省略数保留候选未全部展示这一事实。 */
 export function taskView(port: TaskRunPort): { items: TaskSnapshot[]; omitted: number; selectedTaskId: string | null } {
   const tasks = [...port.snapshot()].sort((a, b) => a.taskId === port.selectedTaskId ? -1 : b.taskId === port.selectedTaskId ? 1 : a.taskId.localeCompare(b.taskId));
   const result = { items: [] as TaskSnapshot[], omitted: tasks.length, selectedTaskId: port.selectedTaskId ?? null };

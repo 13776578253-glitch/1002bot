@@ -11,6 +11,7 @@ export class TaskObservationWorld extends OrderedFixtureWorld {
     this.observationsPath = join(directory, 'observations.jsonl');
   }
   override tools() { return [...super.tools(), { name: 'fixture.observe', description: 'Read the file-backed entity observation and its declared version domain.', inputSchema: { type: 'object', required: ['key'], properties: { key: { type: 'string' } } } }]; }
+  /** 被动感知与主动观察共享文件版本域，版本仅表示该实体领域记录的修订。 */
   async observation(key: string): Promise<JsonObject> {
     let text: string;
     try { text = await readFile(this.observationsPath, 'utf8'); }
@@ -28,6 +29,7 @@ export class TaskObservationWorld extends OrderedFixtureWorld {
     if (call.toolName !== 'fixture.set' || result.status !== 'succeeded') return result;
     const previous = await this.observation(args.key as string);
     const observation = { entity: args.key!, versionDomain: 'fixture-file', version: (previous.version as number) + 1, value: args.value!, cause: { callId: call.callId, generation: context.generation } };
+    // 成功回执必须等待领域文件追加；抛错后由执行器按 World 效果不明收束。
     await appendFile(this.observationsPath, `${JSON.stringify(observation)}\n`);
     return { ...result, output: observation };
   }

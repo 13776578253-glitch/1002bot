@@ -31,6 +31,7 @@ export async function runM5Sample(directory: string, phase: 'seed' | 'wake' | 'i
     { finishReason: 'tool_calls', toolCalls: [{ callId: 'effect', toolName: 'fixture.set', arguments: { key: 'answer', value: 7 } }] },
     { finishReason: 'tool_calls', toolCalls: [{ callId: 'complete', toolName: 'agent_task_update', arguments: { taskId: 'task-1', expectedRevision: 1, status: 'completed' } }] }, stop,
   ];
+  // 独立子进程在认领实际保存后、Runtime 发布确认前退出，留下需诊断的未结清 run。
   const session: SessionStore = phase === 'crash_claim' ? { read: () => store.read(), scan: signal => store.scan(signal), append: async entry => { await store.append(entry); if (entry.kind === 'task_claimed') process.exit(23); } } : store;
   const runtime = new Runtime({ world, session, state: new MemoryState(), agent: new ConversationAgent({ sessionId: 'm5-sample', tasks: true }),
     provider: new ScriptedProvider((_request, index) => { ++modelCalls; if (phase === 'inspect') throw new Error('Inspection must not call a model'); return responses[index]!; }),
