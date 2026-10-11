@@ -1,7 +1,7 @@
 /** Explicit manual service acceptance; this entry is never imported by automated tests. */
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { OpenAIResponsesProvider, ScriptedProvider, type Provider, type ProviderResponse } from '1002bot';
+import { OpenAIResponsesProvider, ScriptedProvider, type Provider, type ProviderRequest, type ProviderResponse } from '1002bot';
 import type { QQConfig } from '@1002bot/world-qq';
 import { composeQQ } from './compose.ts';
 
@@ -14,7 +14,39 @@ config.onDiagnostic = diagnostic => console.error(JSON.stringify(diagnostic));
 let provider: Provider;
 if (mode === 'provider') {
   if (!process.env.MODEL_API_KEY || !process.env.MODEL_ID || !process.env.MODEL_BASE_URL) throw new Error('Set MODEL_API_KEY, MODEL_ID and MODEL_BASE_URL');
-  provider = new OpenAIResponsesProvider({ apiKey: process.env.MODEL_API_KEY, model: process.env.MODEL_ID, baseUrl: process.env.MODEL_BASE_URL });
+  const rawProvider = new OpenAIResponsesProvider({ apiKey: process.env.MODEL_API_KEY, model: process.env.MODEL_ID, baseUrl: process.env.MODEL_BASE_URL });
+  // OpenAI Responses API 限制工具名满足 ^[a-zA-Z0-9_-]+$；在传输层将 qq.* 与 qq_* 双向映射。
+  const toWire = (name: string) => name.replaceAll('.', '_');
+  const fromWire = (name: string) => name.replace(/^qq_/, 'qq.');
+  const mapRequest = (req: ProviderRequest): ProviderRequest => ({
+    ...req,
+    tools: req.tools.map(t => ({ ...t, name: toWire(t.name) })),
+    messages: req.messages.map(m => ({
+      ...m,
+      ...(m.toolCalls ? { toolCalls: m.toolCalls.map(c => ({ ...c, toolName: toWire(c.toolName) })) } : {}),
+      ...(m.providerData ? {
+        providerData: {
+          ...m.providerData,
+          output: m.providerData.output.map(item =>
+            item.type === 'function_call' && typeof item.name === 'string'
+              ? { ...item, name: toWire(item.name) }
+              : item
+          ),
+        },
+      } : {}),
+    })),
+  });
+  provider = {
+    id: rawProvider.id,
+    measureRequest: req => rawProvider.measureRequest(mapRequest(req)),
+    complete: async (req, signal) => {
+      const res = await rawProvider.complete(mapRequest(req), signal);
+      return {
+        ...res,
+        toolCalls: res.toolCalls.map(c => ({ ...c, toolName: fromWire(c.toolName) })),
+      };
+    },
+  };
 } else {
   provider = new ScriptedProvider((request): ProviderResponse => {
     const last = request.messages.at(-1)!;

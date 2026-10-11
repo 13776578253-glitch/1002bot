@@ -47,7 +47,7 @@ $env:MODEL_API_KEY = '<private key>'
 pnpm --filter @1002bot/qq-example provider
 ```
 
-真实输入必须触发模型显式工具，续轮保存对应回执，QQ 人工确认收取，Session 保存终态。Provider 最终文本仅为本地输出。未知效果、预检阻断、容量及清理期限分别留脱敏证据。两层验收使用独立且明确绑定的 Session/World 文件，不能用之前的 Provider 单独测试或离线样例代替。
+真实输入必须触发模型显式工具，续轮保存对应回执，QQ 人工确认收取，Session 保存终态。`manual.ts` 在 `provider` 模式下将内部带点号工具名（`qq.*`）双向映射为满足 OpenAI Responses API `^[a-zA-Z0-9_-]+$` 约束的线名（`qq_*`），Runtime 与 Session 仍记录 `qq.get_message` / `qq.send_text`。Provider 最终文本仅为本地输出。未知效果、预检阻断、容量及清理期限分别留脱敏证据。两层验收使用独立且明确绑定的 Session/World 文件，不能用之前的 Provider 单独测试或离线样例代替。
 
 ## 诊断
 
