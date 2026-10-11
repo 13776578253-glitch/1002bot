@@ -1,0 +1,15 @@
+{
+  "name": "@1002bot/world-qq",
+  "version": "0.1.0",
+  "type": "module",
+  "files": ["dist", "README.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/integration/*.test.ts src/__tests__/*.test.ts"
+  },
+  "peerDependencies": { "1002bot": "^0.1.0" },
+  "dependencies": { "ws": "^8.18.3" },
+  "devDependencies": { "1002bot": "workspace:*", "@types/ws": "^8.18.1", "@types/node": "^22.10.0", "typescript": "^5.7.2" }
+}

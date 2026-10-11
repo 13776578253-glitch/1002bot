@@ -1,0 +1,10 @@
+{
+  "endpoint": "ws://127.0.0.1:3001/",
+  "journalPath": "scratch/qq/world.jsonl",
+  "sessionPath": "scratch/qq/session.jsonl",
+  "binding": {
+    "sessionId": "qq-first-session", "worldId": "qq", "streamId": "messages", "epoch": "first",
+    "accountId": 10001, "conversation": { "kind": "group", "id": 20001 }
+  },
+  "limits": { "apiMs": 7000, "startMs": 30000, "retryMs": 250, "cleanupMs": 3000 }
+}

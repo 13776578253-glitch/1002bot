@@ -19,6 +19,28 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  examples/qq:
+    dependencies:
+      1002bot:
+        specifier: workspace:*
+        version: link:../..
+      '@1002bot/world-qq':
+        specifier: workspace:*
+        version: link:../../packages/extensions/world-qq
+      ws:
+        specifier: ^8.18.3
+        version: 8.22.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   examples/tui:
     devDependencies:
       1002bot:
@@ -50,6 +72,25 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/extensions/world-qq:
+    dependencies:
+      ws:
+        specifier: ^8.18.3
+        version: 8.22.0
+    devDependencies:
+      1002bot:
+        specifier: workspace:*
+        version: link:../../..
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   packages/shared/control-api:
     devDependencies:
       typescript:
@@ -76,6 +117,9 @@ packages:
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
 
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
+
   ansi-regex@6.4.0:
     resolution: {integrity: sha512-KzTVk2tCWAHtYrvvvaP8bJKJq2pVinhLcGEQdtLIYPbmNGNyYe8QwNaTUYQp2J7/vIsUKt5QCqAfUkYyG9DkOw==}
     engines: {node: '>=12'}
@@ -100,11 +144,27 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  ws@8.22.0:
+    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
 snapshots:
 
   '@types/node@22.20.5':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 22.20.5
 
   ansi-regex@6.4.0: {}
 
@@ -122,3 +182,5 @@ snapshots:
   typescript@5.9.3: {}
 
   undici-types@6.21.0: {}
+
+  ws@8.22.0: {}

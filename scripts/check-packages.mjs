@@ -26,7 +26,7 @@ function write(path, content) { writeFileSync(path, content); }
 function json(path, value) { write(path, JSON.stringify(value, null, 2) + '\n'); }
 const phases = {};
 
-for (const path of ['packages/shared/control-api', '.', 'packages/apps/tui']) {
+for (const path of ['packages/shared/control-api', '.', 'packages/apps/tui', 'packages/extensions/world-qq']) {
   pnpm(['pack', '--pack-destination', artifacts], resolve(root, path));
 }
 function archive(path) {
@@ -36,6 +36,7 @@ function archive(path) {
 const coreArchive = archive('.');
 const apiArchive = archive('packages/shared/control-api');
 const tuiArchive = archive('packages/apps/tui');
+const qqArchive = archive('packages/extensions/world-qq');
 assert.ok(coreArchive && apiArchive && tuiArchive);
 const install = ['install', '--offline', '--ignore-scripts', ...store];
 
@@ -48,6 +49,8 @@ for (const path of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.n
 pnpm([...install, '--config.recursive-install=true', '--frozen-lockfile', '--filter', '1002bot...'], coreSource);
 assert.ok(!existsSync(join(coreSource, 'node_modules/@1002bot/tui')));
 assert.ok(!existsSync(join(coreSource, 'node_modules/string-width')));
+assert.ok(!existsSync(join(coreSource, 'node_modules/@1002bot/world-qq')));
+assert.ok(!readdirSync(join(coreSource, 'node_modules/.pnpm')).some(name => /^ws@|types\+ws@/.test(name)));
 assert.ok(!readdirSync(join(coreSource, 'node_modules/.pnpm')).some(name => /string-width|opentui|react@/.test(name)));
 pnpm(['typecheck:core'], coreSource);
 pnpm(['build'], coreSource);
@@ -77,6 +80,8 @@ json(join(coreConsumer, 'package.json'), {
 pnpm(install, coreConsumer);
 assert.ok(!existsSync(join(coreConsumer, 'node_modules/string-width')));
 assert.ok(!existsSync(join(coreConsumer, 'node_modules/@1002bot/tui')));
+assert.ok(!existsSync(join(coreConsumer, 'node_modules/@1002bot/world-qq')));
+assert.ok(!readdirSync(join(coreConsumer, 'node_modules/.pnpm')).some(name => /^ws@|types\+ws@/.test(name)));
 const fixture = ts.transpileModule(readFileSync(join(root, 'tests/fixtures/fixture-world.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
 write(join(coreConsumer, 'fixture-world.js'), fixture);
 write(join(coreConsumer, 'check.mjs'), `
@@ -129,6 +134,29 @@ json(join(tuiConsumer, 'tsconfig.json'), { compilerOptions: { target: 'ES2022', 
 pnpm(['exec', 'tsc', '-p', 'tsconfig.json'], tuiConsumer);
 assert.ok(existsSync(join(tuiConsumer, 'node_modules/.bin/bot-tui-probe.cmd')) || existsSync(join(tuiConsumer, 'node_modules/.bin/bot-tui-probe')));
 phases.tuiArchive = { coreInstalled: false, import: 'passed', typecheck: 'passed', probeBin: 'present' };
+
+const qqConsumer = join(directory, 'qq-consumer');
+mkdirSync(qqConsumer);
+json(join(qqConsumer, 'package.json'), {
+  name: 'qq-consumer', private: true, type: 'module',
+  dependencies: { '1002bot': `file:${coreArchive}`, '@1002bot/world-qq': `file:${qqArchive}` },
+  devDependencies: { typescript: JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).devDependencies.typescript, '@types/node': '^22.10.0' },
+  pnpm: { overrides: { '@1002bot/control-api': `file:${apiArchive}` } }
+});
+pnpm(install, qqConsumer);
+write(join(qqConsumer, 'check.mjs'), `
+import assert from 'node:assert/strict';
+import {QQWorld} from '@1002bot/world-qq';
+const world = new QQWorld({endpoint:'ws://127.0.0.1:3001/',accessToken:'offline',journalPath:'unused.jsonl',binding:{worldId:'qq',sessionId:'install',streamId:'messages',epoch:'first',accountId:10001,conversation:{kind:'group',id:20001}}});
+assert.deepEqual(world.tools().map(tool=>tool.name),['qq.get_message','qq.send_text']);
+assert.equal(world.inspect().running,false);
+`);
+node(['check.mjs'], qqConsumer);
+write(join(qqConsumer, 'check.ts'), "import {QQWorld,type QQConfig} from '@1002bot/world-qq'; import type {World} from '1002bot/protocol'; declare const config:QQConfig; const world:World=new QQWorld(config); void world;\n");
+json(join(qqConsumer, 'tsconfig.json'), { compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, noEmit: true }, include: ['check.ts'] });
+pnpm(['exec', 'tsc', '-p', 'tsconfig.json'], qqConsumer);
+assert.ok(!existsSync(join(qqConsumer, 'node_modules/@1002bot/tui')));
+phases.qqArchive = { import: 'passed', typecheck: 'passed', frontendInstalled: false };
 
 const report = { directory, phases };
 mkdirSync(join(root, 'scratch'), { recursive: true });

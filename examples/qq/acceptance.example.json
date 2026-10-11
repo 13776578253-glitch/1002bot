@@ -1,0 +1,21 @@
+{
+  "status": "not_run",
+  "date": null,
+  "imageTag": null,
+  "imageDigest": null,
+  "bridgeVersion": null,
+  "endpoint": null,
+  "accountConfirmed": false,
+  "statusCommandDisabled": false,
+  "messageFormatArray": false,
+  "wsTokenSourceVerified": false,
+  "nativeMessageIdType": null,
+  "getMsgOwnershipEvidence": null,
+  "protocolProbeEvidence": null,
+  "scriptedRuntimeEvidence": null,
+  "providerRuntimeEvidence": null,
+  "sessionTerminalEvidence": null,
+  "humanReceivedEvidence": null,
+  "reconnectEvidence": null,
+  "cleanupEvidence": null
+}
