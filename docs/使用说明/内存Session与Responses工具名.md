@@ -12,7 +12,7 @@ const session = new MemorySessionStore({ bytes: 256 * 1024 * 1024 });
 const agent = new ConversationAgent({ sessionId: 'memory-session', persistent: false });
 ```
 
-recordBytes 默认沿用 JSONL 的 16 MiB 单条上限；bytes 默认为 256 MiB 累计上限。计量 UTF-8 JSON 行，含换行符。调用边界序列化记录，串行确认后才可读取；每次读取独立解析，scan 在开始确认读取时固定记录条数并响应取消信号。达到容量或序列化失败时保留失败，后续读写继续失败。
+recordBytes 默认沿用 JSONL 的 16 MiB 单条上限；bytes 默认为 256 MiB 累计上限。计量 UTF-8 JSON 行，含换行符。调用边界序列化记录，append 的 Promise 完成表示本实例确认追加；每次读取独立解析。scan 在首次消费迭代器时等待当前追加链，随后固定记录条数并响应取消信号，固定长度后的追加留给下一次扫描。达到容量或序列化失败时保留失败，后续读写继续失败。
 
 确认记录留在同一实例内；重建存储实例清空。persistent=false 是 Agent 声明，实际记录寿命由注入的 SessionStore 决定。RunResult.persisted 表示所选 Session 追加确认，内存模式不提供跨进程保留。
 

@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { composeQQChat } from './compose.ts';
 import { ChatFixture, untilChat } from './chat-fixture.ts';
 
+/** 验证真实回执与新装配清空；外部模拟服务器在重建时继续存在。 */
 export async function runChatSample() {
   const fixture = new ChatFixture(); await fixture.start();
   let chat = composeQQChat(fixture.config, fixture.provider());
@@ -29,6 +30,7 @@ export async function runChatSample() {
 async function interactive(): Promise<void> {
   const fixture = new ChatFixture(); await fixture.start();
   let chat = composeQQChat(fixture.config, fixture.provider());
+  // 启动前开始消费输入，保留管道在启动等待期间到达的命令与 EOF。
   const lines = createInterface({ input: process.stdin }), commands = lines[Symbol.asyncIterator]();
   try {
     await chat.runtime.start();

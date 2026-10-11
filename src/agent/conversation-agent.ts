@@ -7,7 +7,9 @@ export class ConversationAgent implements Agent {
   readonly id = 'conversation';
   private readonly sessionId: string;
   private readonly instructions: string;
+  /** 声明会话保留意图；实际记录寿命由装配选择的 SessionStore 决定。 */
   private readonly persistent: boolean;
+  /** 允许完整已结清失败/取消组进入请求；Runtime 须同时提供这些候选。 */
   private readonly includeUnsuccessfulHistory: boolean;
   readonly initialHeartbeatRequest: HeartbeatRequest;
   readonly taskTools?: AgentTaskTools;

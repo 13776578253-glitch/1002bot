@@ -16,13 +16,15 @@ export interface QQConfig {
   limits?: Partial<QQLimits>;
   onDiagnostic?: (diagnostic: QQDiagnostic) => void;
 }
-/** Memory storage shares the same domain contract within one World instance. */
+/** Explicit memory configuration preserves domain contracts for one World instance. */
 export type QQMemoryConfig = Omit<QQConfig, 'journalPath'> & { storage: 'memory' };
 export type QQWorldConfig = QQConfig | QQMemoryConfig;
 export interface QQLimits {
   bufferEntries: number;
   bufferBytes: number;
+  /** 内存或磁盘确认记录的累计 UTF-8 JSON 行字节上限。 */
   journalBytes: number;
+  /** 新捕获与发送意图须预留的字节，用于后续结果及诊断。 */
   reserveBytes: number;
   frameBytes: number;
   eventBytes: number;

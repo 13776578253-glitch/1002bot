@@ -1,4 +1,4 @@
-/** An instance-local Session confirms bounded serialized records and scans fixed snapshots. */
+/** Instance-local Session owns bounded confirmation history consumed through the shared append/scan contract. */
 import type { SessionEntry, SessionStore } from '../protocol/index.ts';
 import { STANDARD_SESSION_RECORD_BYTES } from './jsonl-session.ts';
 
@@ -23,6 +23,7 @@ export class MemorySessionStore implements SessionStore {
     this.capacityBytes = limits.bytes ?? STANDARD_MEMORY_SESSION_BYTES;
     if (![this.recordBytes, this.capacityBytes].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('Invalid memory Session capacity');
   }
+  /** Promise 完成表示本实例已确认追加；记录保留到实例结束。 */
   append(entry: SessionEntry): Promise<void> {
     // 在调用边界冻结 JSON 值，后续修改调用方对象不会改变待确认记录。
     let line: string;
@@ -40,11 +41,12 @@ export class MemorySessionStore implements SessionStore {
     for await (const entry of this.scan()) result.push(entry);
     return result;
   }
+  /** 开始消费时等待当前追加链并固定长度，逐条返回独立副本。 */
   async *scan(signal?: AbortSignal): AsyncIterable<SessionEntry> {
     await this.tail;
     signal?.throwIfAborted();
     const length = this.records.length;
-    // 每条读取独立解析；扫描开始后的追加不进入本次确认视图。
+    // 长度固定后的新追加留给下一次扫描。
     for (let index = 0; index < length; index++) { signal?.throwIfAborted(); yield JSON.parse(this.records[index]!) as SessionEntry; }
   }
 }

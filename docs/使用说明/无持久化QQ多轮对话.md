@@ -52,4 +52,4 @@ Agent 的 SessionDecl.persistent 为 false。RunResult.persisted、waitSaved 等
 
 QQ 装配显式允许完整失败/取消历史候选，保留“已发送、后续模型失败”的事实。裁剪后无法保证所有早期对话始终在模型上下文中；尚在本实例领域记录的消息可通过明确引用回查。配置容量不是进程堆大小或 token 数。
 
-程序入口是 `composeQQChat(config, provider, { sessionLimits?, inputLimits? })`；QQ 记录容量使用 config.limits。旧 composeQQ(config, sessionPath, provider) 的磁盘模式继续可用。接口和验证证据见 [M6 报告](../2026-10-11-M6.0进度与架构图.md)。
+程序入口是 `composeQQChat(config, provider, { sessionLimits?, inputLimits? })`；QQ 记录容量使用 config.limits。旧 composeQQ(config, sessionPath, provider) 的磁盘模式继续可用。接口和验证证据见 [M5.1 报告](../2026-10-11-M5.1进度与架构图.md)。

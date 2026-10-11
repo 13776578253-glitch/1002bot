@@ -17,14 +17,20 @@ export type JournalRow =
 export class QQJournal {
   private file: FileHandle | undefined;
   private lock: FileHandle | undefined;
+  /** 单条记录的物理/内存追加顺序。 */
   private tail: Promise<unknown> = Promise.resolve();
+  /** 原生键查询、身份分配及其追加作为一个串行逻辑操作。 */
   private mutationTail: Promise<unknown> = Promise.resolve();
+  /** 物理写入失败后冻结追加，保留破损尾部供诊断。 */
   private poisoned: Error | undefined;
   /** 内存模式保存同一实例的确认记录；stop/start 保留，新 World 实例清空。 */
   private readonly memoryRows: string[] | undefined;
   private memoryOpen = false;
+  /** 已确认记录的行字节总数，包含绑定、入站、出站及诊断。 */
   bytes = 0;
+  /** 最近已记录入站信封的序号；出站操作不占该序列。 */
   sequence = 0;
+  /** Runtime 接收记录确认后，由 waitSaved 推进的连续前缀。 */
   saved = 0;
   private readonly path: string | undefined;
   private readonly binding: QQBinding;
@@ -33,6 +39,7 @@ export class QQJournal {
 
   async start(signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
+    // 相同实例停启继续原进度，新实例首次写入绑定；内存模式不获取文件锁。
     if (this.memoryRows) {
       this.memoryOpen = true;
       if (!this.memoryRows.length) await this.append({ kind: 'binding', schema: 1, binding: this.binding });
@@ -77,6 +84,7 @@ export class QQJournal {
       if (!bound) await this.append({ kind: 'binding', schema: 1, binding: this.binding });
     } catch (error) { await this.close(); throw error; }
   }
+  /** capture 限制到预留区之前，结果与诊断可使用剩余确认空间。 */
   append(row: JournalRow, capture = false): Promise<void> {
     const work = this.tail.then(async () => {
       if (this.poisoned) throw this.poisoned;
@@ -95,8 +103,10 @@ export class QQJournal {
         this.bytes += line.length;
       } catch (error) { this.poisoned = error instanceof Error ? error : new Error(String(error)); throw error; }
     });
+    // 容量拒绝后仍可尝试写入诊断；实际写入失败由 poisoned 阻止继续追加。
     this.tail = work.catch(() => undefined); return work;
   }
+  /** 串行执行身份检查与发布；调用方在操作内部等待自己的追加确认。 */
   exclusive<T>(work: () => Promise<T>): Promise<T> {
     const task = this.mutationTail.then(work);
     this.mutationTail = task.catch(() => undefined); return task;
@@ -108,6 +118,7 @@ export class QQJournal {
     });
   }
   private get rowBytes(): number { return Math.max(this.limits.eventBytes * 2 + 4096, this.limits.textBytes * 2 + 4096); }
+  /** 固定已确认前缀并返回 JSON 副本；查询成本随记录数量增长。 */
   async *rows(): AsyncIterable<JournalRow> {
     if (this.memoryRows) {
       const end = this.memoryRows.length;
@@ -143,6 +154,7 @@ export class QQJournal {
   async delivery(sequence: number): Promise<WorldDelivery | undefined> {
     for await (const row of this.rows()) if (row.kind === 'received' && row.delivery.sequence === sequence) return row.delivery;
   }
+  /** 等待身份操作和追加完成再关资源，同实例的内存记录继续保留。 */
   async close(): Promise<void> {
     await this.mutationTail;
     await this.tail;

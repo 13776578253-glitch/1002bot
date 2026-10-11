@@ -39,6 +39,7 @@ export class OpenAIResponsesProvider implements Provider {
   measureRequest(request: ProviderRequest): number { return Buffer.byteLength(this.serializeRequest(request), 'utf8'); }
 
   async complete(request: ProviderRequest, signal: AbortSignal): Promise<ProviderResponse> {
+    // 回包使用发起请求时的映射，名称归属随本次调用固定。
     const names = responsesToolNames(request, this.id);
     const response = await this.fetchImpl(`${this.baseUrl}/responses`, {
       method: 'POST',
@@ -56,7 +57,7 @@ function toResponsesInput(message: ModelMessage, providerId: string, toWire: (na
   // 原生项已包含文本和调用，优先整体重放；再次展开通用字段会重复消息。
   if (message.providerData?.providerId === providerId) return message.providerData.output.map(item => {
     if (item.type !== 'function_call' || typeof item.name !== 'string') return item;
-    // 通用调用的内部身份同时兼容旧样例保存的原生线名，原归档保持不变。
+    // 同 callId 的通用调用提供内部身份；只复制并转换名称，原历史对象保持。
     const declared = message.toolCalls?.find(call => call.callId === item.call_id);
     return { ...item, name: toWire(declared?.toolName ?? item.name) };
   });

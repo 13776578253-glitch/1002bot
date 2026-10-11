@@ -17,13 +17,14 @@ export function composeQQ(config: QQConfig, sessionPath: string, provider: Provi
   return { runtime, world, session };
 }
 
-/** A fresh chat composition owns both in-memory records for one process-local conversation. */
+/** Chat composition jointly owns Session and domain-record lifetimes for one fixed conversation. */
 export function composeQQChat(config: Omit<QQConfig, 'journalPath'>, provider: Provider, options: { sessionLimits?: MemorySessionLimits; inputLimits?: Partial<InputLimits> } = {}) {
   const world = new QQWorld({ endpoint: config.endpoint, accessToken: config.accessToken, binding: config.binding,
     ...(config.limits ? { limits: config.limits } : {}), ...(config.onDiagnostic ? { onDiagnostic: config.onDiagnostic } : {}), storage: 'memory' });
   const session = new MemorySessionStore(options.sessionLimits);
-  // 两端共同采用实例内确认历史；失败轮次的已发送回复保持可见。
+  // 新装配共同清空两端；同一返回实例 stop/start 保留确认历史。
   const agent = new ConversationAgent({ sessionId: config.binding.sessionId, persistent: false, includeUnsuccessfulHistory: true, instructions });
+  // 窗口保留与 Agent 选择须同时启用，发送成功后的失败轮次才会进入下一判断。
   const runtime = composeRuntime({ world, session, agent, provider, state: new MemoryState(), includeUnsuccessfulHistory: true,
     worldStreams: [world.stream], eventBytes: world.limits.eventBytes,
     inputLimits: { toolMs: world.limits.apiMs + 3000, ...options.inputLimits }, cleanupDeadlineMs: world.limits.cleanupMs + 1000 });

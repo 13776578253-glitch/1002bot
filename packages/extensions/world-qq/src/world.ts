@@ -34,6 +34,7 @@ export class QQWorld implements World {
     this.config = { ...config, binding: { sessionId: config.binding.sessionId, worldId: config.binding.worldId,
       streamId: config.binding.streamId, epoch: config.binding.epoch, accountId: config.binding.accountId, conversation: { ...config.binding.conversation } } };
     this.id = config.binding.worldId; this.stream = { streamId: config.binding.streamId, epoch: config.binding.epoch };
+    // 内存与磁盘共用来源身份及发送确认规则，记录寿命由存储选型决定。
     this.journal = new QQJournal('storage' in config ? undefined : config.journalPath, this.config.binding, this.limits);
   }
   inspect() { return { running: this.running, connected: this.connection?.connected ?? false, sourceStopped: this.sourceStopped,
