@@ -5,7 +5,9 @@
     "sample": "node --experimental-strip-types offline.ts",
     "probe": "node --experimental-strip-types probe.ts",
     "bridge": "node --experimental-strip-types manual.ts bridge",
-    "provider": "node --experimental-strip-types manual.ts provider"
+    "provider": "node --experimental-strip-types manual.ts provider",
+    "chat": "node --experimental-strip-types manual.ts chat",
+    "chat:offline": "node --experimental-strip-types chat-offline.ts"
   },
   "dependencies": { "1002bot": "workspace:*", "@1002bot/world-qq": "workspace:*", "ws": "^8.18.3" },
   "devDependencies": { "@types/ws": "^8.18.1", "@types/node": "^22.10.0", "typescript": "^5.7.2" }

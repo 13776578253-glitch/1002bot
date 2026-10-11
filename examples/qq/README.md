@@ -1,8 +1,23 @@
-Owner: `compose.ts`、`offline.ts`、`manual.ts`、`probe.ts`、`config.example.json`、`compose.snowluma.example.yaml`
+Owner: `compose.ts`、`offline.ts`、`manual.ts`、`probe.ts`、`chat-offline.ts`、`chat-fixture.ts`、`chat.config.example.json`、`config.example.json`、`compose.snowluma.example.yaml`
 
 # QQ 装配与验收
 
 从仓库根运行 `pnpm install:all`、`pnpm sample:qq`。离线样例使用真实回环 WS、World 文件、Session 与 Runtime，脚本模型依次查询、发送、续轮；断言一次发送及成功持久终态。不会连接真实服务。
+
+## 无持久化多轮消息对话
+
+`composeQQChat(config, provider, options?)` 共同创建内存 Session 与内存 QQ 领域记录。固定账号/会话只接收 `qq.message`，保持 FIFO、单活动项与输入边界；默认不启用 Agent 任务工具、心跳或抢占。当前消息载荷直接交给 Agent，引用需要时才用 `qq.get_message` 查本地快照；回复通过 `qq.send_text` 发送，最终 assistant 文本留在本地。
+
+```powershell
+pnpm build:all
+pnpm --filter @1002bot/qq-example chat:offline
+```
+
+离线终端使用真实本地 WS 与 Responses HTTP，模型响应脚本化。输入文本、`repeat`、`/ref -1 查询第一条回复` 可查看连续追问和引用；`/history`、`/diagnose`、`/restart`、`/quit` 用于检查和重建。一次自动闭环运行：`pnpm --filter @1002bot/qq-example chat:offline --sample`。负数消息号从模拟发送确认中取得，实际以终端输出为准。
+
+生产装配使用 [纯内存配置示例](chat.config.example.json)，填写实际 endpoint、账号与授权会话。该入口不要求 journalPath/sessionPath；WS token、模型 endpoint/id/key 仍从下文环境变量取得。环境就绪后运行 `pnpm --filter @1002bot/qq-example chat`。本轮自动验证只使用回环夹具，实际 QQ 多轮收发由部署方人工验收。
+
+新进程或新 `composeQQChat` 实例从干净会话开始；同一实例 stop/start 保留记录。默认 Session 合计 256 MiB、单条 16 MiB，QQ journal 合计 256 MiB（预留 4 MiB）；全部按 JSON UTF-8 字节计量，达到容量明确失败。程序装配可用 options.sessionLimits/inputLimits 和 config.limits 覆盖。完整已结清失败轮次也可作为历史候选，成功发送不会因后续模型错误被抹去；候选和请求继续按整组及明确预算裁剪。完整说明见 [操作文档](../../docs/使用说明/无持久化QQ多轮对话.md)。
 
 ## 外部桥接配置
 
@@ -47,7 +62,7 @@ $env:MODEL_API_KEY = '<private key>'
 pnpm --filter @1002bot/qq-example provider
 ```
 
-真实输入必须触发模型显式工具，续轮保存对应回执，QQ 人工确认收取，Session 保存终态。`manual.ts` 在 `provider` 模式下将内部带点号工具名（`qq.*`）双向映射为满足 OpenAI Responses API `^[a-zA-Z0-9_-]+$` 约束的线名（`qq_*`），Runtime 与 Session 仍记录 `qq.get_message` / `qq.send_text`。Provider 最终文本仅为本地输出。未知效果、预检阻断、容量及清理期限分别留脱敏证据。两层验收使用独立且明确绑定的 Session/World 文件，不能用之前的 Provider 单独测试或离线样例代替。
+真实输入必须触发模型显式工具，续轮保存对应回执，QQ 人工确认收取，Session 保存终态。`OpenAIResponsesProvider` 根据本次工具声明及历史调用生成合法且不冲突的线名，双向转换声明、调用与原生重放；Runtime 与 Session 仍记录 `qq.get_message` / `qq.send_text`，样例不再包装映射。旧样例原生项中的线名可通过配对的内部 callId 重新编码，原文件保持不变。Provider 最终文本仅为本地输出。未知效果、预检阻断、容量及清理期限分别留脱敏证据。磁盘 bridge/provider 两层验收使用独立且明确绑定的 Session/World 文件；chat 模式使用两端内存记录。
 
 ## 诊断
 

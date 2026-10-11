@@ -18,5 +18,6 @@ if (!coreOnly) await collect('packages/apps/tui/src/__tests__');
 if (!coreOnly) {
   await collect('packages/extensions/world-qq/src/__tests__');
   await collect('packages/extensions/world-qq/tests');
+  await collect('examples/qq/tests');
 }
 for (const file of files.sort()) await import(pathToFileURL(join(root, file)).href);

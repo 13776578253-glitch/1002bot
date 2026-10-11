@@ -1,0 +1,11 @@
+{
+  "endpoint": "ws://127.0.0.1:3001/",
+  "binding": {
+    "worldId": "qq",
+    "sessionId": "qq-chat",
+    "streamId": "messages",
+    "epoch": "chat-1",
+    "accountId": 10001,
+    "conversation": { "kind": "private", "id": 20001 }
+  }
+}
