@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import WebSocket from 'ws';
-import { object, type QQConfig, type QQLimits } from './config.ts';
+import { object, type QQWorldConfig, type QQLimits } from './config.ts';
 
 export class RequestFailure extends Error {
   readonly submitted: boolean;
@@ -16,13 +16,13 @@ export class OneBotConnection {
   private readonly pending = new Map<string, Pending>();
   private identified = false;
   private firstReady: (() => void) | undefined;
-  private readonly config: QQConfig;
+  private readonly config: QQWorldConfig;
   private readonly limits: QQLimits;
   private readonly event: (raw: unknown, identified: boolean) => void;
   private readonly ready: () => Promise<void>;
   private readonly disconnected: () => void;
   private readonly diagnostic: (code: string, message: string) => void;
-  constructor(config: QQConfig, limits: QQLimits,
+  constructor(config: QQWorldConfig, limits: QQLimits,
     event: (raw: unknown, identified: boolean) => void,
     ready: () => Promise<void>, disconnected: () => void,
     diagnostic: (code: string, message: string) => void) {

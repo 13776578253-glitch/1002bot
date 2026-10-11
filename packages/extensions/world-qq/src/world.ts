@@ -1,8 +1,8 @@
-/** QQ World owns durable perception and explicit effects; Runtime owns all model execution. */
+/** QQ World owns fixed-conversation perception and explicit effects in the selected storage lifecycle. */
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Event, JsonObject, ToolCall, ToolDefinition, ToolExecutionContext, ToolOutcome, World, WorldDeliveryPort } from '1002bot/protocol';
-import { nativeKey, messageId, object, validateConfig, type QQConfig, type QQDiagnostic, type QQLimits } from './config.ts';
+import { nativeKey, messageId, object, validateConfig, type QQWorldConfig, type QQDiagnostic, type QQLimits } from './config.ts';
 import { OneBotConnection, RequestFailure } from './driver.ts';
 import { QQJournal } from './journal.ts';
 import { fingerprint, normalize, type MessageSnapshot } from './normalize.ts';
@@ -11,7 +11,7 @@ export class QQWorld implements World {
   readonly id: string;
   readonly stream: { streamId: string; epoch: string };
   readonly limits: QQLimits;
-  private readonly config: QQConfig;
+  private readonly config: QQWorldConfig;
   private readonly journal: QQJournal;
   private connection: OneBotConnection | undefined;
   private running = false;
@@ -29,15 +29,15 @@ export class QQWorld implements World {
   private activeTools = 0;
   private starting: Promise<void> | undefined;
   private stopping: Promise<void> | undefined;
-  constructor(config: QQConfig) {
+  constructor(config: QQWorldConfig) {
     this.limits = validateConfig(config);
     this.config = { ...config, binding: { sessionId: config.binding.sessionId, worldId: config.binding.worldId,
       streamId: config.binding.streamId, epoch: config.binding.epoch, accountId: config.binding.accountId, conversation: { ...config.binding.conversation } } };
     this.id = config.binding.worldId; this.stream = { streamId: config.binding.streamId, epoch: config.binding.epoch };
-    this.journal = new QQJournal(config.journalPath, this.config.binding, this.limits);
+    this.journal = new QQJournal('storage' in config ? undefined : config.journalPath, this.config.binding, this.limits);
   }
   inspect() { return { running: this.running, connected: this.connection?.connected ?? false, sourceStopped: this.sourceStopped,
-    sequence: this.journal.sequence, savedPrefix: this.journal.saved, journalBytes: this.journal.bytes,
+    sequence: this.journal.sequence, savedPrefix: this.journal.saved, journalBytes: this.journal.bytes, storage: 'storage' in this.config ? this.config.storage : 'file',
     bufferedEntries: this.bufferedEntries, bufferedBytes: this.bufferedBytes, peakEntries: this.peakEntries, peakBytes: this.peakBytes,
     diagnostic: this.lastDiagnostic }; }
   start(signal: AbortSignal): Promise<void> {

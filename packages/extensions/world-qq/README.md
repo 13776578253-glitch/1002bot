@@ -37,6 +37,21 @@ JSONL 首行 `binding/schema=1` 固定全部来源与平台绑定。`received` �
 
 文件锁禁止同一记录被多个活动进程使用。退出后仅在原 PID 明确不存在时清理陈旧锁；权限不明或 PID 被复用时要求人工核实。破损/不完整尾部、绑定变化和非法前缀阻断启动，保留原文件供人工处理。日志追加没有 fsync/断电保证；上游推送在本地追加完成前或断线期间丢失不承诺找回。
 
+## 内存记录模式
+
+`QQWorld` 同时接受 `QQMemoryConfig`：传入 `storage: 'memory'`，省略 `journalPath`。该模式沿用绑定、原生身份、连续序号、保存前缀、发送意图及确认记录，记录仅存在于此 World 实例，不创建文件或锁。`inspect().storage` 返回 `memory` 或 `file`。
+
+```ts
+const world = new QQWorld({
+  endpoint: 'ws://127.0.0.1:3001/', accessToken: process.env.QQ_WS_TOKEN!,
+  storage: 'memory',
+  binding: { worldId: 'qq', sessionId: 'qq-chat', streamId: 'messages', epoch: 'chat-1',
+    accountId: 10001, conversation: { kind: 'group', id: 20001 } },
+});
+```
+
+同一实例 stop/start 保留内存记录；新实例清空。配套 Session 必须选择同一生命周期，纯内存聊天可使用样例的 `composeQQChat`。只重建其中一端会造成来源进度不一致。记录仍受 `journalBytes`、`reserveBytes` 与单条容量限制，不自动淘汰身份或未确认操作；达到容量后停止捕获或拒绝追加。内存模式按确认记录顺序扫描 JSON 副本，没有跨进程恢复保证。
+
 ## 默认边界
 
 | 参数 | 默认值 | 到达边界的行为 |

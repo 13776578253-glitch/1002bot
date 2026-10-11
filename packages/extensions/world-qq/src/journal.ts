@@ -1,4 +1,4 @@
-/** An exclusive append-only journal preserves native mappings and envelopes for the whole epoch. */
+/** An exclusive bounded journal preserves native mappings and envelopes in file or instance-local memory. */
 import { createReadStream } from 'node:fs';
 import { mkdir, open, readFile, unlink, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -20,18 +20,27 @@ export class QQJournal {
   private tail: Promise<unknown> = Promise.resolve();
   private mutationTail: Promise<unknown> = Promise.resolve();
   private poisoned: Error | undefined;
+  /** 内存模式保存同一实例的确认记录；stop/start 保留，新 World 实例清空。 */
+  private readonly memoryRows: string[] | undefined;
+  private memoryOpen = false;
   bytes = 0;
   sequence = 0;
   saved = 0;
-  private readonly path: string;
+  private readonly path: string | undefined;
   private readonly binding: QQBinding;
   private readonly limits: QQLimits;
-  constructor(path: string, binding: QQBinding, limits: QQLimits) { this.path = path; this.binding = binding; this.limits = limits; }
+  constructor(path: string | undefined, binding: QQBinding, limits: QQLimits) { this.path = path; this.binding = binding; this.limits = limits; this.memoryRows = path === undefined ? [] : undefined; }
 
   async start(signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
-    await mkdir(dirname(this.path), { recursive: true });
-    const lockPath = this.path + '.lock';
+    if (this.memoryRows) {
+      this.memoryOpen = true;
+      if (!this.memoryRows.length) await this.append({ kind: 'binding', schema: 1, binding: this.binding });
+      return;
+    }
+    const path = this.path!;
+    await mkdir(dirname(path), { recursive: true });
+    const lockPath = path + '.lock';
     try { this.lock = await open(lockPath, 'wx'); }
     catch (error) {
       if (!object(error) || error.code !== 'EEXIST') throw error;
@@ -44,7 +53,7 @@ export class QQJournal {
     try {
       signal.throwIfAborted();
       await this.lock.writeFile(JSON.stringify({ pid: process.pid }));
-      this.file = await open(this.path, 'a+');
+      this.file = await open(path, 'a+');
       this.bytes = (await this.file.stat()).size;
       if (this.bytes > this.limits.journalBytes) throw new Error('QQ journal exceeds configured capacity');
       let bound = false; this.sequence = 0; this.saved = 0; this.poisoned = undefined; this.tail = Promise.resolve();
@@ -71,14 +80,15 @@ export class QQJournal {
   append(row: JournalRow, capture = false): Promise<void> {
     const work = this.tail.then(async () => {
       if (this.poisoned) throw this.poisoned;
-      if (!this.file) throw new Error('QQ journal is closed');
+      if (!this.file && !this.memoryOpen) throw new Error('QQ journal is closed');
       const line = Buffer.from(JSON.stringify(row) + '\n');
       if (line.length > this.rowBytes || this.bytes + line.length > this.limits.journalBytes - (capture ? this.limits.reserveBytes : 0)) throw new Error('QQ journal capacity reached');
+      if (this.memoryRows) { this.memoryRows.push(line.toString('utf8')); this.bytes += line.length; return; }
       // 一次追加完成前不发布身份；短写循环完成，失败后禁止在破损尾部继续写。
       let offset = 0;
       try {
         while (offset < line.length) {
-          const { bytesWritten } = await this.file.write(line, offset, line.length - offset);
+          const { bytesWritten } = await this.file!.write(line, offset, line.length - offset);
           if (!bytesWritten) throw new Error('QQ journal made no write progress');
           offset += bytesWritten;
         }
@@ -99,7 +109,12 @@ export class QQJournal {
   }
   private get rowBytes(): number { return Math.max(this.limits.eventBytes * 2 + 4096, this.limits.textBytes * 2 + 4096); }
   async *rows(): AsyncIterable<JournalRow> {
-    const stream = createReadStream(this.path, { highWaterMark: 64 * 1024 });
+    if (this.memoryRows) {
+      const end = this.memoryRows.length;
+      for (let index = 0; index < end; index++) yield JSON.parse(this.memoryRows[index]!) as JournalRow;
+      return;
+    }
+    const stream = createReadStream(this.path!, { highWaterMark: 64 * 1024 });
     const end = this.bytes;
     let consumed = 0, rest = Buffer.alloc(0);
     try {
@@ -131,6 +146,7 @@ export class QQJournal {
   async close(): Promise<void> {
     await this.mutationTail;
     await this.tail;
+    this.memoryOpen = false;
     const file = this.file, lock = this.lock; this.file = undefined; this.lock = undefined;
     try { await file?.close(); }
     finally { if (lock) { await lock.close(); await unlink(this.path + '.lock'); } }
