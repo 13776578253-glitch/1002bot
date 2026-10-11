@@ -2,6 +2,9 @@
 import type { Agent, AgentContext, InputLimits, Provider, ProviderResponse, RunProgress, RunResult, SessionEntry, SessionStore, ToolCall, ToolOutcome, RuntimeTrigger, World } from '../protocol/index.ts';
 import { InputError, triggerId, triggerSource } from '../protocol/index.ts';
 import type { HistoryReader } from '../protocol/index.ts';
+import type { TaskRunPort } from '../protocol/index.ts';
+import type { TaskCoordinator } from './task-coordinator.ts';
+import { toolRegistry } from './tool-registry.ts';
 
 /** Runtime owns the collaborators and tracked writes used by one trigger execution. */
 export interface TriggerRunHost {
@@ -13,6 +16,7 @@ export interface TriggerRunHost {
   append(entry: SessionEntry): Promise<void>;
   readHistory?: () => Promise<readonly SessionEntry[]>;
   queryHistory?: HistoryReader;
+  tasks?: TaskCoordinator;
 }
 export interface TriggerRun {
   trigger: RuntimeTrigger;
@@ -36,6 +40,8 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   let round = 0;
   const association = { runId: run.runId, triggerKind: run.trigger.kind, triggerId: triggerId(run.trigger), source: triggerSource(run.trigger), generation: run.generation,
     ...(run.trigger.kind === 'world_event' && 'delivery' in run.trigger ? { delivery: run.trigger.delivery } : {}) };
+  const taskLease = host.tasks?.open(association, run.signal);
+  let registry!: ReturnType<typeof toolRegistry>;
   const append = async (entry: SessionEntry): Promise<void> => {
     // 写入前后都检查取消，避免已失效的触发在等待存储后继续调用外部服务。
     check(run.signal);
@@ -44,8 +50,9 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     history.push(record);
     check(run.signal);
   };
-  const context = (): AgentContext => ({
-    session: host.agent.declareSession(), history, runId: run.runId, tools: host.world.tools(),
+  const context = (tasks: TaskRunPort | undefined = taskLease?.port): AgentContext => ({
+    session: host.agent.declareSession(), history, runId: run.runId, tools: registry.declarations,
+    ...(tasks ? { tasks } : {}),
     ...(host.provider.measureRequest ? { measureRequest: (request) => host.provider.measureRequest!(request) } : {}),
     requestBytes: run.limits.requestBytes, reserveBytes: run.limits.reserveBytes,
     ...(host.queryHistory ? { readHistory: host.queryHistory } : {}),
@@ -55,7 +62,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     // 先决定停止并发布执行结果；Session 写入失败也不能丢失 unknown 的收束要求。
     run.progress({ type: 'tool_finished', round, callId: call.callId, toolName: call.toolName, status: outcome.status,
       ...(outcome.error ? { error: publicError(outcome.error) } : {}) });
-    const record: SessionEntry = { kind: 'tool_outcome', ...association, at: now(), outcome };
+    const record: SessionEntry = { kind: 'tool_outcome', ...association, at: now(), outcome, owner: registry?.isAgent(call.toolName) ? 'agent' : 'world' };
     // 工具回执不因取消跳过追加；存储失败与效果分类分别保留。
     try { await host.append(record); } catch (error) { throw new InputError('storage_error', message(error)); }
     history.push(record);
@@ -68,6 +75,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     else if (run.trigger.kind === 'world_event') await append({ kind: 'event', at: now(), event: run.trigger.event });
     else await append({ kind: 'heartbeat', at: now(), heartbeat: run.trigger });
     await append({ kind: 'run_started', at: now(), inputId: triggerId(run.trigger) });
+    registry = toolRegistry(host.agent, host.world);
     // 入口保留来源语义；心跳是否请求模型由 Agent 决定，Runtime 只执行其决定。
     const initial = await guarded(() => {
       const trigger = run.trigger;
@@ -117,11 +125,30 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
       pending = [...response.toolCalls];
       const outcomes: ToolOutcome[] = [];
       for (const call of response.toolCalls) {
-        await append({ kind: 'tool_call', at: now(), call });
-        const normalized = normalize(call, host.world);
+        await append({ kind: 'tool_call', at: now(), call, owner: registry.isAgent(call.toolName) ? 'agent' : 'world' });
+        const normalized = normalize(call, registry.declarations);
         let outcome: ToolOutcome;
         if ('status' in normalized) outcome = normalized;
-        else {
+        else if (registry.isAgent(call.toolName)) {
+          // 任务工具等待自己的确认写入；取消不会把已知内部提交归为 World unknown。
+          run.progress({ type: 'tool_started', round, callId: call.callId, toolName: call.toolName });
+          let answer: ToolOutcome | undefined;
+          let failure: unknown;
+          try { outcome = await bounded(async signal => {
+            const operation = registry.executeAgent(normalized, context(taskLease?.forCall(call.callId, signal)));
+            void operation.then(value => { answer = value; }, error => { failure = error; });
+            return operation;
+          }, run.signal, run.limits.toolMs, 'tool_timeout'); }
+          catch (error) {
+            // 子信号撤销迟到提交；必要写入仍须结算，已取得确认回执则保留它。
+            await taskLease?.settle();
+            if (failure instanceof InputError && failure.code === 'storage_error') throw failure;
+            if (answer) outcome = answer;
+            else if (error instanceof InputError && error.code === 'storage_error' || run.signal.aborted || error instanceof InputError && error.code === 'tool_timeout') throw error;
+            else outcome = { callId: call.callId, toolName: call.toolName, status: 'failed', error: diagnostic(error) };
+          } finally { taskLease?.revokeCall(call.callId); }
+          if (outcome.callId !== call.callId || outcome.toolName !== call.toolName) throw new InputError('invalid_tool_outcome', 'Agent returned a mismatched tool outcome');
+        } else {
           try {
             outcome = await bounded((signal) => {
               check(signal);
@@ -166,7 +193,9 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     // 收束写入不受输入取消信号阻断；一条回执写入失败仍继续收束其余已声明调用。
     for (const call of pending) {
       const outcome: ToolOutcome = { callId: call.callId, toolName: call.toolName, status: call.callId === executing ? 'unknown' : 'cancelled',
-        error: call.callId === executing ? diagnostic(cause) : { code: 'not_executed', message: `Input ended before execution: ${diagnostic(cause).code}` } };
+        error: call.callId === executing ? diagnostic(cause) : registry?.isAgent(call.toolName)
+          ? { code: 'task_interrupted', message: `Task call interrupted; confirmed commits remain in Session: ${diagnostic(cause).code}` }
+          : { code: 'not_executed', message: `Input ended before execution: ${diagnostic(cause).code}` } };
       try { await commitOutcome(call, outcome); }
       catch (writeError) { storageError ??= writeError; }
     }
@@ -174,15 +203,15 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     const detail = diagnostic(finalCause);
     // Provider 等普通失败只结束本项；未知效果或必要存储故障停止共享通道。
     return { result: { status: cancellation(finalCause) ? 'cancelled' : 'failed', ...detail, persisted: false }, halt: halt || detail.code === 'storage_error' };
-  }
+  } finally { await taskLease?.finish(); }
 }
 
 /** 进入 World 之前可确定的参数或工具名错误，返回 failed，不产生外部效果。 */
-function normalize(call: ToolCall, world: World): ToolCall | ToolOutcome {
+function normalize(call: ToolCall, declarations: readonly import('../protocol/index.ts').ToolDefinition[]): ToolCall | ToolOutcome {
   try {
     const argumentsValue: unknown = typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments;
     if (typeof argumentsValue !== 'object' || argumentsValue === null || Array.isArray(argumentsValue)) throw new Error('Arguments must be an object');
-    if (!world.tools().some((tool) => tool.name === call.toolName)) return { callId: call.callId, toolName: call.toolName, status: 'failed', error: { code: 'unknown_tool', message: `Unknown tool: ${call.toolName}` } };
+    if (!declarations.some((tool) => tool.name === call.toolName)) return { callId: call.callId, toolName: call.toolName, status: 'failed', error: { code: 'unknown_tool', message: `Unknown tool: ${call.toolName}` } };
     return { ...call, arguments: argumentsValue as ToolCall['arguments'] };
   } catch (error) { return { callId: call.callId, toolName: call.toolName, status: 'failed', error: { code: 'invalid_arguments', message: message(error) } }; }
 }

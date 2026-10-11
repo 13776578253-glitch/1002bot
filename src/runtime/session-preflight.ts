@@ -1,9 +1,10 @@
 /** Preflight reads confirmed facts without opening World resources or advancing archived execution. */
-import type { DeliveryLimits, HistoryLimits, SessionDiagnosis, SessionStore, WorldStream } from '../protocol/index.ts';
+import type { DeliveryLimits, HistoryLimits, SessionDiagnosis, SessionStore, WorldStream, TaskLimits } from '../protocol/index.ts';
 import { InputError, STANDARD_INPUT_LIMITS } from '../protocol/index.ts';
 import { WorldDeliveryState } from './world-delivery-state.ts';
 import { HistoryWindow } from '../state/history-window.ts';
 import { SessionAudit } from '../state/session-audit.ts';
+import { TaskProjection } from '../state/task-projection.ts';
 
 export interface SessionInspectionOptions {
   worldId: string;
@@ -12,20 +13,24 @@ export interface SessionInspectionOptions {
   deliveryLimits?: Partial<DeliveryLimits>;
   historyLimits?: Partial<HistoryLimits>;
   admissionIds?: number;
+  taskLimits?: Partial<TaskLimits>;
+  requireTasks?: boolean;
 }
 export async function preflightSession(store: SessionStore, options: SessionInspectionOptions, signal?: AbortSignal) {
   const state = new WorldDeliveryState(options.worldId, options.sessionId, options.worldStreams ?? [], options.deliveryLimits);
   const window = new HistoryWindow(options.historyLimits);
+  const tasks = new TaskProjection(options.sessionId, options.taskLimits);
   const audit = new SessionAudit((options.admissionIds ?? STANDARD_INPUT_LIMITS.admissionIds) + state.limits.legacyIds + state.limits.positions + 1);
   if (!store.scan) {
-    const diagnosis: SessionDiagnosis = { status: state.ordered ? 'blocked' : 'legacy_store', records: 0, issueCount: state.ordered ? 1 : 0,
-      issues: [{ code: 'session_capability', message: 'Ordered delivery requires Session.scan; legacy storage has no bounded recovery guarantee' }], history: window.stats };
-    return { state, window: undefined, diagnosis };
+    const required = state.ordered || options.requireTasks;
+    const diagnosis: SessionDiagnosis = { status: required ? 'blocked' : 'legacy_store', records: 0, issueCount: required ? 1 : 0,
+      issues: [{ code: 'session_capability', message: 'Ordered delivery and persistent tasks require Session.scan; legacy storage has no bounded recovery guarantee' }], history: window.stats };
+    return { state, window: undefined, tasks, diagnosis };
   }
   try {
     for await (const entry of store.scan(signal)) {
       signal?.throwIfAborted();
-      audit.append(entry); state.observe(entry); window.append(entry);
+      audit.append(entry); state.observe(entry); tasks.observe(entry); window.append(entry);
     }
     audit.finish();
     if (state.ordered && audit.legacyWorld && state.registrations().length) audit.issue('legacy_source_boundary', 'Legacy World facts lack a trusted boundary for ordered source registration');
@@ -35,7 +40,7 @@ export async function preflightSession(store: SessionStore, options: SessionInsp
   }
   signal?.throwIfAborted();
   const diagnosis: SessionDiagnosis = { status: audit.issueCount ? 'blocked' : 'ready', records: audit.records, issueCount: audit.issueCount, issues: audit.issues, history: window.stats };
-  return { state, window, diagnosis };
+  return { state, window, tasks, diagnosis };
 }
 
 /** 只读结果表示该快照的重启条件；不会停止正在运行的 Runtime，也不补写登记。 */

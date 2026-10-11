@@ -1,17 +1,32 @@
 /** Agent owns instructions and context selection; complete runs and opaque Provider items stay intact. */
-import type { Agent, AgentContext, AgentContinuation, Event, HeartbeatRequest, ModelMessage, ProviderRequest, SessionEntry, UserInput } from '../protocol/index.ts';
+import type { Agent, AgentContext, AgentContinuation, AgentTaskTools, Event, HeartbeatRequest, ModelMessage, ProviderRequest, SessionEntry, UserInput } from '../protocol/index.ts';
 import { InputError, STANDARD_INPUT_LIMITS } from '../protocol/index.ts';
+import { TaskTools, taskView } from './task-tools.ts';
 
 export class ConversationAgent implements Agent {
   readonly id = 'conversation';
   private readonly sessionId: string;
   private readonly instructions: string;
   readonly initialHeartbeatRequest: HeartbeatRequest;
-  constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest }) {
+  readonly taskTools?: AgentTaskTools;
+  constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest; tasks?: boolean }) {
     this.sessionId = options.sessionId;
     this.instructions = options.instructions ?? 'Respond to the user. Use the available tools when needed. Report tool failures accurately.';
     // 没有周期任务策略时，心跳正常无动作结束；装配方可提供语义策略。
-    this.initialHeartbeatRequest = options.heartbeatRequest ?? (async () => undefined);
+    if (options.tasks) this.taskTools = new TaskTools();
+    this.initialHeartbeatRequest = async (tick, context) => {
+      if (options.tasks && context.tasks) {
+        const at = Date.parse(context.tasks.now());
+        const due = context.tasks.snapshot().filter(task => task.status === 'waiting' && task.schedule && !task.schedule.consumedByRunId && Date.parse(task.schedule.wakeAt) <= at)
+          .sort((a, b) => Date.parse(a.schedule!.wakeAt) - Date.parse(b.schedule!.wakeAt) || a.taskId.localeCompare(b.taskId))[0];
+        if (due) {
+          // 消费确认先于模型；普通失败或 tick 积压都不会自动重跑旧安排。
+          await context.tasks.claim(due.taskId, due.schedule!.revision);
+          return this.build(context);
+        }
+      }
+      return options.heartbeatRequest?.(tick, context);
+    };
   }
   declareSession() { return { sessionId: this.sessionId, maxTurns: STANDARD_INPUT_LIMITS.providerCalls, persistent: true }; }
   /** Compatibility fallback serves direct callers without runId; Runtime uses grouped execution facts. */
@@ -46,7 +61,8 @@ export class ConversationAgent implements Agent {
     }
     const request = (): ProviderRequest => ({
       sessionId: context.session.sessionId,
-      messages: [{ role: 'system', content: this.instructions }, ...completed.flat(), ...active],
+      messages: [{ role: 'system', content: this.instructions }, ...(this.taskTools && context.tasks ? [{ role: 'system' as const,
+        content: `Confirmed Agent tasks: ${JSON.stringify(taskView(context.tasks))}. A claimed arrangement is consumed even if this run fails. Use explicit task updates to finish or rearm; inspect attempt evidence before repeating effects.` }] : []), ...completed.flat(), ...active],
       tools: context.tools ?? [],
     });
     // reserve 是旧历史的软目标；无旧轮可删时，当前轮仍可占用完整硬上限。

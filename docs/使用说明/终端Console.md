@@ -66,3 +66,7 @@ tool_finished 描述执行结果，在依赖 Session 写入前发布；回执存
 具备 scan 的 Session 在 start 时先检查归档。未结清、unknown、悬空调用或损坏记录会阻止重新开放执行；`/start` 不会解除这些问题。只读诊断及离线 World 来源 Console 见 [M4 顺序投递与迁移](M4顺序投递与迁移.md)。原行式 Console 的命令与 UserInput 身份不变。
 
 Agent.history 改为近期完整运行候选加本项记录；Runtime.trace 改为有限近期视图。完整记录留在 Session；默认单条 JSONL 记录为 16 MiB。World 通用取消/查询使用回执 triggerId，不能继续直接使用原 Event.id。新来源契约不改变混合 FIFO、固定输入或心跳跳过策略。
+
+## M5 可选任务接续
+
+ConversationAgent 可显式启用任务工具，当前 run 的回复/取消语义与本地命令保持原入口；任务操作通过同一工具诊断和最终结果展示。确认任务状态、安排消费、归档查询和手动时钟闭环见 [M5 任务与心跳](M5任务与心跳延续.md)。独立离线样例 `scripts/m5-console.ts` 不增加 TUI 产品页，原 console-sample 默认仍关闭任务功能。

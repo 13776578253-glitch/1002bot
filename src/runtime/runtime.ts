@@ -1,11 +1,13 @@
 /** Runtime owns lifecycle, source leases and write barriers; one channel executes all Session triggers. */
-import type { Agent, Event, Provider, SessionEntry, SessionStore, StateStore, World, InputLimits, HeartbeatOptions, RunResult, WorldEventSink, TriggerChannel, WorldStream, DeliveryLimits, HistoryLimits, SessionDiagnosis, WorldDeliveryPort, HistoryQuery } from '../protocol/index.ts';
+import type { Agent, Event, Provider, SessionEntry, SessionStore, StateStore, World, InputLimits, HeartbeatOptions, RunResult, WorldEventSink, TriggerChannel, WorldStream, DeliveryLimits, HistoryLimits, SessionDiagnosis, WorldDeliveryPort, HistoryQuery, TaskLimits, TaskInspector } from '../protocol/index.ts';
 import { InputError, STANDARD_TRIGGER_LIMITS, legacyWorldTriggerId } from '../protocol/index.ts';
 import { RuntimeInputChannel } from './input-channel.ts';
 import { RuntimeTriggerChannel } from './trigger-channel.ts';
 import { WorldDeliveryState } from './world-delivery-state.ts';
 import { HistoryWindow, queryHistory } from '../state/history-window.ts';
 import { preflightSession, diagnoseSession } from './session-preflight.ts';
+import { TaskProjection } from '../state/task-projection.ts';
+import { TaskCoordinator } from './task-coordinator.ts';
 
 export type RuntimeStatus = 'new' | 'starting' | 'running' | 'stopping' | 'failed' | 'stopped';
 /** Composition injects collaborators; Runtime owns their shared lifecycle and source wiring. */
@@ -28,6 +30,9 @@ export interface RuntimeOptions {
   worldStreams?: readonly WorldStream[];
   deliveryLimits?: Partial<DeliveryLimits>;
   historyLimits?: Partial<HistoryLimits>;
+  taskLimits?: Partial<TaskLimits>;
+  /** 仅任务到期判断使用此时钟；来源接收/过期仍沿用 Runtime 的真实期限。 */
+  taskClock?: () => number;
 }
 export class Runtime {
   private statusValue: RuntimeStatus = 'new';
@@ -49,6 +54,7 @@ export class Runtime {
   private worldNeedsCleanup = false;
   private readonly channel: RuntimeTriggerChannel;
   private deliveryState: WorldDeliveryState;
+  private readonly taskCoordinator: TaskCoordinator;
   private window: HistoryWindow | undefined;
   private readonly historyLimits: HistoryLimits;
   private traceBytes = 0;
@@ -60,6 +66,9 @@ export class Runtime {
     this.options = options;
     this.historyLimits = new HistoryWindow(options.historyLimits).limits;
     this.deliveryState = this.newDeliveryState();
+    this.taskCoordinator = new TaskCoordinator({ projection: new TaskProjection(options.agent.declareSession().sessionId, options.taskLimits),
+      sessionId: options.agent.declareSession().sessionId, store: options.session, append: entry => this.appendLifecycle(entry),
+      alive: generation => this.status === 'running' && this.generation === generation && this.channel.accepting, clock: options.taskClock ?? Date.now });
     if (this.deliveryState.ordered && options.world.subscribeEvents) throw new Error('Ordered World must not also subscribe legacy events');
     if (!this.deliveryState.ordered && options.world.subscribeDeliveries) throw new Error('Ordered subscription requires declared World streams');
     const heartbeat = options.heartbeat;
@@ -67,6 +76,7 @@ export class Runtime {
       if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) throw new Error(`Invalid heartbeat ${name}`);
     }
     this.channel = new RuntimeTriggerChannel({ ...options, append: (entry) => this.appendLifecycle(entry),
+      ...(options.agent.taskTools ? { tasks: this.taskCoordinator } : {}),
       readHistory: async () => this.window ? this.window.snapshot() : options.session.read(),
       ...(options.session.scan ? { queryHistory: (query?: HistoryQuery) => queryHistory(options.session, this.historyLimits, query) } : {}),
       status: () => this.status, generation: () => this.generation, stop: () => this.stop(), issue: (code, message) => this.recordIssue(code, message) }, options.inputLimits, options.eventBytes);
@@ -76,10 +86,13 @@ export class Runtime {
   get status(): RuntimeStatus { return this.statusValue; }
   get generation(): number { return this.generationValue; }
   get trace(): readonly SessionEntry[] { return structuredClone(this.entries); }
+  /** 只读检查口；写入权限仅存在于当前 AgentContext。 */
+  get tasks(): TaskInspector { return { snapshot: () => this.taskCoordinator.snapshot(), read: id => this.taskCoordinator.read(id), evidence: (id, run, bytes) => this.taskCoordinator.evidence(id, run, bytes) }; }
   get diagnosis(): SessionDiagnosis { return structuredClone({ ...this.diagnosisValue, history: this.window?.stats ?? this.diagnosisValue.history }); }
   inspectSession(): Promise<SessionDiagnosis> {
     return diagnoseSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
-      worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds });
+      worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds,
+      ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools });
   }
   /** 读取口不拥有生命周期；旧口只能等待原保存，不能向新代投递。 */
   get deliveries(): WorldDeliveryPort {
@@ -193,6 +206,7 @@ export class Runtime {
     try { append = this.options.session.append(entry); } catch (error) { append = Promise.reject(error); }
     const write = append.then(() => {
       this.deliveryState.observe(entry);
+      this.taskCoordinator.observe(entry);
       this.window?.append(entry);
       this.entries.push(structuredClone(entry));
       this.traceBytes += Buffer.byteLength(JSON.stringify(entry));
@@ -212,17 +226,19 @@ export class Runtime {
     let inspected;
     try {
       inspected = await preflightSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
-        worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds }, controller.signal);
+        worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds,
+        ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools }, controller.signal);
     } catch (error) {
       if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
       throw error;
     }
     if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
-    const { state, window, diagnosis } = inspected;
+    const { state, window, tasks, diagnosis } = inspected;
     this.deliveryState = state; this.channel.bindDeliveries(state); this.window = window;
+    this.taskCoordinator.replace(tasks);
     this.diagnosisValue = diagnosis;
     if (diagnosis.status === 'blocked') {
-      if (diagnosis.issues[0]?.code === 'session_capability') throw new InputError('session_capability', 'Ordered World requires Session.scan');
+      if (diagnosis.issues[0]?.code === 'session_capability') throw new InputError('session_capability', 'This Runtime requires Session.scan for ordered delivery or persistent tasks');
       this.channel.recoveryFailed('recovery_blocked', diagnosis.issues[0]?.message ?? 'Session requires diagnosis'); throw new InputError('recovery_blocked', 'Session requires diagnosis before execution');
     }
     for (const registration of state.registrations()) {

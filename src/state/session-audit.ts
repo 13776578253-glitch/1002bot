@@ -1,9 +1,9 @@
 /** Recovery diagnoses archived execution without replaying inputs or changing tool effect classifications. */
 import type { SessionEntry, SessionIssue, Event, UserInput } from '../protocol/index.ts';
 import { InputError } from '../protocol/index.ts';
-const kinds = new Set(['world_stream_registered', 'trigger_received', 'heartbeat', 'input', 'run_started', 'run_finished', 'event', 'provider_request', 'provider_response', 'tool_call', 'tool_outcome']);
+const kinds = new Set(['world_stream_registered', 'trigger_received', 'heartbeat', 'input', 'run_started', 'run_finished', 'event', 'provider_request', 'provider_response', 'tool_call', 'tool_outcome', 'task_changed', 'task_claimed']);
 
-interface Run { calls: Map<string, string>; started: boolean }
+interface Run { calls: Map<string, { name: string; owner?: 'world' | 'agent' }>; started: boolean }
 export class SessionAudit {
   private readonly receipts = new Map<string, number>();
   private readonly runs = new Map<string, Run>();
@@ -26,6 +26,7 @@ export class SessionAudit {
     if (entry.kind === 'provider_response' && (!entry.response || !['stop', 'tool_calls', 'length', 'error'].includes(entry.response.finishReason) || !Array.isArray(entry.response.toolCalls))) throw new InputError('session_schema', 'Provider response has an invalid protocol header');
     if (entry.kind === 'tool_call' && (!entry.call || typeof entry.call.callId !== 'string' || !entry.call.callId || typeof entry.call.toolName !== 'string' || !entry.call.toolName)) throw new InputError('session_schema', 'Tool declaration has an invalid identity');
     if (entry.kind === 'tool_outcome' && (!entry.outcome || !['succeeded', 'failed', 'cancelled', 'unknown'].includes(entry.outcome.status) || typeof entry.outcome.callId !== 'string' || typeof entry.outcome.toolName !== 'string')) throw new InputError('session_schema', 'Tool receipt has an invalid identity or effect classification');
+    if ((entry.kind === 'tool_call' || entry.kind === 'tool_outcome') && entry.owner !== undefined && entry.owner !== 'world' && entry.owner !== 'agent') throw new InputError('session_schema', 'Tool record has an invalid owner');
     if (entry.kind === 'world_stream_registered') return;
     if (entry.kind === 'event' && !entry.delivery) ++this.legacyWorld;
     if (entry.kind === 'trigger_received') {
@@ -45,10 +46,12 @@ export class SessionAudit {
       }
       if (entry.kind === 'tool_call') {
         if (run.calls.has(entry.call.callId)) this.issue('tool_conflict', 'Tool identity was declared twice', entry);
-        run.calls.set(entry.call.callId, entry.call.toolName);
+        run.calls.set(entry.call.callId, { name: entry.call.toolName, ...(entry.owner ? { owner: entry.owner } : {}) });
       }
       if (entry.kind === 'tool_outcome') {
-        if (run.calls.get(entry.outcome.callId) !== entry.outcome.toolName && entry.outcome.status !== 'cancelled') this.issue('tool_pairing', 'Tool outcome has no matching declared call', entry);
+        const declared = run.calls.get(entry.outcome.callId);
+        if (declared?.name !== entry.outcome.toolName && entry.outcome.status !== 'cancelled') this.issue('tool_pairing', 'Tool outcome has no matching declared call', entry);
+        if (declared?.owner !== undefined && declared.owner !== entry.owner) this.issue('tool_owner', 'Tool outcome changed its declared owner', entry);
         run.calls.delete(entry.outcome.callId);
         if (entry.outcome.status === 'unknown') this.issue('tool_unknown', 'Archived tool effect is unknown', entry);
       }

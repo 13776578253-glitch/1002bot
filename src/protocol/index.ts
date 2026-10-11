@@ -3,9 +3,11 @@ export type JsonPrimitive = string | number | boolean | null;
 import type { UserInput, RunResult } from './input.ts';
 import type { HeartbeatTrigger, HeartbeatRequest, RuntimeTrigger, TriggerKind, WorldEventSink } from './trigger.ts';
 import type { WorldDeliveryIdentity, WorldDeliveryPort, HistoryReader } from './delivery.ts';
+import type { AgentTaskTools, TaskRecord, TaskRunPort } from './task.ts';
 export * from './input.ts';
 export * from './trigger.ts';
 export * from './delivery.ts';
+export * from './task.ts';
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 
@@ -128,6 +130,8 @@ export interface SessionDecl {
 
 /** Runtime supplies request facts; Agent owns semantic context assembly. */
 export interface AgentContext {
+  /** 当前运行的任务权限；确认变更可在续轮读取，旧 run 撤权后不能提交。 */
+  readonly tasks?: TaskRunPort;
   readonly session: SessionDecl;
   /** 有限完整运行候选及本轮事实；不含排队接收归档，语义裁剪仍由 Agent 决定。 */
   readonly history: readonly SessionEntry[];
@@ -150,6 +154,8 @@ export interface AgentContinuation {
 
 export interface Agent {
   readonly id: string;
+  /** 可选 Agent 任务工具；未启用时不改变现有 World 工具路径。 */
+  readonly taskTools?: AgentTaskTools;
   declareSession(): SessionDecl;
   /** 当前 Event 已作为执行事实写入 history，不应再次拼接成重复用户消息。 */
   initialRequest(event: Event, context: AgentContext): Promise<ProviderRequest>;
@@ -166,6 +172,7 @@ export interface Agent {
  * trigger_received 与排队终态可无 runId；终态 inputId 沿用旧字段名，值为对应触发 ID。
  */
 export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; triggerId?: string; source?: string; generation?: number; delivery?: WorldDeliveryIdentity } & (
+  | TaskRecord
   | { kind: 'world_stream_registered'; at: string; schema: 1; sessionId: string; worldId: string; streamId: string; epoch: string }
   | { kind: 'trigger_received'; at: string; trigger: RuntimeTrigger; queueSequence: number }
   | { kind: 'heartbeat'; at: string; heartbeat: HeartbeatTrigger }
@@ -175,8 +182,8 @@ export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; trigger
   | { kind: 'event'; at: string; event: Event }
   | { kind: 'provider_request'; at: string; request: ProviderRequest }
   | { kind: 'provider_response'; at: string; response: ProviderResponse }
-  | { kind: 'tool_call'; at: string; call: ToolCall }
-  | { kind: 'tool_outcome'; at: string; outcome: ToolOutcome }));
+  | { kind: 'tool_call'; at: string; call: ToolCall; owner?: 'world' | 'agent' }
+  | { kind: 'tool_outcome'; at: string; outcome: ToolOutcome; owner?: 'world' | 'agent' }));
 
 export interface SessionStore {
   /** 保持追加顺序，完成后可由 read 读到；落盘与断电保证由具体存储实现定义。 */

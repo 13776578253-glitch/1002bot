@@ -1,5 +1,5 @@
 /** Composition binds injected collaborators to Runtime without selecting a production World or transport. */
-import type { Agent, InputLimits, Provider, SessionStore, StateStore, World, HeartbeatOptions, WorldStream, DeliveryLimits, HistoryLimits } from '../protocol/index.ts';
+import type { Agent, InputLimits, Provider, SessionStore, StateStore, World, HeartbeatOptions, WorldStream, DeliveryLimits, HistoryLimits, TaskLimits } from '../protocol/index.ts';
 import { Runtime, type RuntimeOptions } from './runtime.ts';
 
 export interface ComposeOptions {
@@ -15,6 +15,8 @@ export interface ComposeOptions {
   worldStreams?: readonly WorldStream[];
   deliveryLimits?: Partial<DeliveryLimits>;
   historyLimits?: Partial<HistoryLimits>;
+  taskLimits?: Partial<TaskLimits>;
+  taskClock?: () => number;
 }
 
 export function composeRuntime(options: ComposeOptions): Runtime {
