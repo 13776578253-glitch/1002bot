@@ -2,6 +2,7 @@
 import type { Agent, AgentContext, AgentContinuation, AgentTaskTools, Event, HeartbeatRequest, ModelMessage, ProviderRequest, SessionEntry, UserInput } from '../protocol/index.ts';
 import { InputError, STANDARD_INPUT_LIMITS } from '../protocol/index.ts';
 import { TaskTools, taskView } from './task-tools.ts';
+import { OperationTools } from './operation-tools.ts';
 
 export class ConversationAgent implements Agent {
   readonly id = 'conversation';
@@ -13,12 +14,14 @@ export class ConversationAgent implements Agent {
   private readonly includeUnsuccessfulHistory: boolean;
   readonly initialHeartbeatRequest: HeartbeatRequest;
   readonly taskTools?: AgentTaskTools;
-  constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest; tasks?: boolean; persistent?: boolean; includeUnsuccessfulHistory?: boolean }) {
+  readonly operationTools?: AgentTaskTools;
+  constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest; tasks?: boolean; operations?: boolean; persistent?: boolean; includeUnsuccessfulHistory?: boolean }) {
     this.sessionId = options.sessionId;
     this.instructions = options.instructions ?? 'Respond to the user. Use the available tools when needed. Report tool failures accurately.';
     this.persistent = options.persistent ?? true;
     this.includeUnsuccessfulHistory = options.includeUnsuccessfulHistory ?? false;
     if (options.tasks) this.taskTools = new TaskTools();
+    if (options.operations) this.operationTools = new OperationTools();
     this.initialHeartbeatRequest = async (tick, context) => {
       if (options.tasks && context.tasks) {
         // 每个合法心跳按到期时间、任务 ID 选择一个未消费安排，全程使用任务时钟。

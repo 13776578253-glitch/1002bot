@@ -17,16 +17,17 @@ export interface SessionInspectionOptions {
   taskLimits?: Partial<TaskLimits>;
   /** 启用任务能力时必须具有流式归档扫描口。 */
   requireTasks?: boolean;
+  requireResponses?: boolean;
 }
 export async function preflightSession(store: SessionStore, options: SessionInspectionOptions, signal?: AbortSignal) {
   const state = new WorldDeliveryState(options.worldId, options.sessionId, options.worldStreams ?? [], options.deliveryLimits);
   const window = new HistoryWindow(options.historyLimits, options.includeUnsuccessfulHistory);
   const tasks = new TaskProjection(options.sessionId, options.taskLimits);
-  const audit = new SessionAudit((options.admissionIds ?? STANDARD_INPUT_LIMITS.admissionIds) + state.limits.legacyIds + state.limits.positions + 1);
+  const audit = new SessionAudit((options.admissionIds ?? STANDARD_INPUT_LIMITS.admissionIds) + state.limits.legacyIds + state.limits.positions + 1, options.sessionId);
   if (!store.scan) {
-    const required = state.ordered || options.requireTasks;
+    const required = state.ordered || options.requireTasks || options.requireResponses;
     const diagnosis: SessionDiagnosis = { status: required ? 'blocked' : 'legacy_store', records: 0, issueCount: required ? 1 : 0,
-      issues: [{ code: 'session_capability', message: 'Ordered delivery and persistent tasks require Session.scan; legacy storage has no bounded recovery guarantee' }], history: window.stats };
+      issues: [{ code: 'session_capability', message: 'Ordered delivery, task controls and response tracking require Session.scan; legacy storage has no bounded recovery guarantee' }], history: window.stats };
     return { state, window: undefined, tasks, diagnosis };
   }
   try {

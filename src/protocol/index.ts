@@ -4,10 +4,12 @@ import type { UserInput, RunResult } from './input.ts';
 import type { HeartbeatTrigger, HeartbeatRequest, RuntimeTrigger, TriggerKind, WorldEventSink } from './trigger.ts';
 import type { WorldDeliveryIdentity, WorldDeliveryPort, HistoryReader } from './delivery.ts';
 import type { AgentTaskTools, TaskRecord, TaskRunPort } from './task.ts';
+import type { ToolEffects, RunOrigin, OperationRecord, LateQuery, LateRecord } from './responsiveness.ts';
 export * from './input.ts';
 export * from './trigger.ts';
 export * from './delivery.ts';
 export * from './task.ts';
+export * from './responsiveness.ts';
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 
@@ -46,6 +48,8 @@ export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: JsonObject;
+  /** 可信实现的效果分类；不会由模型输入决定。 */
+  effects?: ToolEffects;
 }
 
 export interface ToolExecutionContext {
@@ -53,6 +57,8 @@ export interface ToolExecutionContext {
   signal: AbortSignal;
   /** 发起调用时的 Runtime 代次，用于关联诊断。 */
   generation: number;
+  /** 原调用因果归属；启用响应性时提供，不授予 Session 写权限。 */
+  origin?: RunOrigin & { callId: string };
 }
 
 /** World owns external effects and platform semantics; Runtime invokes only this boundary. */
@@ -68,7 +74,7 @@ export interface World {
   subscribeDeliveries?(port: WorldDeliveryPort): () => void;
   /** 当前可用的工具声明；名称和参数语义由 World 定义。 */
   tools(): readonly ToolDefinition[];
-  /** 回执须匹配调用标识与工具名；无法确认效果时必须保留 unknown。 */
+  /** 回执匹配原调用，Promise 结算前收回本次调用独占的本地等待资源；共享连接仍归 World 生命周期。无法确认外部效果时保留 unknown。 */
   executeTool(call: ToolCall, context: ToolExecutionContext): Promise<ToolOutcome>;
 }
 
@@ -116,7 +122,7 @@ export interface Provider {
   readonly id: string;
   /** 无网络副作用地测量 complete 实际发送的 UTF-8 请求体；所有模型执行路径要求实现。 */
   measureRequest?(request: ProviderRequest): number;
-  /** signal 可由单次触发、调用期限或 Runtime 停止触发；适配器应协作释放传输资源。 */
+  /** signal 可由触发、期限或停止触发；Promise 结算前释放本次调用的本地传输等待，不据此声称远端生成已撤销。 */
   complete(request: ProviderRequest, signal: AbortSignal): Promise<ProviderResponse>;
 }
 
@@ -130,6 +136,8 @@ export interface SessionDecl {
 
 /** Runtime supplies request facts; Agent owns semantic context assembly. */
 export interface AgentContext {
+  /** 显式取得原调用的迟到证据；不会自动进入普通历史。 */
+  readonly readLate?: (query: LateQuery) => Promise<LateRecord | undefined>;
   /** 当前运行的任务权限；确认变更可在续轮读取，旧 run 撤权后不能提交。 */
   readonly tasks?: TaskRunPort;
   readonly session: SessionDecl;
@@ -156,6 +164,8 @@ export interface Agent {
   readonly id: string;
   /** 可选 Agent 任务工具；未启用时不改变现有 World 工具路径。 */
   readonly taskTools?: AgentTaskTools;
+  /** 可选只读操作证据工具，复用 Agent 工具所有权及回执配对。 */
+  readonly operationTools?: AgentTaskTools;
   declareSession(): SessionDecl;
   /** 当前 Event 已作为执行事实写入 history，不应再次拼接成重复用户消息。 */
   initialRequest(event: Event, context: AgentContext): Promise<ProviderRequest>;
@@ -174,6 +184,7 @@ export interface Agent {
  */
 export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; triggerId?: string; source?: string; generation?: number; delivery?: WorldDeliveryIdentity } & (
   | TaskRecord
+  | OperationRecord
   | { kind: 'world_stream_registered'; at: string; schema: 1; sessionId: string; worldId: string; streamId: string; epoch: string }
   | { kind: 'trigger_received'; at: string; trigger: RuntimeTrigger; queueSequence: number }
   | { kind: 'heartbeat'; at: string; heartbeat: HeartbeatTrigger }
@@ -183,7 +194,7 @@ export type SessionEntry = ({ runId?: string; triggerKind?: TriggerKind; trigger
   | { kind: 'event'; at: string; event: Event }
   | { kind: 'provider_request'; at: string; request: ProviderRequest }
   | { kind: 'provider_response'; at: string; response: ProviderResponse }
-  | { kind: 'tool_call'; at: string; call: ToolCall; owner?: 'world' | 'agent' }
+  | { kind: 'tool_call'; at: string; call: ToolCall; owner?: 'world' | 'agent'; effects?: ToolEffects; worldId?: string }
   | { kind: 'tool_outcome'; at: string; outcome: ToolOutcome; owner?: 'world' | 'agent' }));
 
 export interface SessionStore {

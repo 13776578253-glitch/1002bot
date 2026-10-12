@@ -6,6 +6,8 @@
     "test": "pnpm build:all && node --experimental-strip-types scripts/run-tests.mjs",
     "typecheck": "pnpm build:all && pnpm typecheck:core && pnpm --filter @1002bot/tui typecheck && pnpm --filter @1002bot/tui-example typecheck && pnpm --filter @1002bot/integration-tests typecheck && pnpm --filter @1002bot/world-qq typecheck && pnpm --filter @1002bot/qq-example typecheck",
     "sample": "node --experimental-strip-types scripts/m1-sample.ts",
+    "sample:m6": "node --experimental-strip-types scripts/m6-console.ts --sample",
+    "dev:m6": "node --experimental-strip-types scripts/m6-console.ts",
     "dev:console": "node --experimental-strip-types scripts/console-sample.ts",
     "dev:tui": "pnpm build:all && pnpm --filter @1002bot/tui-example dev",
     "probe:tui": "pnpm --filter @1002bot/tui build && pnpm --filter @1002bot/tui probe",

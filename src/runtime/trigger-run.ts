@@ -4,7 +4,9 @@ import { InputError, triggerId, triggerSource } from '../protocol/index.ts';
 import type { HistoryReader } from '../protocol/index.ts';
 import type { TaskRunPort } from '../protocol/index.ts';
 import type { TaskCoordinator } from './task-coordinator.ts';
-import { toolRegistry } from './tool-registry.ts';
+import { matchesOutcome, toolRegistry } from './tool-registry.ts';
+import type { OperationOrigin, RunOrigin, ToolEffects } from '../protocol/index.ts';
+import type { OperationRegistry } from './operation-registry.ts';
 
 /** Runtime owns the collaborators and tracked writes used by one trigger execution. */
 export interface TriggerRunHost {
@@ -17,6 +19,7 @@ export interface TriggerRunHost {
   readHistory?: () => Promise<readonly SessionEntry[]>;
   queryHistory?: HistoryReader;
   tasks?: TaskCoordinator;
+  operations?: OperationRegistry;
 }
 export interface TriggerRun {
   trigger: RuntimeTrigger;
@@ -36,10 +39,13 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   let pending: ToolCall[] = [];
   /** 仅在即将进入 World 时设置；用于区分效果不明与尚未执行。 */
   let executing: string | undefined;
+  let executingEffects: ToolEffects | undefined;
   let halt = false;
   let round = 0;
   const association = { runId: run.runId, triggerKind: run.trigger.kind, triggerId: triggerId(run.trigger), source: triggerSource(run.trigger), generation: run.generation,
     ...(run.trigger.kind === 'world_event' && 'delivery' in run.trigger ? { delivery: run.trigger.delivery } : {}) };
+  const origin: RunOrigin = { sessionId: host.agent.declareSession().sessionId, runId: run.runId, generation: run.generation,
+    triggerKind: run.trigger.kind, triggerId: triggerId(run.trigger), source: triggerSource(run.trigger) };
   // 本轮授权供 Agent 选择心跳任务，工具调用再派生携带单次期限的子权限。
   const taskLease = host.tasks?.open(association, run.signal);
   let registry!: ReturnType<typeof toolRegistry>;
@@ -51,9 +57,10 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     history.push(record);
     check(run.signal);
   };
-  const context = (tasks: TaskRunPort | undefined = taskLease?.port): AgentContext => ({
+  const context = (tasks: TaskRunPort | undefined = taskLease?.port, signal = run.signal): AgentContext => ({
     session: host.agent.declareSession(), history, runId: run.runId, tools: registry.declarations,
     ...(tasks ? { tasks } : {}),
+    ...(host.operations ? { readLate: query => host.operations!.readLate(query, signal) } : {}),
     ...(host.provider.measureRequest ? { measureRequest: (request) => host.provider.measureRequest!(request) } : {}),
     requestBytes: run.limits.requestBytes, reserveBytes: run.limits.reserveBytes,
     ...(host.queryHistory ? { readHistory: host.queryHistory } : {}),
@@ -102,7 +109,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
         response = await bounded(async (signal) => {
           try { return await host.provider.complete(request, signal); }
           catch (error) { if (error instanceof InputError || signal.aborted) throw error; throw new InputError('provider_error', message(error)); }
-        }, run.signal, run.limits.providerMs, 'provider_timeout');
+        }, run.signal, run.limits.providerMs, 'provider_timeout', host.operations, { ...origin, kind: 'provider', round });
         const responseBytes = response.bodyBytes ?? bytes(response);
         if (!Number.isSafeInteger(responseBytes) || responseBytes < 0 || responseBytes > run.limits.responseBytes) throw new InputError('response_limit', `Provider response exceeds ${run.limits.responseBytes} bytes`);
       } catch (error) {
@@ -127,7 +134,10 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
       pending = [...response.toolCalls];
       const outcomes: ToolOutcome[] = [];
       for (const call of response.toolCalls) {
-        await append({ kind: 'tool_call', at: now(), call, owner: registry.isAgent(call.toolName) ? 'agent' : 'world' });
+        const effects = registry.effects(call.toolName);
+        const safeRead = !!host.operations && effects === 'none';
+        await append({ kind: 'tool_call', at: now(), call, owner: registry.isAgent(call.toolName) ? 'agent' : 'world',
+          ...(host.operations && !registry.isAgent(call.toolName) ? { worldId: host.world.id } : {}), ...(host.operations && effects ? { effects } : {}) });
         const normalized = normalize(call, registry.declarations);
         let outcome: ToolOutcome;
         if ('status' in normalized) outcome = normalized;
@@ -137,7 +147,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
           let answer: ToolOutcome | undefined;
           let failure: unknown;
           try { outcome = await bounded(async signal => {
-            const operation = registry.executeAgent(normalized, context(taskLease?.forCall(call.callId, signal)));
+            const operation = registry.executeAgent(normalized, context(taskLease?.forCall(call.callId, signal), signal));
             void operation.then(value => { answer = value; }, error => { failure = error; });
             return operation;
           }, run.signal, run.limits.toolMs, 'tool_timeout'); }
@@ -149,7 +159,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
             else if (error instanceof InputError && error.code === 'storage_error' || run.signal.aborted || error instanceof InputError && error.code === 'tool_timeout') throw error;
             else outcome = { callId: call.callId, toolName: call.toolName, status: 'failed', error: diagnostic(error) };
           } finally { taskLease?.revokeCall(call.callId); }
-          if (outcome.callId !== call.callId || outcome.toolName !== call.toolName) throw new InputError('invalid_tool_outcome', 'Agent returned a mismatched tool outcome');
+          if (!matchesOutcome(outcome, call)) throw new InputError('invalid_tool_outcome', 'Agent returned an invalid tool receipt');
         } else {
           try {
             outcome = await bounded((signal) => {
@@ -157,16 +167,22 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
               run.progress({ type: 'tool_started', round, callId: call.callId, toolName: call.toolName });
               check(signal);
               executing = call.callId;
-              return host.world.executeTool(normalized, { signal, generation: run.generation });
-            }, run.signal, run.limits.toolMs, 'tool_timeout');
+              executingEffects = safeRead ? 'none' : undefined;
+              host.operations?.setUnsafe(run.runId, !safeRead);
+              return host.world.executeTool(normalized, { signal, generation: run.generation,
+                ...(host.operations ? { origin: { ...origin, callId: call.callId } } : {}) });
+            }, run.signal, run.limits.toolMs, 'tool_timeout', host.operations, { ...origin, kind: 'world', worldId: host.world.id, callId: call.callId, toolName: call.toolName, effects: effects ?? 'unspecified' });
           } catch (error) {
-            if (run.signal.aborted || error instanceof InputError && error.code === 'tool_timeout') { halt = executing === call.callId; throw error; }
+            if (run.signal.aborted || error instanceof InputError && error.code === 'tool_timeout') { halt = executing === call.callId && !safeRead; throw error; }
+            if (error instanceof InputError && (error.code === 'storage_error' || executing !== call.callId)) throw error;
             // 已进入 World 后抛异常，无法据此证明副作用未发生。
-            outcome = { callId: call.callId, toolName: call.toolName, status: 'unknown', error: { code: 'world_error', message: message(error) } };
+            outcome = { callId: call.callId, toolName: call.toolName, status: safeRead ? 'failed' : 'unknown', error: { code: 'world_error', message: message(error) } };
           }
-          if (outcome.callId !== call.callId || outcome.toolName !== call.toolName) { halt = true; throw new InputError('invalid_tool_outcome', 'World returned a mismatched tool outcome'); }
+          if (!matchesOutcome(outcome, call)) { halt = true; throw new InputError('invalid_tool_outcome', 'World returned an invalid tool receipt'); }
           // 已取得且匹配的回执结束效果不明窗口，后续写入失败不重新执行该工具。
           executing = undefined;
+          executingEffects = undefined;
+          host.operations?.setUnsafe(run.runId, false);
         }
         if (outcome.status === 'unknown' && !outcome.error) outcome = { ...outcome, error: { code: 'tool_unknown', message: 'World returned an unconfirmed tool result' } };
         // 先移出待收束集合；写入期间收到取消也不能把已取得的回执重新归为 unknown。
@@ -194,8 +210,13 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     let storageError: unknown;
     // 收束写入不受输入取消信号阻断；一条回执写入失败仍继续收束其余已声明调用。
     for (const call of pending) {
-      const outcome: ToolOutcome = { callId: call.callId, toolName: call.toolName, status: call.callId === executing ? 'unknown' : 'cancelled',
-        error: call.callId === executing ? diagnostic(cause) : registry?.isAgent(call.toolName)
+      const unknown = call.callId === executing && executingEffects !== 'none';
+      const outcome: ToolOutcome = { callId: call.callId, toolName: call.toolName, status: unknown ? 'unknown' : 'cancelled',
+        ...(call.callId === executing && executingEffects === 'none' ? { output: { operation: { ...origin,
+          kind: 'world', worldId: host.world.id, callId: call.callId, toolName: call.toolName, effects: 'none' } } } : {}),
+        error: unknown ? diagnostic(cause) : call.callId === executing
+          ? { code: 'read_interrupted', message: `Read-only wait ended; original call remains independently owned: ${diagnostic(cause).code}` }
+          : registry?.isAgent(call.toolName)
           ? { code: 'task_interrupted', message: `Task call interrupted; confirmed commits remain in Session: ${diagnostic(cause).code}` }
           : { code: 'not_executed', message: `Input ended before execution: ${diagnostic(cause).code}` } };
       try { await commitOutcome(call, outcome); }
@@ -208,6 +229,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   } finally {
     // 通道写 run_finished 前撤权并结算任务操作，避免终态越过任务确认。
     await taskLease?.finish();
+    host.operations?.finishRun(run.runId);
   }
 }
 
@@ -232,19 +254,34 @@ export async function guarded<T>(task: () => Promise<T>, signal: AbortSignal): P
   } finally { if (abort) signal.removeEventListener('abort', abort); }
 }
 /** 子信号合并整轮取消和单次期限，调用结束后释放计时器与根信号监听器。 */
-async function bounded<T>(task: (signal: AbortSignal) => Promise<T>, root: AbortSignal, ms: number, code: string): Promise<T> {
+async function bounded<T>(task: (signal: AbortSignal) => Promise<T>, root: AbortSignal, ms: number, code: string,
+  operations?: OperationRegistry, origin?: OperationOrigin): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(root.reason);
   root.addEventListener('abort', abort, { once: true });
   if (root.aborted) abort();
   const timer = setTimeout(() => controller.abort(new InputError(code, `${code} after ${ms} ms`)), ms);
-  try { return await guarded(() => task(controller.signal), controller.signal); }
+  let ticket: ReturnType<OperationRegistry['start']> | undefined;
+  try { return await guarded(() => {
+    if (!operations) return task(controller.signal);
+    ticket = operations.start(origin!, () => { check(controller.signal); return task(controller.signal); });
+    return ticket.promise as Promise<T>;
+  }, controller.signal); }
+  catch (error) {
+    if (operations && ticket && controller.signal.aborted) {
+      // 已取得 World 回执优先保存；模型回包始终不能在取消后执行新工具。
+      const result = operations.result(ticket);
+      if (origin?.kind === 'world' && result) return result.value as T;
+      await operations.detach(ticket, error);
+    }
+    throw error;
+  }
   finally { clearTimeout(timer); root.removeEventListener('abort', abort); }
 }
 function check(signal: AbortSignal): void { if (signal.aborted) throw signal.reason; }
 function publicError(error: { code: string; message: string }): { code: string; message: string } { return { code: error.code, message: error.message }; }
 function diagnostic(error: unknown): { code: string; message: string } { return { code: error instanceof InputError ? error.code : 'execution_error', message: message(error) }; }
-function cancellation(error: unknown): boolean { return error instanceof InputError && (error.code === 'cancelled' || error.code === 'runtime_stopped'); }
+function cancellation(error: unknown): boolean { return error instanceof InputError && (error.code === 'cancelled' || error.code === 'runtime_stopped' || error.code === 'yielded'); }
 export function bytes(value: unknown): number { return Buffer.byteLength(JSON.stringify(value), 'utf8'); }
 export function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function now(): string { return new Date().toISOString(); }

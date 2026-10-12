@@ -124,6 +124,48 @@ try {
 `);
 phases.coreArchive = JSON.parse(node(['check.mjs'], coreConsumer).trim());
 
+const responseFixture = ts.transpileModule(readFileSync(join(root, 'tests/fixtures/response-world.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
+write(join(coreConsumer, 'response-world.js'), responseFixture);
+write(join(coreConsumer, 'check-response.mjs'), `
+import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
+import {Runtime,ConversationAgent,ScriptedProvider,MemorySessionStore,MemoryState,STANDARD_RESPONSE_LIMITS} from '1002bot';
+import {ResponseWorld} from './response-world.js';
+const world=new ResponseWorld(fileURLToPath(new URL('./response-world.json',import.meta.url)));
+const runtime=new Runtime({world,session:new MemorySessionStore(),state:new MemoryState(),responsiveness:{},cleanupDeadlineMs:1000,
+  agent:new ConversationAgent({sessionId:'response-package',persistent:false,operations:true}),
+  provider:new ScriptedProvider(request=>request.messages.at(-1).content==='observe'?
+    {finishReason:'tool_calls',toolCalls:[{callId:'read',toolName:'fixture.observe',arguments:{label:'archive'}}]}:
+    {finishReason:'stop',toolCalls:[],message:{role:'assistant',content:'done'}})});
+await runtime.start();
+try {
+  assert.deepEqual(runtime.responses.limits,STANDARD_RESPONSE_LIMITS);
+  world.hold('archive');await runtime.inputs.submit({inputId:'A',source:'package',content:{kind:'text',text:'observe'}});await world.entered('archive');
+  const target=runtime.responses.snapshot().active;
+  assert.equal(runtime.responses.snapshot().operations[0].state,'running');
+  await runtime.inputs.submit({inputId:'B',source:'package',content:{kind:'text',text:'B'}});
+  assert.equal(runtime.responses.yield(target).status,'requested');await runtime.inputs.idle();
+  assert.equal(runtime.responses.snapshot().operations[0].state,'detached');
+  assert.equal(runtime.inputs.inspect('A').result.status,'cancelled');assert.equal(runtime.inputs.inspect('B').result.status,'succeeded');
+  world.release('archive');const deadline=Date.now()+3000;
+  while(runtime.responses.snapshot().operations.length){assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,2));}
+  const late=await runtime.responses.readLate({runId:target.runId,callId:'read'});
+  assert.equal(late.result.status,'returned');assert.equal(late.origin.worldId,world.id);
+  assert.equal((await runtime.inspectSession()).status,'ready');
+  console.log(JSON.stringify({yielded:true,lateEvidence:true,diagnosis:'ready',optionalWorldInstalled:false}));
+} finally {world.releaseAll();await runtime.stop();}
+`);
+phases.coreResponseArchive = JSON.parse(node(['check-response.mjs'], coreConsumer).trim());
+write(join(coreConsumer, 'check-response.ts'), `import {Runtime,STANDARD_RESPONSE_LIMITS,type ResponseControl,type OperationRecord,type ToolDefinition,type ToolExecutionContext} from '1002bot';
+declare const runtime:Runtime;const control:ResponseControl|undefined=runtime.responses;
+const tool:ToolDefinition={name:'domain.observe',description:'read',inputSchema:{type:'object'},effects:'none'};
+declare const record:OperationRecord;declare const context:ToolExecutionContext;
+if(record.origin.kind==='world'){const worldId:string=record.origin.worldId;void worldId;}
+if(control){control.yield({runId:'fixture',generation:1});const result=control.readLate({runId:'fixture',callId:'read'});const state=control.snapshot().operations[0]?.state;void result;void state;}
+void tool;void context.origin;void STANDARD_RESPONSE_LIMITS;`);
+json(join(coreConsumer, 'tsconfig.response.json'), { compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, noEmit: true }, include: ['check-response.ts'] });
+node([join(coreSource, 'node_modules/typescript/lib/tsc.js'), '-p', 'tsconfig.response.json'], coreConsumer);
+
 const tuiConsumer = join(directory, 'tui-consumer');
 mkdirSync(tuiConsumer);
 json(join(tuiConsumer, 'package.json'), {

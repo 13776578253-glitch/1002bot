@@ -5,6 +5,7 @@ import { InputError, STANDARD_INPUT_LIMITS, STANDARD_TRIGGER_LIMITS, triggerId, 
 import { bytes, executeTrigger, message, type TriggerRunHost } from './trigger-run.ts';
 import type { WorldDelivery, WorldReceipt } from '../protocol/index.ts';
 import { WorldDeliveryState } from './world-delivery-state.ts';
+import type { RunIdentity, YieldReceipt } from '../protocol/index.ts';
 
 /** Runtime supplies lifecycle authority and the tracked write boundary to its Session channel. */
 interface ChannelHost extends TriggerRunHost { status(): string; generation(): number; stop(): Promise<void>; issue(code: string, message: string): void }
@@ -137,6 +138,20 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     this.pump();
     return { receipt: { status: 'accepted', triggerKind: kind, triggerId: id, queueSequence: item.sequence }, item };
   }
+  activeIdentity(): RunIdentity | null { return this.active ? { runId: this.active.id, generation: this.active.item.generation } : null; }
+  /** 安全控制不影响 FIFO 次序；回执只确认请求，终态仍由原消费者提交。 */
+  requestYield(target: RunIdentity): YieldReceipt {
+    const run = this.active;
+    const reject = (code: string, message: string): YieldReceipt => ({ status: 'rejected', target: { ...target }, code, message });
+    if (!this.host.operations) return reject('response_capability', 'Controlled yielding is not enabled');
+    if (!this.accepting) return reject('not_running', 'Runtime control admission is closed');
+    if (!run || run.id !== target.runId || run.item.generation !== target.generation) return reject('stale_run', 'Target is not the current run');
+    if (run.finishing || run.controller.signal.aborted) return reject('run_finishing', 'Run is already settling');
+    const denied = this.host.operations.yieldRejection(run.id);
+    if (denied) return reject(denied.code, denied.message);
+    run.controller.abort(new InputError('yielded', 'Run yielded by explicit operator control'));
+    return { status: 'requested', target: { ...target } };
+  }
   async cancel(kind: TriggerKind, id: string) {
     const identity = key(kind, id);
     const item = this.queue.find((entry) => key(entry.trigger.kind, triggerId(entry.trigger)) === identity);
@@ -194,7 +209,7 @@ export class RuntimeTriggerChannel implements TriggerChannel {
           }));
         } catch (error) {
           const code = error instanceof InputError ? error.code : 'storage_error';
-          result = { status: code === 'cancelled' || code === 'runtime_stopped' ? 'cancelled' : 'failed', code, message: message(error), persisted: false };
+          result = { status: code === 'cancelled' || code === 'runtime_stopped' || code === 'yielded' ? 'cancelled' : 'failed', code, message: message(error), persisted: false };
           halt = code === 'storage_error';
         }
         clearTimeout(timer);

@@ -1,4 +1,4 @@
-/** Runtime owns lifecycle, source and task grants, and confirmed projections; one channel executes all Session triggers. */
+/** Runtime owns lifecycle, source/task grants, external-operation resources and confirmed projections. */
 import type { Agent, Event, Provider, SessionEntry, SessionStore, StateStore, World, InputLimits, HeartbeatOptions, RunResult, WorldEventSink, TriggerChannel, WorldStream, DeliveryLimits, HistoryLimits, SessionDiagnosis, WorldDeliveryPort, HistoryQuery, TaskLimits, TaskInspector } from '../protocol/index.ts';
 import { InputError, STANDARD_TRIGGER_LIMITS, legacyWorldTriggerId } from '../protocol/index.ts';
 import { RuntimeInputChannel } from './input-channel.ts';
@@ -8,6 +8,8 @@ import { HistoryWindow, queryHistory } from '../state/history-window.ts';
 import { preflightSession, diagnoseSession } from './session-preflight.ts';
 import { TaskProjection } from '../state/task-projection.ts';
 import { TaskCoordinator } from './task-coordinator.ts';
+import { OperationRegistry } from './operation-registry.ts';
+import type { ResponseControl, ResponseLimits } from '../protocol/index.ts';
 
 export type RuntimeStatus = 'new' | 'starting' | 'running' | 'stopping' | 'failed' | 'stopped';
 /** Composition injects collaborators; Runtime owns their shared lifecycle and source wiring. */
@@ -35,6 +37,8 @@ export interface RuntimeOptions {
   taskLimits?: Partial<TaskLimits>;
   /** 仅任务到期判断使用此时钟；来源接收/过期仍沿用 Runtime 的真实期限。 */
   taskClock?: () => number;
+  /** 显式启用安全让出、在途容量和独立迟到记录。 */
+  responsiveness?: Partial<ResponseLimits>;
 }
 export class Runtime {
   private statusValue: RuntimeStatus = 'new';
@@ -54,6 +58,9 @@ export class Runtime {
   private readonly subscriptions: (() => void)[] = [];
   private heartbeatSequence = 0;
   private worldNeedsCleanup = false;
+  private worldCleanupOperation: Promise<void> | undefined;
+  private worldCleanupWait: Promise<void> | undefined;
+  private readonly operationRegistry: OperationRegistry | undefined;
   private readonly channel: RuntimeTriggerChannel;
   private deliveryState: WorldDeliveryState;
   private readonly taskCoordinator: TaskCoordinator;
@@ -66,8 +73,14 @@ export class Runtime {
 
   constructor(options: RuntimeOptions) {
     this.options = options;
+    if (options.agent.operationTools && !options.responsiveness) throw new Error('Operation evidence tools require response tracking');
     this.historyLimits = new HistoryWindow(options.historyLimits).limits;
     this.deliveryState = this.newDeliveryState();
+    if (options.responsiveness) this.operationRegistry = new OperationRegistry({ sessionId: options.agent.declareSession().sessionId,
+      session: options.session, append: entry => this.appendLifecycle(entry), alive: () => this.status === 'running' && this.channel.accepting,
+      fail: error => { this.recordIssue(error instanceof InputError ? error.code : 'storage_error', error instanceof Error ? error.message : String(error));
+        this.channel.closeAdmission(); void this.stop().catch(() => undefined); } }, options.responsiveness);
+    if (options.responsiveness && (!Number.isSafeInteger(options.cleanupDeadlineMs ?? 100) || (options.cleanupDeadlineMs ?? 100) < 1 || (options.cleanupDeadlineMs ?? 100) > 2_147_483_647)) throw new Error('Invalid response cleanup deadline');
     this.taskCoordinator = new TaskCoordinator({ projection: new TaskProjection(options.agent.declareSession().sessionId, options.taskLimits),
       sessionId: options.agent.declareSession().sessionId, store: options.session, append: entry => this.appendLifecycle(entry),
       alive: generation => this.status === 'running' && this.generation === generation && this.channel.accepting, clock: options.taskClock ?? Date.now });
@@ -79,6 +92,7 @@ export class Runtime {
     }
     this.channel = new RuntimeTriggerChannel({ ...options, append: (entry) => this.appendLifecycle(entry),
       ...(options.agent.taskTools ? { tasks: this.taskCoordinator } : {}),
+      ...(this.operationRegistry ? { operations: this.operationRegistry } : {}),
       readHistory: async () => this.window ? this.window.snapshot() : options.session.read(),
       ...(options.session.scan ? { queryHistory: (query?: HistoryQuery) => queryHistory(options.session, this.historyLimits, query) } : {}),
       status: () => this.status, generation: () => this.generation, stop: () => this.stop(), issue: (code, message) => this.recordIssue(code, message) }, options.inputLimits, options.eventBytes);
@@ -87,6 +101,12 @@ export class Runtime {
   }
   get status(): RuntimeStatus { return this.statusValue; }
   get generation(): number { return this.generationValue; }
+  /** 查询不授予旧 run 写权；让出回执后仍须观察原 run 的结清事件。 */
+  get responses(): ResponseControl | undefined {
+    const registry = this.operationRegistry;
+    return registry ? { limits: registry.limits, snapshot: () => ({ active: this.channel.activeIdentity(), operations: registry.snapshot() }),
+      yield: target => this.channel.requestYield(target), readLate: query => registry.readLate(query) } : undefined;
+  }
   get trace(): readonly SessionEntry[] { return structuredClone(this.entries); }
   /** 只读检查口；写入权限仅存在于当前 AgentContext。 */
   get tasks(): TaskInspector { return { snapshot: () => this.taskCoordinator.snapshot(), read: id => this.taskCoordinator.read(id), evidence: (id, run, bytes) => this.taskCoordinator.evidence(id, run, bytes) }; }
@@ -94,7 +114,8 @@ export class Runtime {
   inspectSession(): Promise<SessionDiagnosis> {
     return diagnoseSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
       worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds,
-      ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools, includeUnsuccessfulHistory: !!this.options.includeUnsuccessfulHistory });
+      ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools,
+      requireResponses: !!this.operationRegistry, includeUnsuccessfulHistory: !!this.options.includeUnsuccessfulHistory });
   }
   /** 读取口不拥有生命周期；旧口只能等待原保存，不能向新代投递。 */
   get deliveries(): WorldDeliveryPort {
@@ -138,7 +159,11 @@ export class Runtime {
         this.connectSources(generation, lease);
         if (!this.isActive(generation, lease)) throw new Error('Runtime start was cancelled');
       } catch (error) {
-        if (generation === this.generationValue) { this.statusValue = 'failed'; await this.stop(); }
+        if (generation === this.generationValue) {
+          this.statusValue = 'failed';
+          if (this.operationRegistry) { try { await this.stop(); } catch (cleanupError) { this.recordIssue('cleanup_error', cleanupError instanceof Error ? cleanupError.message : String(cleanupError)); } }
+          else await this.stop();
+        }
         throw error;
       } finally { if (this.startOperation === operation) this.startOperation = undefined; }
     });
@@ -164,8 +189,13 @@ export class Runtime {
         for (const off of this.subscriptions.splice(0)) { try { off(); } catch (error) { failures.push(error); } }
         const results = await Promise.allSettled([this.cleanupWorld(), triggersStopped, ...this.pendingWrites]);
         failures.push(...results.filter((result) => result.status === 'rejected').map((result) => result.reason as unknown));
+        if (this.operationRegistry) { try { await this.operationRegistry.drain(this.options.cleanupDeadlineMs ?? 100); } catch (error) { failures.push(error); } }
         if (failures.length) throw new AggregateError(failures, 'Runtime stop could not finish cleanup and Session writes');
-      } finally { this.statusValue = 'stopped'; this.channel.statusChanged(); this.stopOperation = undefined; }
+      } finally {
+        // 只有实际资源结清才能重新启动；超时后旧登记和清理 Promise 继续属于本实例。
+        this.statusValue = this.operationRegistry && (this.worldNeedsCleanup || this.operationRegistry.snapshot().length) ? 'stopping' : 'stopped';
+        this.channel.statusChanged(); this.stopOperation = undefined;
+      }
     });
     // 保存共享停止操作，再通知可能重入的监听器。
     this.stopOperation = operation;
@@ -230,7 +260,8 @@ export class Runtime {
     try {
       inspected = await preflightSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
         worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds,
-        ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools, includeUnsuccessfulHistory: !!this.options.includeUnsuccessfulHistory }, controller.signal);
+        ...(this.options.taskLimits ? { taskLimits: this.options.taskLimits } : {}), requireTasks: !!this.options.agent.taskTools,
+        requireResponses: !!this.operationRegistry, includeUnsuccessfulHistory: !!this.options.includeUnsuccessfulHistory }, controller.signal);
     } catch (error) {
       if (controller.signal.aborted || !lease.active || generation !== this.generationValue) throw new Error('Runtime start was cancelled');
       throw error;
@@ -242,7 +273,7 @@ export class Runtime {
     this.taskCoordinator.replace(tasks);
     this.diagnosisValue = diagnosis;
     if (diagnosis.status === 'blocked') {
-      if (diagnosis.issues[0]?.code === 'session_capability') throw new InputError('session_capability', 'This Runtime requires Session.scan for ordered delivery or persistent tasks');
+      if (diagnosis.issues[0]?.code === 'session_capability') throw new InputError('session_capability', 'This Runtime requires Session.scan for ordered delivery, tasks or response tracking');
       this.channel.recoveryFailed('recovery_blocked', diagnosis.issues[0]?.message ?? 'Session requires diagnosis'); throw new InputError('recovery_blocked', 'Session requires diagnosis before execution');
     }
     for (const registration of state.registrations()) {
@@ -253,6 +284,22 @@ export class Runtime {
   private isActive(generation: number, lease: Lease): boolean { return this.statusValue === 'running' && generation === this.generationValue && lease.active; }
   private async cleanupWorld(): Promise<void> {
     if (!this.worldNeedsCleanup) return;
+    if (this.operationRegistry) {
+      if (this.worldCleanupWait) return this.worldCleanupWait;
+      const wait = withDeadline(signal => {
+        if (!this.worldCleanupOperation) {
+          const operation = Promise.resolve().then(() => this.options.world.stop(signal)).then(() => {
+            this.worldNeedsCleanup = false;
+            if (this.worldCleanupOperation === operation) { this.worldCleanupOperation = undefined; this.worldCleanupWait = undefined; }
+          }, error => { if (this.worldCleanupOperation === operation) { this.worldCleanupOperation = undefined; this.worldCleanupWait = undefined; } throw error; });
+          this.worldCleanupOperation = operation;
+        }
+        return this.worldCleanupOperation;
+      }, this.options.cleanupDeadlineMs ?? 100, true);
+      this.worldCleanupWait = wait;
+      await wait;
+      return;
+    }
     this.worldNeedsCleanup = false;
     await withDeadline((signal) => this.options.world.stop(signal), this.options.cleanupDeadlineMs ?? 100);
   }
@@ -264,12 +311,13 @@ class Lease {
   close(): void { this.active = false; }
 }
 /** 清理超时只结束等待并请求取消，不能证明底层动作已经退出。 */
-async function withDeadline(task: (signal: AbortSignal) => Promise<void>, timeoutMs: number): Promise<void> {
+async function withDeadline(task: (signal: AbortSignal) => Promise<void>, timeoutMs: number, strict = false): Promise<void> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([Promise.resolve().then(() => task(controller.signal)), new Promise<void>((resolve) => {
-      timer = setTimeout(() => { controller.abort(); resolve(); }, timeoutMs);
-    })]).catch(() => undefined);
+    const operation = Promise.race([Promise.resolve().then(() => task(controller.signal)), new Promise<void>((resolve, reject) => {
+      timer = setTimeout(() => { controller.abort(); if (strict) reject(new InputError('cleanup_timeout', 'World resources have not exited')); else resolve(); }, timeoutMs);
+    })]);
+    if (strict) await operation; else await operation.catch(() => undefined);
   } finally { if (timer) clearTimeout(timer); }
 }
