@@ -28,6 +28,7 @@ export class SessionAudit {
     ++this.records;
     if (!kinds.has(entry.kind) || typeof entry.at !== 'string' || !Number.isFinite(Date.parse(entry.at)) || entry.runId !== undefined && (typeof entry.runId !== 'string' || !entry.runId)) throw new InputError('session_schema', 'Session entry has an unsupported kind, time or run identity');
     if (entry.kind === 'operation_detached' || entry.kind === 'operation_late') {
+      // 独立关联只存 origin，禁止混入普通运行组或推进来源结算水位。
       if (entry.runId !== undefined || entry.delivery !== undefined || entry.generation !== undefined || entry.triggerKind !== undefined
         || entry.triggerId !== undefined || entry.source !== undefined) throw new InputError('session_schema', 'Independent operation records cannot carry ordinary run authority');
       this.operation(entry);
@@ -95,6 +96,7 @@ export class SessionAudit {
       if (!errorShape(entry.reason)) throw new InputError('session_schema', 'Operation detachment has no valid reason');
       const run = this.runs.get(origin.runId), association = run?.association;
       const call = origin.kind === 'world' ? run?.calls.get(origin.callId) : undefined;
+      // 撤权时核验仍活动的原声明；独立登记随后可跨越该 run 的普通终态。
       if (!run?.started || !association || association.generation !== origin.generation || association.triggerKind !== origin.triggerKind
         || association.triggerId !== origin.triggerId || association.source !== origin.source
         || (origin.kind === 'world' ? origin.effects !== 'none' || call?.effects !== 'none' || call.name !== origin.toolName || call.worldId !== origin.worldId || call.owner === 'agent' : origin.round !== run.requests)) {
@@ -104,6 +106,7 @@ export class SessionAudit {
       this.detached.set(key, structuredClone(origin));
     } else {
       const previous = this.detached.get(key);
+      // 原运行组可能已经移除，迟到配对仍须匹配完整原关联。
       if (!previous || !sameOrigin(previous, origin)) this.issue('operation_pairing', 'Late record lacks matching detachment', entry);
       const result = entry.result;
       if (!result || !['returned', 'failed', 'discarded'].includes(result.status)) throw new InputError('session_schema', 'Late result classification is invalid');
@@ -121,6 +124,7 @@ export class SessionAudit {
     if (this.receipts.size) this.issue('receipt_unsettled', `${this.receipts.size} saved receipts have no terminal`);
     if (this.runs.size) this.issue('run_unsettled', `${this.runs.size} runs have no terminal`);
     if (this.legacyCalls.size) this.issue('legacy_unsettled', `${this.legacyCalls.size} legacy tools lack receipts`);
+    // 归档结束仍缺结算时只报告阻断，不重建或重发旧调用。
     if (this.detached.size) this.issue('operation_unsettled', `${this.detached.size} detached operations lack final records`, this.detached.values().next().value);
   }
 }

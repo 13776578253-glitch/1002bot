@@ -37,7 +37,7 @@ export interface RuntimeOptions {
   taskLimits?: Partial<TaskLimits>;
   /** 仅任务到期判断使用此时钟；来源接收/过期仍沿用 Runtime 的真实期限。 */
   taskClock?: () => number;
-  /** 显式启用安全让出、在途容量和独立迟到记录。 */
+  /** 空对象显式启用安全让出、在途容量和独立迟到记录；省略时 responses 为 undefined。 */
   responsiveness?: Partial<ResponseLimits>;
 }
 export class Runtime {
@@ -58,8 +58,11 @@ export class Runtime {
   private readonly subscriptions: (() => void)[] = [];
   private heartbeatSequence = 0;
   private worldNeedsCleanup = false;
+  /** 原 World.stop 的实际退出；期限结束后仍保留未结算的原清理。 */
   private worldCleanupOperation: Promise<void> | undefined;
+  /** 带期限的清理等待，与原调用分别缓存；重复 stop 复用尚未退出的清理。 */
   private worldCleanupWait: Promise<void> | undefined;
+  /** 跨逻辑 run 持有外部等待，实际资源未退出时禁止进入下一生命周期。 */
   private readonly operationRegistry: OperationRegistry | undefined;
   private readonly channel: RuntimeTriggerChannel;
   private deliveryState: WorldDeliveryState;
@@ -101,7 +104,7 @@ export class Runtime {
   }
   get status(): RuntimeStatus { return this.statusValue; }
   get generation(): number { return this.generationValue; }
-  /** 查询不授予旧 run 写权；让出回执后仍须观察原 run 的结清事件。 */
+  /** 操作者控制与证据查询门面；让出回执后仍须观察原 run 的结清事件。 */
   get responses(): ResponseControl | undefined {
     const registry = this.operationRegistry;
     return registry ? { limits: registry.limits, snapshot: () => ({ active: this.channel.activeIdentity(), operations: registry.snapshot() }),
@@ -111,6 +114,7 @@ export class Runtime {
   /** 只读检查口；写入权限仅存在于当前 AgentContext。 */
   get tasks(): TaskInspector { return { snapshot: () => this.taskCoordinator.snapshot(), read: id => this.taskCoordinator.read(id), evidence: (id, run, bytes) => this.taskCoordinator.evidence(id, run, bytes) }; }
   get diagnosis(): SessionDiagnosis { return structuredClone({ ...this.diagnosisValue, history: this.window?.stats ?? this.diagnosisValue.history }); }
+  /** ready 只描述扫描到的归档配对；资源清理是否退出须看 stop 与在途快照。 */
   inspectSession(): Promise<SessionDiagnosis> {
     return diagnoseSession(this.options.session, { worldId: this.options.world.id, sessionId: this.options.agent.declareSession().sessionId,
       worldStreams: this.options.worldStreams ?? [], deliveryLimits: this.deliveryState.limits, historyLimits: this.historyLimits, admissionIds: this.channel.limits.admissionIds,
@@ -172,6 +176,7 @@ export class Runtime {
     this.channel.statusChanged();
     return operation;
   }
+  /** M6 清理失败抛 AggregateError；未退出资源使状态保留 stopping，资源退出后须显式再次 stop。 */
   async stop(): Promise<void> {
     if (this.statusValue === 'new') { this.statusValue = 'stopped'; this.channel.statusChanged(); return; }
     if (this.statusValue === 'stopped') return;
@@ -189,6 +194,7 @@ export class Runtime {
         for (const off of this.subscriptions.splice(0)) { try { off(); } catch (error) { failures.push(error); } }
         const results = await Promise.allSettled([this.cleanupWorld(), triggersStopped, ...this.pendingWrites]);
         failures.push(...results.filter((result) => result.status === 'rejected').map((result) => result.reason as unknown));
+        // 逻辑终态和 World 清理后，仍须确认原 Provider/World 调用及独立记录已结清。
         if (this.operationRegistry) { try { await this.operationRegistry.drain(this.options.cleanupDeadlineMs ?? 100); } catch (error) { failures.push(error); } }
         if (failures.length) throw new AggregateError(failures, 'Runtime stop could not finish cleanup and Session writes');
       } finally {
@@ -285,6 +291,7 @@ export class Runtime {
   private async cleanupWorld(): Promise<void> {
     if (!this.worldNeedsCleanup) return;
     if (this.operationRegistry) {
+      // 等待期限结束不启动第二次清理，原调用退出后才释放这些缓存。
       if (this.worldCleanupWait) return this.worldCleanupWait;
       const wait = withDeadline(signal => {
         if (!this.worldCleanupOperation) {

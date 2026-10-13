@@ -5,22 +5,28 @@ import { matchesOutcome } from './tool-registry.ts';
 
 interface Ticket<T = unknown> {
   origin: OperationOrigin;
+  /** 原调用 Promise；逻辑等待取消后仍由登记器持有。 */
   promise: Promise<T>;
   settled: boolean;
   value?: T;
   error?: unknown;
   succeeded: boolean;
   detached: boolean;
+  /** 撤权记录确认；迟到记录必须排在它之后。 */
   saved?: Promise<void>;
+  /** 同一调用复用一次迟到追加，追加结算后才释放登记位。 */
   archived?: Promise<void>;
   late?: LateResult;
 }
 export class OperationRegistry {
   readonly limits: Readonly<ResponseLimits>;
+  /** 同时包含原调用等待与独立记录确认，均计入 pendingOperations。 */
   private readonly pending = new Map<string, Ticket>();
   /** 动作回执尚未验证时仍锁住安全让出，Promise 已结束也不能解除。 */
   private readonly unsafe = new Set<string>();
+  /** 正在确认的操作记录 UTF-8 JSON 字节数，写入结算后释放。 */
   private lateBytes = 0;
+  /** 必要记录失败后保留首个原因，资源已退出也不能将 drain 视为成功。 */
   private archiveFailure: InputError | undefined;
   /** 超时后的重复 stop 共用同一等待，不追加新的悬挂 Promise 监听。 */
   private drainOperation: Promise<void> | undefined;
@@ -45,7 +51,7 @@ export class OperationRegistry {
     if (current && detached >= this.limits.yieldedOperations) return { code: 'yield_capacity', message: 'Unfinished yielded operations have reached capacity' };
     return undefined;
   }
-  /** 登记先于调用；原 Promise 结算和迟到追加完成之前保留所有权。 */
+  /** 登记先于调用；普通调用在原 Promise 结算后释放，撤权只读/模型调用还须等待独立记录确认。 */
   start<T>(origin: OperationOrigin, task: () => Promise<T>): Ticket<T> {
     if (!this.host.alive()) throw new InputError('runtime_stopped', 'Runtime no longer permits external operations');
     if (this.pending.size >= this.limits.pendingOperations) throw new InputError('operation_capacity', 'External operations have reached capacity');
@@ -60,7 +66,7 @@ export class OperationRegistry {
     if (ticket.detached) return ticket.saved;
     ticket.detached = true;
     this.pending.set(operationKey(ticket.origin), ticket);
-    // 未声明动作的迟到结果不能修正原 unknown，仅等待资源结束。
+    // 动作及未声明能力调用只等待资源退出；原 unknown 保留，不归档为只读证据。
     if (ticket.origin.kind === 'world' && ticket.origin.effects !== 'none') {
       if (ticket.settled) this.pending.delete(operationKey(ticket.origin));
       return;
@@ -75,6 +81,7 @@ export class OperationRegistry {
   result<T>(ticket: Ticket<T>): { value: T } | undefined { return ticket.settled && ticket.succeeded ? { value: ticket.value! } : undefined; }
   private settled(ticket: Ticket): void {
     ticket.settled = true;
+    // 正常登记释放后，执行器仍须核验回执；unsafe 门禁由执行器解除。
     if (!ticket.detached) { this.pending.delete(operationKey(ticket.origin)); return; }
     if (ticket.origin.kind === 'world' && ticket.origin.effects !== 'none') { this.pending.delete(operationKey(ticket.origin)); return; }
     ticket.late = this.lateResult(ticket);
@@ -82,6 +89,7 @@ export class OperationRegistry {
   }
   private lateResult(ticket: Ticket): LateResult {
     if (!ticket.succeeded) return { status: 'failed', error: detail(ticket.error) };
+    // 已取消模型请求只保存有限诊断，原工具列表与原生响应不交回执行器。
     if (ticket.origin.kind === 'provider') return { status: 'discarded', error: { code: 'provider_late', message: 'Cancelled response was not executed or replayed' } };
     const value = ticket.value as import('../protocol/index.ts').ToolOutcome;
     if (!matchesOutcome(value, ticket.origin)) {
@@ -98,6 +106,7 @@ export class OperationRegistry {
     const operation = Promise.resolve().then(async () => {
       await ticket.saved;
       let record: LateRecord = { kind: 'operation_late', at: now(), schema: 1, origin: ticket.origin, result: ticket.late! };
+      // 超限保存明确丢弃原因；截断输出会破坏完整观察的语义。
       if (Buffer.byteLength(JSON.stringify(record)) > this.limits.lateRecordBytes) record = { ...record,
         result: { status: 'discarded', error: { code: 'late_capacity', message: 'Late outcome exceeded its record budget' } } };
       await this.write(record);
@@ -112,10 +121,12 @@ export class OperationRegistry {
       this.archiveFailure ??= error; this.host.fail(error); throw error;
     }
     this.lateBytes += bytes;
+    // 独立事实沿 Runtime 必要追加屏障确认，容量失败与存储失败都关闭后续处理。
     try { await this.host.append(JSON.parse(line) as OperationRecord); }
     catch (cause) { const error = new InputError('storage_error', detail(cause).message); this.archiveFailure ??= error; this.host.fail(error); throw error; }
     finally { this.lateBytes -= bytes; }
   }
+  /** 扫描已确认归档；当前查询信号可终止读取，返回副本避免调用方修改原事实。 */
   async readLate(query: LateQuery, signal?: AbortSignal): Promise<LateRecord | undefined> {
     if (!query.runId || !query.callId) throw new InputError('invalid_operation_query', 'Original runId and callId are required');
     const budget = query.bytes ?? this.limits.evidenceBytes;
@@ -148,6 +159,7 @@ export class OperationRegistry {
     while (this.pending.size) {
       const tickets = [...this.pending.values()];
       await Promise.allSettled(tickets.map(ticket => ticket.promise));
+      // 原调用退出与必要记录确认分别等待；记录故障由 archiveFailure 统一报告。
       await Promise.allSettled(tickets.map(ticket => ticket.archived ?? ticket.saved));
       // 结算回调可在上一组 Promise 之后才建立 archive。
       await Promise.resolve();

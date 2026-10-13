@@ -139,7 +139,7 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     return { receipt: { status: 'accepted', triggerKind: kind, triggerId: id, queueSequence: item.sequence }, item };
   }
   activeIdentity(): RunIdentity | null { return this.active ? { runId: this.active.id, generation: this.active.item.generation } : null; }
-  /** 安全控制不影响 FIFO 次序；回执只确认请求，终态仍由原消费者提交。 */
+  /** 按 runId/代次校验可信操作者目标；安全控制不改变 FIFO，终态仍由原消费者提交。 */
   requestYield(target: RunIdentity): YieldReceipt {
     const run = this.active;
     const reject = (code: string, message: string): YieldReceipt => ({ status: 'rejected', target: { ...target }, code, message });
@@ -147,6 +147,7 @@ export class RuntimeTriggerChannel implements TriggerChannel {
     if (!this.accepting) return reject('not_running', 'Runtime control admission is closed');
     if (!run || run.id !== target.runId || run.item.generation !== target.generation) return reject('stale_run', 'Target is not the current run');
     if (run.finishing || run.controller.signal.aborted) return reject('run_finishing', 'Run is already settling');
+    // 当前效果和名额门禁全部通过后才取消；普通 submit 不进入此控制口。
     const denied = this.host.operations.yieldRejection(run.id);
     if (denied) return reject(denied.code, denied.message);
     run.controller.abort(new InputError('yielded', 'Run yielded by explicit operator control'));

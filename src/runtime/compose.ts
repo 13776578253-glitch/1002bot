@@ -19,6 +19,7 @@ export interface ComposeOptions {
   includeUnsuccessfulHistory?: boolean;
   taskLimits?: Partial<TaskLimits>;
   taskClock?: () => number;
+  /** 提供空对象采用标准受控响应容量；省略则保持既有装配。 */
   responsiveness?: Partial<ResponseLimits>;
 }
 

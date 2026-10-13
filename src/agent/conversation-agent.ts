@@ -14,6 +14,7 @@ export class ConversationAgent implements Agent {
   private readonly includeUnsuccessfulHistory: boolean;
   readonly initialHeartbeatRequest: HeartbeatRequest;
   readonly taskTools?: AgentTaskTools;
+  /** operations 显式启用原调用证据工具；Runtime 须同时提供响应性与只读查询口。 */
   readonly operationTools?: AgentTaskTools;
   constructor(options: { sessionId: string; instructions?: string; heartbeatRequest?: HeartbeatRequest; tasks?: boolean; operations?: boolean; persistent?: boolean; includeUnsuccessfulHistory?: boolean }) {
     this.sessionId = options.sessionId;
@@ -56,7 +57,7 @@ export class ConversationAgent implements Agent {
     // 以整轮为裁剪单位，防止截掉工具调用或回执中的一半。
     const groups = new Map<string, SessionEntry[]>();
     for (const entry of context.history) {
-      // 无运行分组的旧记录不能作为完整历史轮次自动重放。
+      // 无运行分组的旧记录和独立迟到记录不成为普通历史候选。
       if (!entry.runId) continue;
       const group = groups.get(entry.runId) ?? [];
       group.push(entry);

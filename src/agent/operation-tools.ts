@@ -13,7 +13,9 @@ export class OperationTools implements AgentTaskTools {
       if (!jsonObject(args) || Object.keys(args).some(key => !['runId', 'callId', 'bytes'].includes(key))
         || typeof args.runId !== 'string' || !args.runId || typeof args.callId !== 'string' || !args.callId
         || args.bytes !== undefined && (typeof args.bytes !== 'number' || !Number.isSafeInteger(args.bytes) || args.bytes < 1)) throw new InputError('invalid_arguments', 'Expected runId, callId and optional positive bytes');
+      // 身份匹配与完整记录预算由 Runtime 审定；此工具不获得原 run 权限。
       const record = await context.readLate({ runId: args.runId, callId: args.callId, ...(args.bytes !== undefined ? { bytes: args.bytes as number } : {}) });
+      // 查询结果属于当前工具回执；未找到证据本身是正常查询结果。
       return { callId: call.callId, toolName: call.toolName, status: 'succeeded', output: JSON.parse(JSON.stringify(record ?? { found: false })) as JsonValue };
     } catch (error) { return { callId: call.callId, toolName: call.toolName, status: 'failed', error: {
       code: error instanceof InputError ? error.code : 'operation_query_error', message: error instanceof Error ? error.message : String(error) } }; }

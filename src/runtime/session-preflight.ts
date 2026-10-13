@@ -17,6 +17,7 @@ export interface SessionInspectionOptions {
   taskLimits?: Partial<TaskLimits>;
   /** 启用任务能力时必须具有流式归档扫描口。 */
   requireTasks?: boolean;
+  /** 受控响应须扫描原操作的撤权/迟到配对，缺失扫描口时阻断启动。 */
   requireResponses?: boolean;
 }
 export async function preflightSession(store: SessionStore, options: SessionInspectionOptions, signal?: AbortSignal) {
@@ -47,7 +48,7 @@ export async function preflightSession(store: SessionStore, options: SessionInsp
   return { state, window, tasks, diagnosis };
 }
 
-/** 只读结果表示该快照的重启条件；不会停止正在运行的 Runtime，也不补写登记。 */
+/** 只读检查已扫描事实；ready 不证明当前资源已退出，也不补写缺失的操作结算。 */
 export async function diagnoseSession(store: SessionStore, options: SessionInspectionOptions): Promise<SessionDiagnosis> {
   return (await preflightSession(store, options)).diagnosis;
 }

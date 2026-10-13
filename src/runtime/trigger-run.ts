@@ -19,6 +19,7 @@ export interface TriggerRunHost {
   readHistory?: () => Promise<readonly SessionEntry[]>;
   queryHistory?: HistoryReader;
   tasks?: TaskCoordinator;
+  /** 可选原操作登记；外部等待撤权后继续持有原 Promise 和独立归档权。 */
   operations?: OperationRegistry;
 }
 export interface TriggerRun {
@@ -39,6 +40,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   let pending: ToolCall[] = [];
   /** 仅在即将进入 World 时设置；用于区分效果不明与尚未执行。 */
   let executing: string | undefined;
+  /** 仅启用 M6 且可信声明为 none 时标记只读，供中断收束分类。 */
   let executingEffects: ToolEffects | undefined;
   let halt = false;
   let round = 0;
@@ -60,6 +62,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
   const context = (tasks: TaskRunPort | undefined = taskLease?.port, signal = run.signal): AgentContext => ({
     session: host.agent.declareSession(), history, runId: run.runId, tools: registry.declarations,
     ...(tasks ? { tasks } : {}),
+    // 证据查询使用当前调用信号，旧 origin 只用于检索关联。
     ...(host.operations ? { readLate: query => host.operations!.readLate(query, signal) } : {}),
     ...(host.provider.measureRequest ? { measureRequest: (request) => host.provider.measureRequest!(request) } : {}),
     requestBytes: run.limits.requestBytes, reserveBytes: run.limits.reserveBytes,
@@ -142,7 +145,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
         let outcome: ToolOutcome;
         if ('status' in normalized) outcome = normalized;
         else if (registry.isAgent(call.toolName)) {
-          // 任务工具等待自己的确认写入；取消不会把已知内部提交归为 World unknown。
+          // Agent 工具使用本轮权限；任务提交等待确认，证据查询只读，均不占外部调用登记位。
           run.progress({ type: 'tool_started', round, callId: call.callId, toolName: call.toolName });
           let answer: ToolOutcome | undefined;
           let failure: unknown;
@@ -168,6 +171,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
               check(signal);
               executing = call.callId;
               executingEffects = safeRead ? 'none' : undefined;
+              // 动作门禁一直保留到回执头通过核验，原 Promise 已退出也不能直接解锁。
               host.operations?.setUnsafe(run.runId, !safeRead);
               return host.world.executeTool(normalized, { signal, generation: run.generation,
                 ...(host.operations ? { origin: { ...origin, callId: call.callId } } : {}) });
@@ -211,6 +215,7 @@ export async function executeTrigger(host: TriggerRunHost, run: TriggerRun): Pro
     // 收束写入不受输入取消信号阻断；一条回执写入失败仍继续收束其余已声明调用。
     for (const call of pending) {
       const unknown = call.callId === executing && executingEffects !== 'none';
+      // 被中断只读调用只交付原引用；实际观察由独立归档和显式查询取得。
       const outcome: ToolOutcome = { callId: call.callId, toolName: call.toolName, status: unknown ? 'unknown' : 'cancelled',
         ...(call.callId === executing && executingEffects === 'none' ? { output: { operation: { ...origin,
           kind: 'world', worldId: host.world.id, callId: call.callId, toolName: call.toolName, effects: 'none' } } } : {}),
@@ -253,7 +258,7 @@ export async function guarded<T>(task: () => Promise<T>, signal: AbortSignal): P
     ]);
   } finally { if (abort) signal.removeEventListener('abort', abort); }
 }
-/** 子信号合并整轮取消和单次期限，调用结束后释放计时器与根信号监听器。 */
+/** 子信号合并整轮取消和单次期限；逻辑等待结束释放计时器和监听器，启用 M6 时原外部调用仍由登记器持有。 */
 async function bounded<T>(task: (signal: AbortSignal) => Promise<T>, root: AbortSignal, ms: number, code: string,
   operations?: OperationRegistry, origin?: OperationOrigin): Promise<T> {
   const controller = new AbortController();
@@ -272,6 +277,7 @@ async function bounded<T>(task: (signal: AbortSignal) => Promise<T>, root: Abort
       // 已取得 World 回执优先保存；模型回包始终不能在取消后执行新工具。
       const result = operations.result(ticket);
       if (origin?.kind === 'world' && result) return result.value as T;
+      // 撤权记录须先确认，普通取消回执与 run_finished 才可随后结清并放行 FIFO。
       await operations.detach(ticket, error);
     }
     throw error;

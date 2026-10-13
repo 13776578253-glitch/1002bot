@@ -17,6 +17,7 @@ export class ResponseWorld implements World {
   private latestValue: Observation | undefined;
   private writes: Promise<unknown> = Promise.resolve();
   readonly path: string;
+  /** false 保留故意不退出的调用，用于核验 Runtime 在途登记与停止门禁。 */
   readonly stopReleases: boolean;
   constructor(path: string, stopReleases = true) { this.path = path; this.stopReleases = stopReleases; }
   hold(label: string): void {
@@ -57,8 +58,10 @@ export class ResponseWorld implements World {
   }
   private async perform(call: ToolCall): Promise<ToolOutcome> {
     const args = call.arguments as { label?: string; value?: number };
+    // 延迟发生在观察快照或真实写入之后，分别覆盖旧事实晚到与效果已发生但未确认。
     const observation = call.toolName === 'fixture.write' ? await this.update(args.value!) : JSON.parse(await readFile(this.path, 'utf8')) as Observation;
     const hold = args.label ? this.holds.get(args.label) : undefined;
+    // 显式 release 才结束原等待，用于验证逻辑取消后仍保留调用所有权。
     if (hold) { hold.started.resolve(); await hold.released.promise; if (this.holds.get(args.label!) === hold) this.holds.delete(args.label!); }
     this.observe(observation);
     return { callId: call.callId, toolName: call.toolName, status: 'succeeded', output: { observation: { ...observation } } };

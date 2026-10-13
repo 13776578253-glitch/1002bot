@@ -48,7 +48,7 @@ export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: JsonObject;
-  /** 可信实现的效果分类；不会由模型输入决定。 */
+  /** 可信实现的效果分类，每 run 固定；缺省仍按可能产生外部效果处理。 */
   effects?: ToolEffects;
 }
 
@@ -57,7 +57,7 @@ export interface ToolExecutionContext {
   signal: AbortSignal;
   /** 发起调用时的 Runtime 代次，用于关联诊断。 */
   generation: number;
-  /** 原调用因果归属；启用响应性时提供，不授予 Session 写权限。 */
+  /** 启用受控响应时提供原调用归属；撤权后仍用于关联，不能据此写入 Session。 */
   origin?: RunOrigin & { callId: string };
 }
 
@@ -136,7 +136,7 @@ export interface SessionDecl {
 
 /** Runtime supplies request facts; Agent owns semantic context assembly. */
 export interface AgentContext {
-  /** 显式取得原调用的迟到证据；不会自动进入普通历史。 */
+  /** 用当前查询权限取得完整迟到证据；原独立记录不自动进入历史，显式查询的回执归当前 run。 */
   readonly readLate?: (query: LateQuery) => Promise<LateRecord | undefined>;
   /** 当前运行的任务权限；确认变更可在续轮读取，旧 run 撤权后不能提交。 */
   readonly tasks?: TaskRunPort;
@@ -164,7 +164,7 @@ export interface Agent {
   readonly id: string;
   /** 可选 Agent 任务工具；未启用时不改变现有 World 工具路径。 */
   readonly taskTools?: AgentTaskTools;
-  /** 可选只读操作证据工具，复用 Agent 工具所有权及回执配对。 */
+  /** 可选只读操作证据工具，要求 Runtime 启用受控响应；沿 Agent 工具配对，无让出控制权。 */
   readonly operationTools?: AgentTaskTools;
   declareSession(): SessionDecl;
   /** 当前 Event 已作为执行事实写入 history，不应再次拼接成重复用户消息。 */

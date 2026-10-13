@@ -6,10 +6,11 @@ export function toolRegistry(agent: Agent, world: World) {
   const executors = new Map(providers.flatMap(({ provider, tools }) => tools.map(tool => [tool.name, provider] as const)));
   const owned = providers.flatMap(item => item.tools);
   const declarations = structuredClone([...world.tools(), ...owned]);
-  // 同一份声明用于模型请求、名称校验与执行分流；重名在模型调用前拒绝。
+  // 固定可信声明副本用于模型请求、名称校验与执行分流；模型参数无权修改 effects。
   const names = new Set<string>();
   for (const tool of declarations) {
     if (tool.effects !== undefined && tool.effects !== 'none' && tool.effects !== 'external') throw new InputError('invalid_tool_capability', 'Tool effect capability is unsupported');
+    // 名称冲突在模型调用前拒绝，避免同一调用被分配给多个所有者。
     if (names.has(tool.name)) throw new InputError('tool_name_conflict', `Tool has more than one owner: ${tool.name}`);
     names.add(tool.name);
   }
