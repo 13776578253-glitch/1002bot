@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visualization theme preview</title>
+  <link rel="stylesheet" href="../src/themes/default.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: #25282c;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background-color: var(--av-canvas-bg);
+      background-image:
+        linear-gradient(to right, var(--av-grid-color) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--av-grid-color) 1px, transparent 1px);
+      background-size: var(--av-grid-size) var(--av-grid-size);
+    }
+    .preview-page {
+      width: min(980px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 52px;
+    }
+    .preview-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+    .preview-heading h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+    }
+    .preview-heading p {
+      margin: 0;
+      color: var(--av-text-muted);
+      font-size: 12px;
+    }
+    .preview-chip {
+      padding: 4px 8px;
+      color: var(--av-text-muted);
+      font-size: 10px;
+      background: rgba(255,255,255,.82);
+      border: 1px solid var(--av-border);
+      border-radius: 999px;
+    }
+    .preview-stage {
+      position: relative;
+      min-height: 540px;
+      padding: 48px 28px;
+      overflow: hidden;
+      border: 1px solid var(--av-border);
+      border-radius: 15px;
+      background: rgba(250,251,252,.74);
+      box-shadow: 0 10px 36px rgba(23,31,38,.04);
+    }
+    .preview-stage::before {
+      position: absolute;
+      inset: 0;
+      content: "";
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 18% 22%, rgba(211,232,220,.25), transparent 28%),
+        radial-gradient(circle at 85% 80%, rgba(211,224,239,.22), transparent 30%);
+    }
+    .preview-source {
+      position: absolute;
+      z-index: 1;
+      top: 128px;
+      left: 5%;
+      width: 260px;
+    }
+    .preview-aggregate {
+      position: absolute;
+      z-index: 1;
+      top: 96px;
+      left: 50%;
+      width: 270px;
+      height: 336px;
+      min-width: 0;
+      transform: translateX(-50%);
+    }
+    .preview-aggregate .av-aggregate-content {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 9px;
+    }
+    .preview-mini {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 9px;
+      color: #626971;
+      font-size: 11px;
+      background: rgba(255,255,255,.67);
+      border: 1px solid #e6e8ea;
+      border-radius: 7px;
+    }
+    .preview-mini span:first-child { color: #8d9399; }
+    .preview-target {
+      position: absolute;
+      z-index: 1;
+      top: 128px;
+      right: 5%;
+      width: 260px;
+    }
+    .preview-source .av-card { width: 100%; }
+    .preview-target .av-card { width: 100%; }
+    .preview-route { display: block; }
+    .preview-connection {
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+    .preview-connection .preview-route {
+      fill: none;
+      stroke: var(--av-edge);
+      stroke-width: 1.35;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .preview-connection marker path {
+      fill: none;
+      stroke: var(--av-edge-strong);
+      stroke-width: 1.25;
+    }
+    .preview-edge-label {
+      position: absolute;
+      z-index: 3;
+      top: 273px;
+      left: calc(50% - 74px);
+      transform: translate(-50%, -50%);
+    }
+    .preview-note {
+      display: flex;
+      gap: 18px;
+      margin: 14px 0 0;
+      color: var(--av-text-muted);
+      font-size: 10px;
+    }
+    @media (max-width: 760px) {
+      .preview-stage { display: flex; flex-direction: column; min-height: 0; gap: 18px; padding: 24px 16px; }
+      .preview-source, .preview-aggregate, .preview-target { position: relative; inset: auto; width: 100%; transform: none; }
+      .preview-aggregate { height: auto; min-height: 220px; }
+      .preview-connection, .preview-edge-label { display: none; }
+      .preview-heading { align-items: start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body class="av-theme">
+  <main class="preview-page">
+    <header class="preview-heading">
+      <div>
+        <h1>Theme cards</h1>
+        <p>Static CSS preview for leaf cards, aggregates, and orthogonal routes.</p>
+      </div>
+      <span class="preview-chip">default.css</span>
+    </header>
+
+    <section class="preview-stage" aria-label="Theme preview">
+      <svg class="preview-connection" viewBox="0 0 980 540" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="preview-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M2 2 L8 5 L2 8"></path>
+          </marker>
+        </defs>
+        <path class="preview-route" d="M318 238 H355 Q367 238 367 250 V278 H489"></path>
+        <path class="preview-route" d="M625 276 H681 Q693 276 693 264 V250 Q693 238 705 238 H742" marker-end="url(#preview-arrow)"></path>
+      </svg>
+
+      <div class="preview-source">
+        <article class="av-card av-delta-baseline" data-expanded="false">
+          <div class="av-card-status">Done</div>
+          <div class="av-card-body">
+            <div class="av-card-icon" aria-hidden="true">✓</div>
+            <div class="av-card-copy">
+              <h2 class="av-card-title">Graph projection</h2>
+              <p class="av-card-desc">Visible nodes and folded endpoints</p>
+            </div>
+          </div>
+          <footer class="av-card-meta">
+            <span class="av-card-meta-item">● 4</span>
+            <span class="av-card-meta-item">⌘ 2</span>
+            <button class="av-card-action" type="button" aria-label="展开节点">⌄</button>
+          </footer>
+        </article>
+
+        <article class="av-card av-delta-modified" data-expanded="false">
+          <div class="av-card-status">In progress</div>
+          <div class="av-card-body">
+            <div class="av-card-icon" aria-hidden="true">◇</div>
+            <div class="av-card-copy">
+              <h2 class="av-card-title">Layout contracts</h2>
+              <p class="av-card-desc">Coordinates and route boundaries</p>
+            </div>
+          </div>
+          <footer class="av-card-meta">
+            <span class="av-card-meta-item">● 1</span>
+            <span class="av-card-meta-item">⌘ 3</span>
+            <button class="av-card-action" type="button" aria-label="展开节点">⌄</button>
+          </footer>
+        </article>
+      </div>
+
+      <aside class="av-aggregate preview-aggregate">
+        <header class="av-aggregate-header">
+          <span class="av-aggregate-icon" aria-hidden="true">▦</span>
+          <h2 class="av-aggregate-title">Evolution engine</h2>
+          <span class="av-aggregate-count">3</span>
+          <span class="av-aggregate-actions">
+            <button class="av-aggregate-action" type="button" aria-label="收起聚合">−</button>
+          </span>
+        </header>
+        <div class="av-aggregate-content">
+          <div class="preview-mini"><span>＋</span><span>Snapshot delta</span></div>
+          <div class="preview-mini"><span>Δ</span><span>Explicit semantics</span></div>
+          <div class="preview-mini"><span>◇</span><span>Edge rewiring</span></div>
+        </div>
+      </aside>
+
+      <div class="preview-target">
+        <article class="av-card av-planned" data-expanded="false">
+          <div class="av-card-status">Planned</div>
+          <div class="av-card-body">
+            <div class="av-card-icon" aria-hidden="true">✎</div>
+            <div class="av-card-copy">
+              <h2 class="av-card-title">Detail inspector</h2>
+              <p class="av-card-desc">Design and change history</p>
+            </div>
+          </div>
+          <footer class="av-card-meta">
+            <span class="av-card-meta-item">● 0</span>
+            <span class="av-card-meta-item">⌘ 1</span>
+            <button class="av-card-action" type="button" aria-label="展开节点">⌄</button>
+          </footer>
+        </article>
+      </div>
+
+      <span class="av-edge-label preview-edge-label">depends on</span>
+    </section>
+
+    <p class="preview-note">
+      <span>20 px grid</span>
+      <span>10 px card radius</span>
+      <span>14 px / 600 title</span>
+      <span>12 px description</span>
+    </p>
+    <p><a href="../src/themes/README.md">Theme contract</a></p>
+  </main>
+</body>
+</html>

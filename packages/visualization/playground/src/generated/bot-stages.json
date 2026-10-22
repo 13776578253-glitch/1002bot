@@ -1,0 +1,3995 @@
+{
+ "tracks": [
+  {
+   "track": "main",
+   "name": "主线",
+   "stages": [
+    {
+     "id": "m1",
+     "label": "M1.0",
+     "track": "main",
+     "order": 1,
+     "title": "最小运行基座",
+     "subtitle": "让一条世界事件经过模型与工具，留下完整的会话记录。",
+     "date": "2026.10.04",
+     "scope": "单 Runtime · 单 Session · FixtureWorld",
+     "status": "基线实现已完成",
+     "changes": [
+      "确立 Runtime、Agent、Provider、World 与存储的职责。",
+      "建立启停与代次隔离，按过程追加事件、调用和回执。"
+     ],
+     "verified": "基线实现及历史 Review 已记录；补充竞态修复另有验证记录。",
+     "doc": "../docs/2026-10-04-M1.0进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "最小运行基座",
+      "desc": "按接口连接，按范围展开",
+      "children": [
+       {
+        "key": "ingress",
+        "title": "触发来源",
+        "desc": "FixtureWorld → 结构化 Event",
+        "intro": "1",
+        "children": [
+         {
+          "key": "events",
+          "title": "World 事件",
+          "desc": "调用 handleEvent",
+          "details": [
+           "FixtureWorld 产生结构化 Event，由调用方交给 Runtime。"
+          ],
+          "source": "src/protocol/index.ts",
+          "intro": "1"
+         }
+        ]
+       },
+       {
+        "key": "runtime",
+        "title": "Runtime",
+        "desc": "生命周期、受理、执行与确认投影",
+        "intro": "1",
+        "children": [
+         {
+          "key": "lifecycle",
+          "title": "生命周期与代次",
+          "desc": "管理开始、停止和旧回调",
+          "details": [
+           "start / stop 管理 Runtime 的生命周期；一次模型或工具处理结束后继续等待。",
+           "异步边界核对 generation、lease 与取消信号，旧代结果无法推进新代。",
+           "停止等待已进入的必要写入；World 使用独立清理信号。"
+          ],
+          "source": "src/runtime/runtime.ts",
+          "intro": "1"
+         },
+         {
+          "key": "execution",
+          "title": "触发执行",
+          "desc": "Event 的模型与工具往返",
+          "details": [
+           "Agent 构造请求，Provider 返回文本与工具调用，Runtime 依声明调用 World。",
+           "模型轮数受 Session 声明与运行取消约束。",
+           "工具回执保留 callId 与 succeeded / failed / cancelled / unknown 分类。"
+          ],
+          "source": "docs/2026-10-04-M1.0进度与架构图.md",
+          "intro": "1",
+          "children": [
+           {
+            "key": "context-group",
+            "title": "本次上下文",
+            "desc": "固定本次事实，组装可见候选",
+            "children": [
+             {
+              "key": "history",
+              "title": "取得历史候选",
+              "desc": "Session 历史",
+              "details": [
+               "Runtime 提供历史候选；Agent 按语义和实际请求容量选择。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "current",
+              "title": "写入当前事实",
+              "desc": "Event",
+              "details": [
+               "当前输入或事件随执行过程追加。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "authority",
+              "title": "本次权限",
+              "desc": "generation / lease / signal",
+              "details": [
+               "取消和代次变化撤销新的普通提交；已进入的必要追加仍等待确认。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "model-group",
+            "title": "模型判断",
+            "desc": "Runtime 协调 Agent 与 Provider",
+            "children": [
+             {
+              "key": "agent-request",
+              "title": "请求 Agent",
+              "desc": "构造初始或续轮请求",
+              "details": [
+               "Agent 返回 ProviderRequest，拥有指令和上下文选择。"
+              ],
+              "source": "src/agent/conversation-agent.ts"
+             },
+             {
+              "key": "provider-request-group",
+              "title": "调用 Provider",
+              "desc": "计量、提交和等待模型",
+              "children": [
+               {
+                "key": "request-record",
+                "title": "追加请求事实",
+                "desc": "provider_request",
+                "details": [
+                 "请求事实通过 Runtime 的追加边界保存。"
+                ],
+                "source": "src/runtime/trigger-run.ts"
+               },
+               {
+                "key": "complete",
+                "title": "等待 complete",
+                "desc": "响应 / 错误 / 取消",
+                "details": [
+                 "Provider 负责传输，Runtime 管理调用期限和本次执行权。"
+                ],
+                "source": "src/providers/openai-responses-provider.ts"
+               }
+              ]
+             },
+             {
+              "key": "response",
+              "title": "接收模型结果",
+              "desc": "文本与工具调用",
+              "details": [
+               "响应记录保留工具 callId 及不透明原生项，后续工具按声明分派。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "tools-group",
+            "title": "工具分派与续轮",
+            "desc": "声明、所有权与回执配对",
+            "children": [
+             {
+              "key": "registry",
+              "title": "声明与参数检查",
+              "desc": "已声明 World 工具",
+              "details": [
+               "Core 检查结构；World 检查领域参数。M5 起同时分派 Agent 任务工具。"
+              ],
+              "source": "src/runtime/tool-registry.ts"
+             },
+             {
+              "key": "world-call",
+              "title": "调用所属工具",
+              "desc": "工具拥有者返回结果",
+              "details": [
+               "World 拥有外部效果；Agent 工具通过当前权限口提交任务状态。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "receipt",
+              "title": "确认回执",
+              "desc": "原 callId / toolName / 状态",
+              "details": [
+               "M1 保存回执分类，通用 unknown 停止在 M2 建立。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "continuation",
+              "title": "交回 Agent 判断",
+              "desc": "继续一轮或结束本次",
+              "details": [
+               "模型响应和工具回执通过 nextRequest 交给 Agent；续轮仍属于当前 run。"
+              ],
+              "source": "src/protocol/index.ts"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "collaborators",
+        "title": "判断与领域协作",
+        "desc": "Agent / Provider / World",
+        "intro": "1",
+        "children": [
+         {
+          "key": "agent",
+          "title": "Agent",
+          "desc": "TestAgent · 测试请求构造与续轮",
+          "intro": "1",
+          "children": [
+           {
+            "key": "context",
+            "title": "上下文选择",
+            "desc": "完整轮次与当前运行",
+            "details": [
+             "测试 Agent 从事件及回执构造下一次模型请求。",
+             "生产 ConversationAgent 在 M2 引入。"
+            ],
+            "source": "tests/fixtures/test-agent.ts",
+            "intro": "1"
+           }
+          ]
+         },
+         {
+          "key": "provider",
+          "title": "Provider",
+          "desc": "转换模型协议，收回调用等待资源",
+          "intro": "1",
+          "children": [
+           {
+            "key": "transport",
+            "title": "模型协议与传输",
+            "desc": "Scripted / Responses 兼容",
+            "details": [
+             "Provider 负责序列化、HTTP 与响应转换；平台工具执行由 World 承担。",
+             "自动化使用脚本 Provider，真实请求通过手动入口验证。",
+             "原生 output 保留顺序并以 callId 配对回包。"
+            ],
+            "source": "src/providers/openai-responses-provider.ts",
+            "intro": "1"
+           }
+          ]
+         },
+         {
+          "key": "world",
+          "title": "World / FixtureWorld",
+          "desc": "拥有环境事实、工具与效果判断",
+          "intro": "1",
+          "children": [
+           {
+            "key": "worldtools",
+            "title": "工具声明与回执",
+            "desc": "查询 · 写入 · 结构化结果",
+            "details": [
+             "Core 校验参数结构，World 校验领域语义并执行工具。",
+             "回执保留原 toolName、callId 与状态；未知外部效果保留 unknown。",
+             "FixtureWorld 用于离线验证，生产 World 沿独立工作线接入。"
+            ],
+            "source": "src/protocol/index.ts",
+            "intro": "1"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "store",
+        "title": "Session / State 存储",
+        "desc": "保存会话事实与独立键值状态",
+        "intro": "1",
+        "children": [
+         {
+          "key": "jsonl",
+          "title": "JSONL Session",
+          "desc": "串行追加执行事实",
+          "details": [
+           "事件、请求、响应、调用和回执随运行过程追加。",
+           "appendFile 完成后确认可读；停止等待已进入的追加。",
+           "Session 文件持续增长，普通追加不提供 fsync 保证。"
+          ],
+          "source": "src/state/jsonl-session.ts",
+          "intro": "1"
+         },
+         {
+          "key": "state",
+          "title": "MemoryState",
+          "desc": "独立的实例内键值状态",
+          "details": [
+           "State 与 Session 契约分开。",
+           "当前装配中的 MemoryState 尚未形成长期 Memory 更新与提取流程。"
+          ],
+          "source": "src/state/memory-state.ts",
+          "intro": "1"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/ingress/events",
+       "to": "system/runtime/execution/context-group/current",
+       "label": "handleEvent"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/collaborators/agent/context",
+       "label": "构造请求",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/collaborators/provider/transport",
+       "label": "模型调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/collaborators/world/worldtools",
+       "label": "领域工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/store/jsonl",
+       "to": "system/runtime/execution/context-group/history",
+       "label": "读取历史"
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/runtime/execution/model-group/agent-request",
+       "label": "当前上下文"
+      },
+      {
+       "from": "system/runtime/execution/model-group/response",
+       "to": "system/runtime/execution/tools-group/registry",
+       "label": "需要工具时"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "label": "交付请求"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/runtime/execution/model-group/response",
+       "label": "返回响应"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/runtime/execution/model-group/provider-request-group/complete",
+       "label": "实际调用"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/registry",
+       "to": "system/runtime/execution/tools-group/world-call",
+       "label": "校验后分派"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/runtime/execution/tools-group/receipt",
+       "label": "原调用回执"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/execution/tools-group/continuation",
+       "label": "保存后续轮"
+      }
+     ]
+    },
+    {
+     "id": "m2",
+     "label": "M2.0",
+     "track": "main",
+     "order": 2,
+     "title": "用户交互与输入调度",
+     "subtitle": "用户可以连续输入，模型在容量内接续对话；一次回复结束后，Runtime 继续等待。",
+     "date": "2026.10.05",
+     "scope": "新增 Console · 用户输入 FIFO",
+     "status": "首批人工验收通过",
+     "changes": [
+      "增加独立 Console、输入队列和单次输入执行器。",
+      "ConversationAgent 组织多轮上下文，增加期限、容量与 unknown 收束。"
+     ],
+     "verified": "首批验收完成；真实 Provider 工具往返与终端交互已有记录。",
+     "doc": "../docs/2026-10-05-M2.0进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "用户交互与输入调度",
+      "desc": "按接口连接，按范围展开",
+      "children": [
+       {
+        "key": "ingress",
+        "title": "触发来源",
+        "desc": "Console 用户输入 / World Event",
+        "intro": "1",
+        "children": [
+         {
+          "key": "console",
+          "title": "Console 用户输入",
+          "desc": "文本与本地命令",
+          "details": [
+           "Console 只编辑、提交和展示公开诊断。",
+           "受理、队列、模型请求与工具执行继续归 Runtime。"
+          ],
+          "source": "src/console/terminal.ts",
+          "intro": "2"
+         },
+         {
+          "key": "events",
+          "title": "World 事件",
+          "desc": "调用 handleEvent",
+          "details": [
+           "FixtureWorld 产生结构化 Event，由调用方交给 Runtime。"
+          ],
+          "source": "src/protocol/index.ts",
+          "intro": "1"
+         }
+        ]
+       },
+       {
+        "key": "runtime",
+        "title": "Runtime",
+        "desc": "生命周期、受理、执行与确认投影",
+        "intro": "1",
+        "children": [
+         {
+          "key": "lifecycle",
+          "title": "生命周期与代次",
+          "desc": "管理开始、停止和旧回调",
+          "details": [
+           "start / stop 管理 Runtime 的生命周期；一次模型或工具处理结束后继续等待。",
+           "异步边界核对 generation、lease 与取消信号，旧代结果无法推进新代。",
+           "停止等待已进入的必要写入；World 使用独立清理信号。"
+          ],
+          "source": "src/runtime/runtime.ts",
+          "intro": "1"
+         },
+         {
+          "key": "ingress-control",
+          "title": "接入与调度",
+          "desc": "用户输入路径",
+          "children": [
+           {
+            "key": "admission",
+            "title": "受理与 FIFO",
+            "desc": "UserInput 单活动处理",
+            "details": [
+             "输入验证通过后才占用身份和排队序号，受理时保存事实副本。",
+             "先入队并发起接收追加，再交付 accepted；执行等待接收追加确认。",
+             "World Event 仍保留独立的旧入口，两条执行路径通过忙状态互斥。"
+            ],
+            "source": "docs/2026-10-05-M2.0进度与架构图.md",
+            "intro": "2"
+           }
+          ]
+         },
+         {
+          "key": "execution",
+          "title": "触发执行",
+          "desc": "用户输入与旧 Event 分路执行",
+          "details": [
+           "Agent 构造请求，Provider 返回文本与工具调用，Runtime 依声明调用 World。",
+           "每次处理受模型轮数、工具批量、请求/响应字节与调用期限约束。",
+           "World 效果无法确认时保留 unknown，关闭后续受理并收束停止。"
+          ],
+          "source": "docs/2026-10-05-M2.0进度与架构图.md",
+          "intro": "2",
+          "children": [
+           {
+            "key": "context-group",
+            "title": "本次上下文",
+            "desc": "固定本次事实，组装可见候选",
+            "children": [
+             {
+              "key": "history",
+              "title": "取得历史候选",
+              "desc": "Session 历史",
+              "details": [
+               "Runtime 提供历史候选；Agent 按语义和实际请求容量选择。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "current",
+              "title": "写入当前事实",
+              "desc": "用户输入 / Event",
+              "details": [
+               "当前输入或事件随执行过程追加。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "authority",
+              "title": "本次权限",
+              "desc": "run / generation / signal",
+              "details": [
+               "取消和代次变化撤销新的普通提交；已进入的必要追加仍等待确认。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "model-group",
+            "title": "模型判断",
+            "desc": "Runtime 协调 Agent 与 Provider",
+            "children": [
+             {
+              "key": "agent-request",
+              "title": "请求 Agent",
+              "desc": "构造初始或续轮请求",
+              "details": [
+               "Agent 返回 ProviderRequest，拥有指令和上下文选择。"
+              ],
+              "source": "src/agent/conversation-agent.ts"
+             },
+             {
+              "key": "provider-request-group",
+              "title": "调用 Provider",
+              "desc": "计量、提交和等待模型",
+              "children": [
+               {
+                "key": "measure",
+                "title": "检查请求容量",
+                "desc": "实际序列化字节",
+                "details": [
+                 "计量包含消息、工具声明与原生重放项；超出硬上限明确失败。"
+                ],
+                "source": "src/protocol/input.ts"
+               },
+               {
+                "key": "request-record",
+                "title": "追加请求事实",
+                "desc": "provider_request",
+                "details": [
+                 "请求事实通过 Runtime 的追加边界保存。"
+                ],
+                "source": "src/runtime/trigger-run.ts"
+               },
+               {
+                "key": "complete",
+                "title": "等待 complete",
+                "desc": "响应 / 错误 / 取消",
+                "details": [
+                 "Provider 负责传输，Runtime 管理调用期限和本次执行权。"
+                ],
+                "source": "src/providers/openai-responses-provider.ts"
+               }
+              ]
+             },
+             {
+              "key": "response",
+              "title": "接收模型结果",
+              "desc": "文本与工具调用",
+              "details": [
+               "响应记录保留工具 callId 及不透明原生项，后续工具按声明分派。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "tools-group",
+            "title": "工具分派与续轮",
+            "desc": "声明、所有权与回执配对",
+            "children": [
+             {
+              "key": "registry",
+              "title": "声明与参数检查",
+              "desc": "已声明 World 工具",
+              "details": [
+               "Core 检查结构；World 检查领域参数。M5 起同时分派 Agent 任务工具。"
+              ],
+              "source": "src/runtime/tool-registry.ts"
+             },
+             {
+              "key": "world-call",
+              "title": "调用所属工具",
+              "desc": "工具拥有者返回结果",
+              "details": [
+               "World 拥有外部效果；Agent 工具通过当前权限口提交任务状态。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "receipt",
+              "title": "确认回执",
+              "desc": "原 callId / toolName / 状态",
+              "details": [
+               "效果无法确认时保留 unknown 并关闭受理；成功回执与取消按取得时点收束。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "continuation",
+              "title": "交回 Agent 判断",
+              "desc": "继续一轮或结束本次",
+              "details": [
+               "模型响应和工具回执通过 nextRequest 交给 Agent；续轮仍属于当前 run。"
+              ],
+              "source": "src/protocol/index.ts"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "collaborators",
+        "title": "判断与领域协作",
+        "desc": "Agent / Provider / World",
+        "intro": "1",
+        "children": [
+         {
+          "key": "agent",
+          "title": "Agent",
+          "desc": "ConversationAgent · 指令、历史与续轮",
+          "intro": "2",
+          "children": [
+           {
+            "key": "context",
+            "title": "上下文选择",
+            "desc": "完整轮次与当前运行",
+            "details": [
+             "当前输入已进入执行事实，构造请求时只交付一次。",
+             "完整历史轮次整体裁剪；当前运行保留，按 Provider 实际序列化字节计量。",
+             "选取容量内成功历史；旧 Event 仍沿兼容路径。"
+            ],
+            "source": "src/agent/conversation-agent.ts",
+            "intro": "2"
+           }
+          ]
+         },
+         {
+          "key": "provider",
+          "title": "Provider",
+          "desc": "转换模型协议，收回调用等待资源",
+          "intro": "1",
+          "children": [
+           {
+            "key": "transport",
+            "title": "模型协议与传输",
+            "desc": "Scripted / Responses 兼容",
+            "details": [
+             "Provider 负责序列化、HTTP 与响应转换；平台工具执行由 World 承担。",
+             "measureRequest 测量实际请求体字节，容量包含工具声明和原生项。",
+             "原生 output 保留顺序并以 callId 配对回包。"
+            ],
+            "source": "src/providers/openai-responses-provider.ts",
+            "intro": "1"
+           }
+          ]
+         },
+         {
+          "key": "world",
+          "title": "World / FixtureWorld",
+          "desc": "拥有环境事实、工具与效果判断",
+          "intro": "1",
+          "children": [
+           {
+            "key": "worldtools",
+            "title": "工具声明与回执",
+            "desc": "查询 · 写入 · 结构化结果",
+            "details": [
+             "Core 校验参数结构，World 校验领域语义并执行工具。",
+             "回执保留原 toolName、callId 与状态；未知外部效果保留 unknown。",
+             "FixtureWorld 用于离线验证，生产 World 沿独立工作线接入。"
+            ],
+            "source": "src/protocol/index.ts",
+            "intro": "1"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "store",
+        "title": "Session / State 存储",
+        "desc": "保存会话事实与独立键值状态",
+        "intro": "1",
+        "children": [
+         {
+          "key": "jsonl",
+          "title": "JSONL Session",
+          "desc": "串行追加执行事实",
+          "details": [
+           "事件、请求、响应、调用和回执随运行过程追加。",
+           "appendFile 完成后确认可读；停止等待已进入的追加。",
+           "Session 文件持续增长，普通追加不提供 fsync 保证。"
+          ],
+          "source": "src/state/jsonl-session.ts",
+          "intro": "1"
+         },
+         {
+          "key": "state",
+          "title": "MemoryState",
+          "desc": "独立的实例内键值状态",
+          "details": [
+           "State 与 Session 契约分开。",
+           "当前装配中的 MemoryState 尚未形成长期 Memory 更新与提取流程。"
+          ],
+          "source": "src/state/memory-state.ts",
+          "intro": "1"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/ingress/events",
+       "to": "system/runtime/execution/context-group/current",
+       "label": "handleEvent"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/collaborators/agent/context",
+       "label": "构造请求",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/collaborators/provider/transport",
+       "label": "模型调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/collaborators/world/worldtools",
+       "label": "领域工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/store/jsonl",
+       "to": "system/runtime/execution/context-group/history",
+       "label": "读取历史"
+      },
+      {
+       "from": "system/ingress/console",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "提交输入"
+      },
+      {
+       "from": "system/runtime/ingress-control/admission",
+       "to": "system/runtime/execution/context-group/current",
+       "label": "出队后执行"
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/runtime/execution/model-group/agent-request",
+       "label": "当前上下文"
+      },
+      {
+       "from": "system/runtime/execution/model-group/response",
+       "to": "system/runtime/execution/tools-group/registry",
+       "label": "需要工具时"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/runtime/execution/model-group/provider-request-group/measure",
+       "label": "交付请求"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/runtime/execution/model-group/response",
+       "label": "返回响应"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/measure",
+       "to": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "label": "检查通过"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/runtime/execution/model-group/provider-request-group/complete",
+       "label": "实际调用"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/registry",
+       "to": "system/runtime/execution/tools-group/world-call",
+       "label": "校验后分派"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/runtime/execution/tools-group/receipt",
+       "label": "原调用回执"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/execution/tools-group/continuation",
+       "label": "保存后续轮"
+      }
+     ]
+    },
+    {
+     "id": "m3",
+     "label": "M3.0",
+     "track": "main",
+     "order": 3,
+     "title": "统一触发调度",
+     "subtitle": "用户输入、世界事件与心跳共用一条 FIFO，逐项执行并结清。",
+     "date": "2026.10.08",
+     "scope": "统一触发 · 固定输入边界",
+     "status": "限定首批验收通过",
+     "changes": [
+      "Event 独立执行路径并入 TriggerChannel，三个来源共用一个消费者。",
+      "新增 World 订阅和可控心跳；排队新事实留给后续处理。"
+     ],
+     "verified": "111 项自动测试及独立验收已记录。World 长期身份偏差由 M4 承接。",
+     "doc": "../docs/2026-10-08-M3.0进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "统一触发调度",
+      "desc": "按接口连接，按范围展开",
+      "children": [
+       {
+        "key": "ingress",
+        "title": "触发来源",
+        "desc": "用户输入 / 世界事件 / 周期心跳",
+        "intro": "1",
+        "children": [
+         {
+          "key": "console",
+          "title": "Console 用户输入",
+          "desc": "文本与本地命令",
+          "details": [
+           "Console 只编辑、提交和展示公开诊断。",
+           "受理、队列、模型请求与工具执行继续归 Runtime。"
+          ],
+          "source": "src/console/terminal.ts",
+          "intro": "2"
+         },
+         {
+          "key": "events",
+          "title": "World 事件",
+          "desc": "订阅主动推送",
+          "details": [
+           "Runtime 启动 World 后装配 sink；停止撤销订阅和旧代投递权。"
+          ],
+          "source": "src/protocol/index.ts",
+          "intro": "1"
+         },
+         {
+          "key": "heartbeat-source",
+          "title": "周期时钟",
+          "desc": "产生可控周期 tick",
+          "details": [
+           "由装配显式启用；Runtime 启动时订阅，停止时退订。",
+           "默认周期 30 秒、有效期 5 秒。"
+          ],
+          "source": "src/protocol/trigger.ts",
+          "intro": "3"
+         }
+        ]
+       },
+       {
+        "key": "runtime",
+        "title": "Runtime",
+        "desc": "生命周期、受理、执行与确认投影",
+        "intro": "1",
+        "children": [
+         {
+          "key": "lifecycle",
+          "title": "生命周期与代次",
+          "desc": "管理开始、停止和旧回调",
+          "details": [
+           "start / stop 管理 Runtime 的生命周期；一次模型或工具处理结束后继续等待。",
+           "异步边界核对 generation、lease 与取消信号，旧代结果无法推进新代。",
+           "停止等待已进入的必要写入；World 使用独立清理信号。"
+          ],
+          "source": "src/runtime/runtime.ts",
+          "intro": "1"
+         },
+         {
+          "key": "ingress-control",
+          "title": "接入与调度",
+          "desc": "多来源汇入共享队列",
+          "children": [
+           {
+            "key": "admission",
+            "title": "受理与 FIFO",
+            "desc": "UserInput · World Event · Heartbeat",
+            "details": [
+             "输入验证通过后才占用身份和排队序号，受理时保存事实副本。",
+             "先入队并发起接收追加，再交付 accepted；执行等待接收追加确认。",
+             "同一 Session 只运行一个逻辑 run；终态结算后继续下一项。"
+            ],
+            "source": "src/runtime/trigger-channel.ts",
+            "intro": "3"
+           },
+           {
+            "key": "heartbeat",
+            "title": "心跳受理策略",
+            "desc": "未结清 tick 去重 · 可选任务策略",
+            "details": [
+             "心跳显式启用；默认周期 30 秒、有效期 5 秒。",
+             "已有未结算心跳时跳过新 tick；其他来源忙且队列有位时仍可入队。",
+             "Agent 可以返回无动作决定，结清心跳后 Runtime 继续等待。"
+            ],
+            "source": "src/protocol/trigger.ts",
+            "intro": "3"
+           }
+          ]
+         },
+         {
+          "key": "execution",
+          "title": "触发执行",
+          "desc": "统一 run 的模型与工具往返",
+          "details": [
+           "Agent 构造请求，Provider 返回文本与工具调用，Runtime 依声明调用 World。",
+           "每次处理受模型轮数、工具批量、请求/响应字节与调用期限约束。",
+           "World 效果无法确认时保留 unknown，关闭后续受理并收束停止。"
+          ],
+          "source": "src/runtime/trigger-run.ts",
+          "intro": "3",
+          "children": [
+           {
+            "key": "context-group",
+            "title": "本次上下文",
+            "desc": "固定本次事实，组装可见候选",
+            "children": [
+             {
+              "key": "history",
+              "title": "取得历史候选",
+              "desc": "Session 历史",
+              "details": [
+               "Runtime 提供历史候选；Agent 按语义和实际请求容量选择。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "current",
+              "title": "写入当前事实",
+              "desc": "输入 / Event / Heartbeat",
+              "details": [
+               "当前事实只交付一次；排队接收归档与本次执行事实分别处理。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "authority",
+              "title": "本次权限",
+              "desc": "run / generation / signal",
+              "details": [
+               "取消和代次变化撤销新的普通提交；已进入的必要追加仍等待确认。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "model-group",
+            "title": "模型判断",
+            "desc": "Runtime 协调 Agent 与 Provider",
+            "children": [
+             {
+              "key": "agent-request",
+              "title": "请求 Agent",
+              "desc": "构造初始或续轮请求",
+              "details": [
+               "Agent 返回 ProviderRequest，拥有指令和上下文选择。"
+              ],
+              "source": "src/agent/conversation-agent.ts"
+             },
+             {
+              "key": "provider-request-group",
+              "title": "调用 Provider",
+              "desc": "计量、提交和等待模型",
+              "children": [
+               {
+                "key": "measure",
+                "title": "检查请求容量",
+                "desc": "实际序列化字节",
+                "details": [
+                 "计量包含消息、工具声明与原生重放项；超出硬上限明确失败。"
+                ],
+                "source": "src/protocol/input.ts"
+               },
+               {
+                "key": "request-record",
+                "title": "追加请求事实",
+                "desc": "provider_request",
+                "details": [
+                 "请求事实通过 Runtime 的追加边界保存。"
+                ],
+                "source": "src/runtime/trigger-run.ts"
+               },
+               {
+                "key": "complete",
+                "title": "等待 complete",
+                "desc": "响应 / 错误 / 取消",
+                "details": [
+                 "Provider 负责传输，Runtime 管理调用期限和本次执行权。"
+                ],
+                "source": "src/providers/openai-responses-provider.ts"
+               }
+              ]
+             },
+             {
+              "key": "response",
+              "title": "接收模型结果",
+              "desc": "文本与工具调用",
+              "details": [
+               "响应记录保留工具 callId 及不透明原生项，后续工具按声明分派。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "tools-group",
+            "title": "工具分派与续轮",
+            "desc": "声明、所有权与回执配对",
+            "children": [
+             {
+              "key": "registry",
+              "title": "声明与参数检查",
+              "desc": "已声明 World 工具",
+              "details": [
+               "Core 检查结构；World 检查领域参数。M5 起同时分派 Agent 任务工具。"
+              ],
+              "source": "src/runtime/tool-registry.ts"
+             },
+             {
+              "key": "world-call",
+              "title": "调用所属工具",
+              "desc": "工具拥有者返回结果",
+              "details": [
+               "World 拥有外部效果；Agent 工具通过当前权限口提交任务状态。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "receipt",
+              "title": "确认回执",
+              "desc": "原 callId / toolName / 状态",
+              "details": [
+               "效果无法确认时保留 unknown 并关闭受理；成功回执与取消按取得时点收束。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "continuation",
+              "title": "交回 Agent 判断",
+              "desc": "继续一轮或结束本次",
+              "details": [
+               "模型响应和工具回执通过 nextRequest 交给 Agent；续轮仍属于当前 run。"
+              ],
+              "source": "src/protocol/index.ts"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "collaborators",
+        "title": "判断与领域协作",
+        "desc": "Agent / Provider / World",
+        "intro": "1",
+        "children": [
+         {
+          "key": "agent",
+          "title": "Agent",
+          "desc": "ConversationAgent · 指令、历史与续轮",
+          "intro": "2",
+          "children": [
+           {
+            "key": "context",
+            "title": "上下文选择",
+            "desc": "完整轮次与当前运行",
+            "details": [
+             "当前输入已进入执行事实，构造请求时只交付一次。",
+             "完整历史轮次整体裁剪；当前运行保留，按 Provider 实际序列化字节计量。",
+             "排队 B 的接收记录留在归档，A 的续轮保持固定输入边界。"
+            ],
+            "source": "src/agent/conversation-agent.ts",
+            "intro": "2"
+           }
+          ]
+         },
+         {
+          "key": "provider",
+          "title": "Provider",
+          "desc": "转换模型协议，收回调用等待资源",
+          "intro": "1",
+          "children": [
+           {
+            "key": "transport",
+            "title": "模型协议与传输",
+            "desc": "Scripted / Responses 兼容",
+            "details": [
+             "Provider 负责序列化、HTTP 与响应转换；平台工具执行由 World 承担。",
+             "measureRequest 测量实际请求体字节，容量包含工具声明和原生项。",
+             "原生 output 保留顺序并以 callId 配对回包。"
+            ],
+            "source": "src/providers/openai-responses-provider.ts",
+            "intro": "1"
+           }
+          ]
+         },
+         {
+          "key": "world",
+          "title": "World / FixtureWorld",
+          "desc": "拥有环境事实、工具与效果判断",
+          "intro": "1",
+          "children": [
+           {
+            "key": "worldtools",
+            "title": "工具声明与回执",
+            "desc": "查询 · 写入 · 结构化结果",
+            "details": [
+             "Core 校验参数结构，World 校验领域语义并执行工具。",
+             "回执保留原 toolName、callId 与状态；未知外部效果保留 unknown。",
+             "FixtureWorld 用于离线验证，生产 World 沿独立工作线接入。"
+            ],
+            "source": "src/protocol/index.ts",
+            "intro": "1"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "store",
+        "title": "Session / State 存储",
+        "desc": "保存会话事实与独立键值状态",
+        "intro": "1",
+        "children": [
+         {
+          "key": "jsonl",
+          "title": "JSONL Session",
+          "desc": "串行追加执行事实",
+          "details": [
+           "事件、请求、响应、调用和回执随运行过程追加。",
+           "appendFile 完成后确认可读；停止等待已进入的追加。",
+           "Session 文件持续增长，普通追加不提供 fsync 保证。"
+          ],
+          "source": "src/state/jsonl-session.ts",
+          "intro": "1"
+         },
+         {
+          "key": "state",
+          "title": "MemoryState",
+          "desc": "独立的实例内键值状态",
+          "details": [
+           "State 与 Session 契约分开。",
+           "当前装配中的 MemoryState 尚未形成长期 Memory 更新与提取流程。"
+          ],
+          "source": "src/state/memory-state.ts",
+          "intro": "1"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/ingress/events",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "提交事件"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/collaborators/agent/context",
+       "label": "构造请求",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/collaborators/provider/transport",
+       "label": "模型调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/collaborators/world/worldtools",
+       "label": "领域工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/store/jsonl",
+       "to": "system/runtime/execution/context-group/history",
+       "label": "读取历史"
+      },
+      {
+       "from": "system/ingress/console",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "提交输入"
+      },
+      {
+       "from": "system/ingress/heartbeat-source",
+       "to": "system/runtime/ingress-control/heartbeat",
+       "label": "周期 tick"
+      },
+      {
+       "from": "system/runtime/ingress-control/admission",
+       "to": "system/runtime/execution/context-group/current",
+       "label": "出队后执行"
+      },
+      {
+       "from": "system/runtime/ingress-control/heartbeat",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "合法 tick"
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/runtime/execution/model-group/agent-request",
+       "label": "当前上下文"
+      },
+      {
+       "from": "system/runtime/execution/model-group/response",
+       "to": "system/runtime/execution/tools-group/registry",
+       "label": "需要工具时"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/runtime/execution/model-group/provider-request-group/measure",
+       "label": "交付请求"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/runtime/execution/model-group/response",
+       "label": "返回响应"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/measure",
+       "to": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "label": "检查通过"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/runtime/execution/model-group/provider-request-group/complete",
+       "label": "实际调用"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/registry",
+       "to": "system/runtime/execution/tools-group/world-call",
+       "label": "校验后分派"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/runtime/execution/tools-group/receipt",
+       "label": "原调用回执"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/execution/tools-group/continuation",
+       "label": "保存后续轮"
+      }
+     ]
+    },
+    {
+     "id": "m4",
+     "label": "M4.0",
+     "track": "main",
+     "order": 4,
+     "title": "World 顺序投递",
+     "subtitle": "来源保留稳定身份，Runtime 分别确认受理、保存与结清，并在新实例启动前核对历史。",
+     "date": "2026.10.09",
+     "scope": "顺序投递 · 保存确认 · 启动审计",
+     "status": "独立验收通过",
+     "changes": [
+      "World 身份改用稳定顺序信封与连续前缀，独立于用户输入预算。",
+      "新增 waitSaved、启动预检和有界完整历史候选。"
+     ],
+     "verified": "144 项自动测试、完整类型检查与独立验收已记录。",
+     "doc": "../docs/2026-10-09-M4.0进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "World 顺序投递",
+      "desc": "按接口连接，按范围展开",
+      "children": [
+       {
+        "key": "ingress",
+        "title": "触发来源",
+        "desc": "用户输入 / 世界事件 / 周期心跳",
+        "intro": "1",
+        "children": [
+         {
+          "key": "console",
+          "title": "Console 用户输入",
+          "desc": "文本与本地命令",
+          "details": [
+           "Console 只编辑、提交和展示公开诊断。",
+           "受理、队列、模型请求与工具执行继续归 Runtime。"
+          ],
+          "source": "src/console/terminal.ts",
+          "intro": "2"
+         },
+         {
+          "key": "events",
+          "title": "World 事件",
+          "desc": "稳定顺序信封",
+          "details": [
+           "来源在投递前固定 stream / epoch / sequence，保留未保存项。"
+          ],
+          "source": "src/protocol/index.ts",
+          "intro": "1"
+         },
+         {
+          "key": "heartbeat-source",
+          "title": "周期时钟",
+          "desc": "产生可控周期 tick",
+          "details": [
+           "由装配显式启用；Runtime 启动时订阅，停止时退订。",
+           "默认周期 30 秒、有效期 5 秒。"
+          ],
+          "source": "src/protocol/trigger.ts",
+          "intro": "3"
+         }
+        ]
+       },
+       {
+        "key": "runtime",
+        "title": "Runtime",
+        "desc": "生命周期、受理、执行与确认投影",
+        "intro": "1",
+        "children": [
+         {
+          "key": "lifecycle",
+          "title": "生命周期与代次",
+          "desc": "管理开始、停止和旧回调",
+          "details": [
+           "start / stop 管理 Runtime 的生命周期；一次模型或工具处理结束后继续等待。",
+           "异步边界核对 generation、lease 与取消信号，旧代结果无法推进新代。",
+           "停止等待已进入的必要写入；World 使用独立清理信号。"
+          ],
+          "source": "src/runtime/runtime.ts",
+          "intro": "1"
+         },
+         {
+          "key": "ingress-control",
+          "title": "接入与调度",
+          "desc": "多来源汇入共享队列",
+          "children": [
+           {
+            "key": "admission",
+            "title": "受理与 FIFO",
+            "desc": "UserInput · World Event · Heartbeat",
+            "details": [
+             "输入验证通过后才占用身份和排队序号，受理时保存事实副本。",
+             "先入队并发起接收追加，再交付 accepted；执行等待接收追加确认。",
+             "同一 Session 只运行一个逻辑 run；终态结算后继续下一项。"
+            ],
+            "source": "src/runtime/trigger-channel.ts",
+            "intro": "3"
+           },
+           {
+            "key": "delivery",
+            "title": "顺序投递与保存",
+            "desc": "稳定信封 · 三个进度水位",
+            "details": [
+             "World 使用固定 stream / epoch 和连续 sequence；重投沿用原信封。",
+             "admittedTail、receivedPrefix、settledPrefix 分别表示受理、接收保存与连续结清。",
+             "waitSaved 等待接收追加确认。默认 positions 为 16；已结清连续位置释放。"
+            ],
+            "source": "src/protocol/delivery.ts",
+            "intro": "4"
+           },
+           {
+            "key": "heartbeat",
+            "title": "心跳受理策略",
+            "desc": "未结清 tick 去重 · 可选任务策略",
+            "details": [
+             "心跳显式启用；默认周期 30 秒、有效期 5 秒。",
+             "已有未结算心跳时跳过新 tick；其他来源忙且队列有位时仍可入队。",
+             "Agent 可以返回无动作决定，结清心跳后 Runtime 继续等待。"
+            ],
+            "source": "src/protocol/trigger.ts",
+            "intro": "3"
+           }
+          ]
+         },
+         {
+          "key": "execution",
+          "title": "触发执行",
+          "desc": "统一 run 的模型与工具往返",
+          "details": [
+           "Agent 构造请求，Provider 返回文本与工具调用，Runtime 依声明调用 World。",
+           "每次处理受模型轮数、工具批量、请求/响应字节与调用期限约束。",
+           "World 效果无法确认时保留 unknown，关闭后续受理并收束停止。"
+          ],
+          "source": "src/runtime/trigger-run.ts",
+          "intro": "3",
+          "children": [
+           {
+            "key": "context-group",
+            "title": "本次上下文",
+            "desc": "固定本次事实，组装可见候选",
+            "children": [
+             {
+              "key": "history",
+              "title": "取得历史候选",
+              "desc": "有界完整运行组",
+              "details": [
+               "Runtime 提供历史候选；Agent 按语义和实际请求容量选择。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "current",
+              "title": "写入当前事实",
+              "desc": "输入 / Event / Heartbeat",
+              "details": [
+               "当前事实只交付一次；排队接收归档与本次执行事实分别处理。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "authority",
+              "title": "本次权限",
+              "desc": "run / generation / signal",
+              "details": [
+               "取消和代次变化撤销新的普通提交；已进入的必要追加仍等待确认。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "model-group",
+            "title": "模型判断",
+            "desc": "Runtime 协调 Agent 与 Provider",
+            "children": [
+             {
+              "key": "agent-request",
+              "title": "请求 Agent",
+              "desc": "构造初始或续轮请求",
+              "details": [
+               "Agent 返回 ProviderRequest，拥有指令和上下文选择。"
+              ],
+              "source": "src/agent/conversation-agent.ts"
+             },
+             {
+              "key": "provider-request-group",
+              "title": "调用 Provider",
+              "desc": "计量、提交和等待模型",
+              "children": [
+               {
+                "key": "measure",
+                "title": "检查请求容量",
+                "desc": "实际序列化字节",
+                "details": [
+                 "计量包含消息、工具声明与原生重放项；超出硬上限明确失败。"
+                ],
+                "source": "src/protocol/input.ts"
+               },
+               {
+                "key": "request-record",
+                "title": "追加请求事实",
+                "desc": "provider_request",
+                "details": [
+                 "请求事实通过 Runtime 的追加边界保存。"
+                ],
+                "source": "src/runtime/trigger-run.ts"
+               },
+               {
+                "key": "complete",
+                "title": "等待 complete",
+                "desc": "响应 / 错误 / 取消",
+                "details": [
+                 "Provider 负责传输，Runtime 管理调用期限和本次执行权。"
+                ],
+                "source": "src/providers/openai-responses-provider.ts"
+               }
+              ]
+             },
+             {
+              "key": "response",
+              "title": "接收模型结果",
+              "desc": "文本与工具调用",
+              "details": [
+               "响应记录保留工具 callId 及不透明原生项，后续工具按声明分派。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "tools-group",
+            "title": "工具分派与续轮",
+            "desc": "声明、所有权与回执配对",
+            "children": [
+             {
+              "key": "registry",
+              "title": "声明与参数检查",
+              "desc": "已声明 World 工具",
+              "details": [
+               "Core 检查结构；World 检查领域参数。M5 起同时分派 Agent 任务工具。"
+              ],
+              "source": "src/runtime/tool-registry.ts"
+             },
+             {
+              "key": "world-call",
+              "title": "调用所属工具",
+              "desc": "工具拥有者返回结果",
+              "details": [
+               "World 拥有外部效果；Agent 工具通过当前权限口提交任务状态。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "receipt",
+              "title": "确认回执",
+              "desc": "原 callId / toolName / 状态",
+              "details": [
+               "效果无法确认时保留 unknown 并关闭受理；成功回执与取消按取得时点收束。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "continuation",
+              "title": "交回 Agent 判断",
+              "desc": "继续一轮或结束本次",
+              "details": [
+               "模型响应和工具回执通过 nextRequest 交给 Agent；续轮仍属于当前 run。"
+              ],
+              "source": "src/protocol/index.ts"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "key": "confirmed-views",
+          "title": "确认视图与查询",
+          "desc": "Runtime 管理的会话投影",
+          "children": [
+           {
+            "key": "history-window",
+            "title": "历史窗口",
+            "desc": "从确认事实派生完整候选",
+            "details": [
+             "默认最多 32 个完整运行组 / 16 MiB；投影由 Runtime 管理，底层事实由 Session 保存。"
+            ],
+            "source": "src/state/history-window.ts"
+           },
+           {
+            "key": "audit",
+            "title": "启动预检与历史窗口",
+            "desc": "先诊断，再启动 World",
+            "details": [
+             "扫描确认历史，重建来源前缀与近期完整运行组。",
+             "unknown、未结清、损坏或工具配对缺失阻断启动，保留原因。",
+             "默认候选 32 个完整组 / 16 MiB；显式旧历史读取另受预算约束。"
+            ],
+            "source": "src/runtime/session-preflight.ts",
+            "intro": "4"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "collaborators",
+        "title": "判断与领域协作",
+        "desc": "Agent / Provider / World",
+        "intro": "1",
+        "children": [
+         {
+          "key": "agent",
+          "title": "Agent",
+          "desc": "ConversationAgent · 指令、历史与续轮",
+          "intro": "2",
+          "children": [
+           {
+            "key": "context",
+            "title": "上下文选择",
+            "desc": "完整轮次与当前运行",
+            "details": [
+             "当前输入已进入执行事实，构造请求时只交付一次。",
+             "完整历史轮次整体裁剪；当前运行保留，按 Provider 实际序列化字节计量。",
+             "排队 B 的接收记录留在归档，A 的续轮保持固定输入边界。"
+            ],
+            "source": "src/agent/conversation-agent.ts",
+            "intro": "2"
+           }
+          ]
+         },
+         {
+          "key": "provider",
+          "title": "Provider",
+          "desc": "转换模型协议，收回调用等待资源",
+          "intro": "1",
+          "children": [
+           {
+            "key": "transport",
+            "title": "模型协议与传输",
+            "desc": "Scripted / Responses 兼容",
+            "details": [
+             "Provider 负责序列化、HTTP 与响应转换；平台工具执行由 World 承担。",
+             "measureRequest 测量实际请求体字节，容量包含工具声明和原生项。",
+             "原生 output 保留顺序并以 callId 配对回包。"
+            ],
+            "source": "src/providers/openai-responses-provider.ts",
+            "intro": "1"
+           }
+          ]
+         },
+         {
+          "key": "world",
+          "title": "World / FixtureWorld",
+          "desc": "拥有环境事实、工具与效果判断",
+          "intro": "1",
+          "children": [
+           {
+            "key": "worldtools",
+            "title": "工具声明与回执",
+            "desc": "查询 · 写入 · 结构化结果",
+            "details": [
+             "Core 校验参数结构，World 校验领域语义并执行工具。",
+             "回执保留原 toolName、callId 与状态；未知外部效果保留 unknown。",
+             "FixtureWorld 用于离线验证，生产 World 沿独立工作线接入。"
+            ],
+            "source": "src/protocol/index.ts",
+            "intro": "1"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "store",
+        "title": "Session / State 存储",
+        "desc": "保存会话事实与独立键值状态",
+        "intro": "1",
+        "children": [
+         {
+          "key": "jsonl",
+          "title": "JSONL Session",
+          "desc": "串行追加执行事实",
+          "details": [
+           "事件、请求、响应、调用和回执随运行过程追加。",
+           "appendFile 完成后确认可读；停止等待已进入的追加。",
+           "Session 文件持续增长，普通追加不提供 fsync 保证。"
+          ],
+          "source": "src/state/jsonl-session.ts",
+          "intro": "1"
+         },
+         {
+          "key": "state",
+          "title": "MemoryState",
+          "desc": "独立的实例内键值状态",
+          "details": [
+           "State 与 Session 契约分开。",
+           "当前装配中的 MemoryState 尚未形成长期 Memory 更新与提取流程。"
+          ],
+          "source": "src/state/memory-state.ts",
+          "intro": "1"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/ingress/events",
+       "to": "system/runtime/ingress-control/delivery",
+       "label": "顺序信封"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/collaborators/agent/context",
+       "label": "构造请求",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/collaborators/provider/transport",
+       "label": "模型调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/collaborators/world/worldtools",
+       "label": "领域工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/store/jsonl",
+       "to": "system/runtime/execution/context-group/history",
+       "label": "读取历史"
+      },
+      {
+       "from": "system/ingress/console",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "提交输入"
+      },
+      {
+       "from": "system/ingress/heartbeat-source",
+       "to": "system/runtime/ingress-control/heartbeat",
+       "label": "周期 tick"
+      },
+      {
+       "from": "system/runtime/ingress-control/admission",
+       "to": "system/runtime/execution/context-group/current",
+       "label": "出队后执行"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/confirmed-views/history-window",
+       "label": "保存后推进视图"
+      },
+      {
+       "from": "system/runtime/ingress-control/delivery",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "顺序校验后受理"
+      },
+      {
+       "from": "system/runtime/ingress-control/heartbeat",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "合法 tick"
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/runtime/execution/model-group/agent-request",
+       "label": "当前上下文"
+      },
+      {
+       "from": "system/runtime/execution/model-group/response",
+       "to": "system/runtime/execution/tools-group/registry",
+       "label": "需要工具时"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/runtime/execution/model-group/provider-request-group/measure",
+       "label": "交付请求"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/runtime/execution/model-group/response",
+       "label": "返回响应"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/measure",
+       "to": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "label": "检查通过"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/runtime/execution/model-group/provider-request-group/complete",
+       "label": "实际调用"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/registry",
+       "to": "system/runtime/execution/tools-group/world-call",
+       "label": "校验后分派"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/runtime/execution/tools-group/receipt",
+       "label": "原调用回执"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/execution/tools-group/continuation",
+       "label": "保存后续轮"
+      }
+     ]
+    },
+    {
+     "id": "m5",
+     "label": "M5.0",
+     "track": "main",
+     "order": 5,
+     "title": "跨触发任务与心跳延续",
+     "subtitle": "Agent 保存待办意图，在到期心跳里认领一次新尝试，再明确完成或重排。",
+     "date": "2026.10.11",
+     "scope": "可选任务工具 · 心跳延续",
+     "status": "独立审查与实测通过",
+     "changes": [
+      "增加任务状态、内容修订、唤醒安排和一次认领。",
+      "任务工具与 World 工具分流，保留真实尝试和效果依据。"
+     ],
+     "verified": "204 项自动测试、独立审查及离线终端实测已记录。",
+     "doc": "../docs/2026-10-11-M5.0进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "跨触发任务与心跳延续",
+      "desc": "按接口连接，按范围展开",
+      "children": [
+       {
+        "key": "ingress",
+        "title": "触发来源",
+        "desc": "用户输入 / 世界事件 / 周期心跳",
+        "intro": "1",
+        "children": [
+         {
+          "key": "console",
+          "title": "Console 用户输入",
+          "desc": "文本与本地命令",
+          "details": [
+           "Console 只编辑、提交和展示公开诊断。",
+           "受理、队列、模型请求与工具执行继续归 Runtime。"
+          ],
+          "source": "src/console/terminal.ts",
+          "intro": "2"
+         },
+         {
+          "key": "events",
+          "title": "World 事件",
+          "desc": "稳定顺序信封",
+          "details": [
+           "来源在投递前固定 stream / epoch / sequence，保留未保存项。"
+          ],
+          "source": "src/protocol/index.ts",
+          "intro": "1"
+         },
+         {
+          "key": "heartbeat-source",
+          "title": "周期时钟",
+          "desc": "产生可控周期 tick",
+          "details": [
+           "由装配显式启用；Runtime 启动时订阅，停止时退订。",
+           "默认周期 30 秒、有效期 5 秒。"
+          ],
+          "source": "src/protocol/trigger.ts",
+          "intro": "3"
+         }
+        ]
+       },
+       {
+        "key": "runtime",
+        "title": "Runtime",
+        "desc": "生命周期、受理、执行与确认投影",
+        "intro": "1",
+        "children": [
+         {
+          "key": "lifecycle",
+          "title": "生命周期与代次",
+          "desc": "管理开始、停止和旧回调",
+          "details": [
+           "start / stop 管理 Runtime 的生命周期；一次模型或工具处理结束后继续等待。",
+           "异步边界核对 generation、lease 与取消信号，旧代结果无法推进新代。",
+           "停止等待已进入的必要写入；World 使用独立清理信号。"
+          ],
+          "source": "src/runtime/runtime.ts",
+          "intro": "1"
+         },
+         {
+          "key": "ingress-control",
+          "title": "接入与调度",
+          "desc": "多来源汇入共享队列",
+          "children": [
+           {
+            "key": "admission",
+            "title": "受理与 FIFO",
+            "desc": "UserInput · World Event · Heartbeat",
+            "details": [
+             "输入验证通过后才占用身份和排队序号，受理时保存事实副本。",
+             "先入队并发起接收追加，再交付 accepted；执行等待接收追加确认。",
+             "同一 Session 只运行一个逻辑 run；终态结算后继续下一项。"
+            ],
+            "source": "src/runtime/trigger-channel.ts",
+            "intro": "3"
+           },
+           {
+            "key": "delivery",
+            "title": "顺序投递与保存",
+            "desc": "稳定信封 · 三个进度水位",
+            "details": [
+             "World 使用固定 stream / epoch 和连续 sequence；重投沿用原信封。",
+             "admittedTail、receivedPrefix、settledPrefix 分别表示受理、接收保存与连续结清。",
+             "waitSaved 等待接收追加确认。默认 positions 为 16；已结清连续位置释放。"
+            ],
+            "source": "src/protocol/delivery.ts",
+            "intro": "4"
+           },
+           {
+            "key": "heartbeat",
+            "title": "心跳受理策略",
+            "desc": "未结清 tick 去重 · 可选任务策略",
+            "details": [
+             "心跳显式启用；默认周期 30 秒、有效期 5 秒。",
+             "已有未结算心跳时跳过新 tick；其他来源忙且队列有位时仍可入队。",
+             "任务策略选择一个到期且未消费的安排；无到期任务且无自定义策略时零模型调用。"
+            ],
+            "source": "src/protocol/trigger.ts",
+            "intro": "3"
+           }
+          ]
+         },
+         {
+          "key": "execution",
+          "title": "触发执行",
+          "desc": "统一 run 的模型与工具往返",
+          "details": [
+           "Agent 构造请求，Provider 返回文本与工具调用，Runtime 依声明调用 World。",
+           "每次处理受模型轮数、工具批量、请求/响应字节与调用期限约束。",
+           "World 效果无法确认时保留 unknown，关闭后续受理并收束停止。"
+          ],
+          "source": "src/runtime/trigger-run.ts",
+          "intro": "3",
+          "children": [
+           {
+            "key": "context-group",
+            "title": "本次上下文",
+            "desc": "固定本次事实，组装可见候选",
+            "children": [
+             {
+              "key": "history",
+              "title": "取得历史候选",
+              "desc": "有界完整运行组",
+              "details": [
+               "Runtime 提供历史候选；Agent 按语义和实际请求容量选择。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "current",
+              "title": "写入当前事实",
+              "desc": "输入 / Event / Heartbeat",
+              "details": [
+               "当前事实只交付一次；排队接收归档与本次执行事实分别处理。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "authority",
+              "title": "本次权限",
+              "desc": "run / generation / signal",
+              "details": [
+               "取消和代次变化撤销新的普通提交；已进入的必要追加仍等待确认。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "model-group",
+            "title": "模型判断",
+            "desc": "Runtime 协调 Agent 与 Provider",
+            "children": [
+             {
+              "key": "agent-request",
+              "title": "请求 Agent",
+              "desc": "构造初始或续轮请求",
+              "details": [
+               "Agent 返回 ProviderRequest，拥有指令和上下文选择。"
+              ],
+              "source": "src/agent/conversation-agent.ts"
+             },
+             {
+              "key": "provider-request-group",
+              "title": "调用 Provider",
+              "desc": "计量、提交和等待模型",
+              "children": [
+               {
+                "key": "measure",
+                "title": "检查请求容量",
+                "desc": "实际序列化字节",
+                "details": [
+                 "计量包含消息、工具声明与原生重放项；超出硬上限明确失败。"
+                ],
+                "source": "src/protocol/input.ts"
+               },
+               {
+                "key": "request-record",
+                "title": "追加请求事实",
+                "desc": "provider_request",
+                "details": [
+                 "请求事实通过 Runtime 的追加边界保存。"
+                ],
+                "source": "src/runtime/trigger-run.ts"
+               },
+               {
+                "key": "complete",
+                "title": "等待 complete",
+                "desc": "响应 / 错误 / 取消",
+                "details": [
+                 "Provider 负责传输，Runtime 管理调用期限和本次执行权。"
+                ],
+                "source": "src/providers/openai-responses-provider.ts"
+               }
+              ]
+             },
+             {
+              "key": "response",
+              "title": "接收模型结果",
+              "desc": "文本与工具调用",
+              "details": [
+               "响应记录保留工具 callId 及不透明原生项，后续工具按声明分派。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "tools-group",
+            "title": "工具分派与续轮",
+            "desc": "声明、所有权与回执配对",
+            "children": [
+             {
+              "key": "registry",
+              "title": "声明与参数检查",
+              "desc": "固定 Agent / World 所有权",
+              "details": [
+               "Core 检查结构；World 检查领域参数。M5 起同时分派 Agent 任务工具。"
+              ],
+              "source": "src/runtime/tool-registry.ts"
+             },
+             {
+              "key": "world-call",
+              "title": "调用所属工具",
+              "desc": "工具拥有者返回结果",
+              "details": [
+               "World 拥有外部效果；Agent 工具通过当前权限口提交任务状态。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "receipt",
+              "title": "确认回执",
+              "desc": "原 callId / toolName / 状态",
+              "details": [
+               "效果无法确认时保留 unknown 并关闭受理；成功回执与取消按取得时点收束。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "continuation",
+              "title": "交回 Agent 判断",
+              "desc": "继续一轮或结束本次",
+              "details": [
+               "模型响应和工具回执通过 nextRequest 交给 Agent；续轮仍属于当前 run。"
+              ],
+              "source": "src/protocol/index.ts"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "key": "confirmed-views",
+          "title": "确认视图与查询",
+          "desc": "Runtime 管理的会话投影",
+          "children": [
+           {
+            "key": "history-window",
+            "title": "历史窗口",
+            "desc": "从确认事实派生完整候选",
+            "details": [
+             "默认最多 32 个完整运行组 / 16 MiB；投影由 Runtime 管理，底层事实由 Session 保存。"
+            ],
+            "source": "src/state/history-window.ts"
+           },
+           {
+            "key": "audit",
+            "title": "启动预检与历史窗口",
+            "desc": "先诊断，再启动 World",
+            "details": [
+             "扫描确认历史，重建来源前缀与近期完整运行组。",
+             "unknown、未结清、损坏或工具配对缺失阻断启动，保留原因。",
+             "默认候选 32 个完整组 / 16 MiB；显式旧历史读取另受预算约束。"
+            ],
+            "source": "src/runtime/session-preflight.ts",
+            "intro": "4"
+           },
+           {
+            "key": "projection",
+            "title": "任务确认投影",
+            "desc": "从同一 Session 重建",
+            "details": [
+             "task_changed / task_claimed 与执行事实进入同一归档。",
+             "投影发布晚于追加确认；新实例重建状态和安排消费事实。"
+            ],
+            "source": "src/state/task-projection.ts",
+            "intro": "5"
+           }
+          ]
+         },
+         {
+          "key": "task-control",
+          "title": "跨触发任务",
+          "desc": "可选意图提交与安排消费",
+          "children": [
+           {
+            "key": "task",
+            "title": "跨触发任务",
+            "desc": "意图 · 安排 · 一次认领",
+            "details": [
+             "任务状态为 active / waiting / completed / cancelled，更新携带期望 revision。",
+             "scheduleRevision 与内容修订分开；认领保存后，原安排已消费。重试须明确重排。",
+             "任务变更追加确认后才发布投影。工具成功与 run 成功分别记录，任务由 Agent 明确完成。",
+             "默认活跃任务 64 项 / 128 KiB；完整尝试证据按预算显式查询。"
+            ],
+            "source": "src/runtime/task-coordinator.ts",
+            "intro": "5"
+           },
+           {
+            "key": "task-visibility",
+            "title": "确认后可见",
+            "desc": "单一追加边界",
+            "details": [
+             "Agent 提交内容变更；Runtime 核对权限、修订和容量，确认后更新任务投影。"
+            ],
+            "source": "src/runtime/task-coordinator.ts"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "collaborators",
+        "title": "判断与领域协作",
+        "desc": "Agent / Provider / World",
+        "intro": "1",
+        "children": [
+         {
+          "key": "agent",
+          "title": "Agent",
+          "desc": "ConversationAgent · 指令、历史与续轮",
+          "intro": "2",
+          "children": [
+           {
+            "key": "context",
+            "title": "上下文选择",
+            "desc": "完整轮次与当前运行",
+            "details": [
+             "当前输入已进入执行事实，构造请求时只交付一次。",
+             "完整历史轮次整体裁剪；当前运行保留，按 Provider 实际序列化字节计量。",
+             "排队 B 的接收记录留在归档，A 的续轮保持固定输入边界。"
+            ],
+            "source": "src/agent/conversation-agent.ts",
+            "intro": "2"
+           }
+          ]
+         },
+         {
+          "key": "provider",
+          "title": "Provider",
+          "desc": "转换模型协议，收回调用等待资源",
+          "intro": "1",
+          "children": [
+           {
+            "key": "transport",
+            "title": "模型协议与传输",
+            "desc": "Scripted / Responses 兼容",
+            "details": [
+             "Provider 负责序列化、HTTP 与响应转换；平台工具执行由 World 承担。",
+             "measureRequest 测量实际请求体字节，容量包含工具声明和原生项。",
+             "原生 output 保留顺序并以 callId 配对回包。"
+            ],
+            "source": "src/providers/openai-responses-provider.ts",
+            "intro": "1"
+           }
+          ]
+         },
+         {
+          "key": "world",
+          "title": "World / FixtureWorld",
+          "desc": "拥有环境事实、工具与效果判断",
+          "intro": "1",
+          "children": [
+           {
+            "key": "worldtools",
+            "title": "工具声明与回执",
+            "desc": "查询 · 写入 · 结构化结果",
+            "details": [
+             "Core 校验参数结构，World 校验领域语义并执行工具。",
+             "回执保留原 toolName、callId 与状态；未知外部效果保留 unknown。",
+             "FixtureWorld 用于离线验证，生产 World 沿独立工作线接入。"
+            ],
+            "source": "src/protocol/index.ts",
+            "intro": "1"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "store",
+        "title": "Session / State 存储",
+        "desc": "保存会话事实与独立键值状态",
+        "intro": "1",
+        "children": [
+         {
+          "key": "jsonl",
+          "title": "JSONL Session",
+          "desc": "串行追加执行事实",
+          "details": [
+           "事件、请求、响应、调用和回执随运行过程追加。",
+           "appendFile 完成后确认可读；停止等待已进入的追加。",
+           "Session 文件持续增长，普通追加不提供 fsync 保证。"
+          ],
+          "source": "src/state/jsonl-session.ts",
+          "intro": "1"
+         },
+         {
+          "key": "state",
+          "title": "MemoryState",
+          "desc": "独立的实例内键值状态",
+          "details": [
+           "State 与 Session 契约分开。",
+           "当前装配中的 MemoryState 尚未形成长期 Memory 更新与提取流程。"
+          ],
+          "source": "src/state/memory-state.ts",
+          "intro": "1"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/ingress/events",
+       "to": "system/runtime/ingress-control/delivery",
+       "label": "顺序信封"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/collaborators/agent/context",
+       "label": "构造请求",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/collaborators/provider/transport",
+       "label": "模型调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/collaborators/world/worldtools",
+       "label": "领域工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/store/jsonl",
+       "to": "system/runtime/execution/context-group/history",
+       "label": "读取历史"
+      },
+      {
+       "from": "system/ingress/console",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "提交输入"
+      },
+      {
+       "from": "system/ingress/heartbeat-source",
+       "to": "system/runtime/ingress-control/heartbeat",
+       "label": "周期 tick"
+      },
+      {
+       "from": "system/runtime/ingress-control/admission",
+       "to": "system/runtime/execution/context-group/current",
+       "label": "出队后执行"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/confirmed-views/history-window",
+       "label": "保存后推进视图"
+      },
+      {
+       "from": "system/runtime/ingress-control/delivery",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "顺序校验后受理"
+      },
+      {
+       "from": "system/runtime/ingress-control/heartbeat",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "合法 tick"
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/runtime/execution/model-group/agent-request",
+       "label": "当前上下文"
+      },
+      {
+       "from": "system/runtime/execution/model-group/response",
+       "to": "system/runtime/execution/tools-group/registry",
+       "label": "需要工具时"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/runtime/execution/model-group/provider-request-group/measure",
+       "label": "交付请求"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/runtime/execution/model-group/response",
+       "label": "返回响应"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/measure",
+       "to": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "label": "检查通过"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/runtime/execution/model-group/provider-request-group/complete",
+       "label": "实际调用"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/registry",
+       "to": "system/runtime/execution/tools-group/world-call",
+       "label": "校验后分派"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/runtime/execution/tools-group/receipt",
+       "label": "原调用回执"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/execution/tools-group/continuation",
+       "label": "保存后续轮"
+      },
+      {
+       "from": "system/runtime/task-control/task",
+       "to": "system/runtime/task-control/task-visibility",
+       "label": "提交并确认"
+      }
+     ]
+    },
+    {
+     "id": "m6",
+     "label": "M6.0",
+     "track": "main",
+     "order": 6,
+     "title": "受控响应与迟到归档",
+     "subtitle": "只读或模型等待中的处理可由操作者明确让出；原操作晚到后独立归档，按需查询。",
+     "date": "2026.10.12",
+     "scope": "显式启用 · 单逻辑 run · FIFO",
+     "status": "自动验收通过",
+     "changes": [
+      "增加可信效果分类、显式让出控制与有限原操作登记。",
+      "迟到结果独立保存，普通历史保持隔离；停止检查实际资源退出。"
+     ],
+     "verified": "242 项自动测试及自动验收已记录；M6 真实环境验收待做。",
+     "doc": "../docs/2026-10-12-M6.0进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "受控响应与迟到归档",
+      "desc": "按接口连接，按范围展开",
+      "children": [
+       {
+        "key": "ingress",
+        "title": "触发来源",
+        "desc": "用户输入 / 世界事件 / 周期心跳",
+        "intro": "1",
+        "children": [
+         {
+          "key": "console",
+          "title": "Console 用户输入",
+          "desc": "文本与本地命令",
+          "details": [
+           "Console 只编辑、提交和展示公开诊断。",
+           "受理、队列、模型请求与工具执行继续归 Runtime。"
+          ],
+          "source": "src/console/terminal.ts",
+          "intro": "2"
+         },
+         {
+          "key": "events",
+          "title": "World 事件",
+          "desc": "稳定顺序信封",
+          "details": [
+           "来源在投递前固定 stream / epoch / sequence，保留未保存项。"
+          ],
+          "source": "src/protocol/index.ts",
+          "intro": "1"
+         },
+         {
+          "key": "heartbeat-source",
+          "title": "周期时钟",
+          "desc": "产生可控周期 tick",
+          "details": [
+           "由装配显式启用；Runtime 启动时订阅，停止时退订。",
+           "默认周期 30 秒、有效期 5 秒。"
+          ],
+          "source": "src/protocol/trigger.ts",
+          "intro": "3"
+         }
+        ]
+       },
+       {
+        "key": "runtime",
+        "title": "Runtime",
+        "desc": "生命周期、受理、执行与确认投影",
+        "intro": "1",
+        "children": [
+         {
+          "key": "lifecycle",
+          "title": "生命周期与代次",
+          "desc": "管理开始、停止和旧回调",
+          "details": [
+           "start / stop 管理 Runtime 的生命周期；一次模型或工具处理结束后继续等待。",
+           "异步边界核对 generation、lease 与取消信号，旧代结果无法推进新代。",
+           "停止等待已进入的必要写入；World 使用独立清理信号。"
+          ],
+          "source": "src/runtime/runtime.ts",
+          "intro": "1"
+         },
+         {
+          "key": "ingress-control",
+          "title": "接入与调度",
+          "desc": "多来源汇入共享队列",
+          "children": [
+           {
+            "key": "admission",
+            "title": "受理与 FIFO",
+            "desc": "UserInput · World Event · Heartbeat",
+            "details": [
+             "输入验证通过后才占用身份和排队序号，受理时保存事实副本。",
+             "先入队并发起接收追加，再交付 accepted；执行等待接收追加确认。",
+             "同一 Session 只运行一个逻辑 run；终态结算后继续下一项。"
+            ],
+            "source": "src/runtime/trigger-channel.ts",
+            "intro": "3"
+           },
+           {
+            "key": "delivery",
+            "title": "顺序投递与保存",
+            "desc": "稳定信封 · 三个进度水位",
+            "details": [
+             "World 使用固定 stream / epoch 和连续 sequence；重投沿用原信封。",
+             "admittedTail、receivedPrefix、settledPrefix 分别表示受理、接收保存与连续结清。",
+             "waitSaved 等待接收追加确认。默认 positions 为 16；已结清连续位置释放。"
+            ],
+            "source": "src/protocol/delivery.ts",
+            "intro": "4"
+           },
+           {
+            "key": "heartbeat",
+            "title": "心跳受理策略",
+            "desc": "未结清 tick 去重 · 可选任务策略",
+            "details": [
+             "心跳显式启用；默认周期 30 秒、有效期 5 秒。",
+             "已有未结算心跳时跳过新 tick；其他来源忙且队列有位时仍可入队。",
+             "任务策略选择一个到期且未消费的安排；无到期任务且无自定义策略时零模型调用。"
+            ],
+            "source": "src/protocol/trigger.ts",
+            "intro": "3"
+           }
+          ]
+         },
+         {
+          "key": "execution",
+          "title": "触发执行",
+          "desc": "统一 run 的模型与工具往返",
+          "details": [
+           "Agent 构造请求，Provider 返回文本与工具调用，Runtime 依声明调用 World。",
+           "每次处理受模型轮数、工具批量、请求/响应字节与调用期限约束。",
+           "World 效果无法确认时保留 unknown，关闭后续受理并收束停止。"
+          ],
+          "source": "src/runtime/trigger-run.ts",
+          "intro": "3",
+          "children": [
+           {
+            "key": "context-group",
+            "title": "本次上下文",
+            "desc": "固定本次事实，组装可见候选",
+            "children": [
+             {
+              "key": "history",
+              "title": "取得历史候选",
+              "desc": "有界完整运行组",
+              "details": [
+               "Runtime 提供历史候选；Agent 按语义和实际请求容量选择。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "current",
+              "title": "写入当前事实",
+              "desc": "输入 / Event / Heartbeat",
+              "details": [
+               "当前事实只交付一次；排队接收归档与本次执行事实分别处理。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "authority",
+              "title": "本次权限",
+              "desc": "run / generation / signal",
+              "details": [
+               "取消和代次变化撤销新的普通提交；已进入的必要追加仍等待确认。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "model-group",
+            "title": "模型判断",
+            "desc": "Runtime 协调 Agent 与 Provider",
+            "children": [
+             {
+              "key": "agent-request",
+              "title": "请求 Agent",
+              "desc": "构造初始或续轮请求",
+              "details": [
+               "Agent 返回 ProviderRequest，拥有指令和上下文选择。"
+              ],
+              "source": "src/agent/conversation-agent.ts"
+             },
+             {
+              "key": "provider-request-group",
+              "title": "调用 Provider",
+              "desc": "计量、提交和等待模型",
+              "children": [
+               {
+                "key": "measure",
+                "title": "检查请求容量",
+                "desc": "实际序列化字节",
+                "details": [
+                 "计量包含消息、工具声明与原生重放项；超出硬上限明确失败。"
+                ],
+                "source": "src/protocol/input.ts"
+               },
+               {
+                "key": "request-record",
+                "title": "追加请求事实",
+                "desc": "provider_request",
+                "details": [
+                 "请求事实通过 Runtime 的追加边界保存。"
+                ],
+                "source": "src/runtime/trigger-run.ts"
+               },
+               {
+                "key": "complete",
+                "title": "等待 complete",
+                "desc": "响应 / 错误 / 取消",
+                "details": [
+                 "Provider 负责传输，Runtime 管理调用期限和本次执行权。"
+                ],
+                "source": "src/providers/openai-responses-provider.ts"
+               }
+              ]
+             },
+             {
+              "key": "response",
+              "title": "接收模型结果",
+              "desc": "文本与工具调用",
+              "details": [
+               "响应记录保留工具 callId 及不透明原生项，后续工具按声明分派。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             }
+            ]
+           },
+           {
+            "key": "tools-group",
+            "title": "工具分派与续轮",
+            "desc": "声明、所有权与回执配对",
+            "children": [
+             {
+              "key": "registry",
+              "title": "声明与参数检查",
+              "desc": "固定 Agent / World 所有权",
+              "details": [
+               "Core 检查结构；World 检查领域参数。M5 起同时分派 Agent 任务工具。"
+              ],
+              "source": "src/runtime/tool-registry.ts"
+             },
+             {
+              "key": "world-call",
+              "title": "调用所属工具",
+              "desc": "工具拥有者返回结果",
+              "details": [
+               "World 拥有外部效果；Agent 工具通过当前权限口提交任务状态。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "receipt",
+              "title": "确认回执",
+              "desc": "原 callId / toolName / 状态",
+              "details": [
+               "效果无法确认时保留 unknown 并关闭受理；成功回执与取消按取得时点收束。"
+              ],
+              "source": "src/runtime/trigger-run.ts"
+             },
+             {
+              "key": "continuation",
+              "title": "交回 Agent 判断",
+              "desc": "继续一轮或结束本次",
+              "details": [
+               "模型响应和工具回执通过 nextRequest 交给 Agent；续轮仍属于当前 run。"
+              ],
+              "source": "src/protocol/index.ts"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "key": "confirmed-views",
+          "title": "确认视图与查询",
+          "desc": "Runtime 管理的会话投影",
+          "children": [
+           {
+            "key": "history-window",
+            "title": "历史窗口",
+            "desc": "从确认事实派生完整候选",
+            "details": [
+             "默认最多 32 个完整运行组 / 16 MiB；投影由 Runtime 管理，底层事实由 Session 保存。"
+            ],
+            "source": "src/state/history-window.ts"
+           },
+           {
+            "key": "audit",
+            "title": "启动预检与历史窗口",
+            "desc": "先诊断，再启动 World",
+            "details": [
+             "扫描确认历史，重建来源前缀与近期完整运行组。",
+             "unknown、未结清、损坏或工具配对缺失阻断启动，保留原因。",
+             "默认候选 32 个完整组 / 16 MiB；显式旧历史读取另受预算约束。"
+            ],
+            "source": "src/runtime/session-preflight.ts",
+            "intro": "4"
+           },
+           {
+            "key": "projection",
+            "title": "任务确认投影",
+            "desc": "从同一 Session 重建",
+            "details": [
+             "task_changed / task_claimed 与执行事实进入同一归档。",
+             "投影发布晚于追加确认；新实例重建状态和安排消费事实。"
+            ],
+            "source": "src/state/task-projection.ts",
+            "intro": "5"
+           },
+           {
+            "key": "late",
+            "title": "迟到证据",
+            "desc": "独立保存，明确查询",
+            "details": [
+             "operation_detached / operation_late 使用 origin 关联原调用。",
+             "普通历史和任务投影过滤独立记录；Agent 经证据工具显式查询。",
+             "单条迟到记录与默认查询预算各 32 KiB。"
+            ],
+            "source": "src/agent/operation-tools.ts",
+            "intro": "6"
+           }
+          ]
+         },
+         {
+          "key": "task-control",
+          "title": "跨触发任务",
+          "desc": "可选意图提交与安排消费",
+          "children": [
+           {
+            "key": "task",
+            "title": "跨触发任务",
+            "desc": "意图 · 安排 · 一次认领",
+            "details": [
+             "任务状态为 active / waiting / completed / cancelled，更新携带期望 revision。",
+             "scheduleRevision 与内容修订分开；认领保存后，原安排已消费。重试须明确重排。",
+             "任务变更追加确认后才发布投影。工具成功与 run 成功分别记录，任务由 Agent 明确完成。",
+             "默认活跃任务 64 项 / 128 KiB；完整尝试证据按预算显式查询。"
+            ],
+            "source": "src/runtime/task-coordinator.ts",
+            "intro": "5"
+           },
+           {
+            "key": "task-visibility",
+            "title": "确认后可见",
+            "desc": "单一追加边界",
+            "details": [
+             "Agent 提交内容变更；Runtime 核对权限、修订和容量，确认后更新任务投影。"
+            ],
+            "source": "src/runtime/task-coordinator.ts"
+           }
+          ]
+         },
+         {
+          "key": "response-control",
+          "title": "受控响应",
+          "desc": "显式让出、原操作及迟到确认",
+          "children": [
+           {
+            "key": "yield",
+            "title": "明确让出控制",
+            "desc": "可信操作者指定活动目标",
+            "details": [
+             "responses.yield 同时校验 runId 与 generation，普通新消息继续按 FIFO 排队。",
+             "工具效果由可信实现声明为 none / external；省略时保守按可能产生外部效果处理。",
+             "requested 表示控制信号已发出；必要回执和 run 终态确认后，才执行 FIFO 后项。",
+             "M6 显式启用。QQ 装配与共享 control-api 尚未接入这个控制口。"
+            ],
+            "source": "src/protocol/responsiveness.ts",
+            "intro": "6"
+           },
+           {
+            "key": "operations",
+            "title": "原操作登记",
+            "desc": "逻辑结清与实际退出分开",
+            "details": [
+             "进入 Provider 或 World 实际调用前登记，原 Promise 退出与必要记录确认后释放。",
+             "默认在途上限 3 个；主动让出最多留下 2 个未退出调用。",
+             "撤权及迟到结果使用原身份独立归档；原操作晚到不重新开启旧 run。"
+            ],
+            "source": "src/runtime/operation-registry.ts",
+            "intro": "6"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "collaborators",
+        "title": "判断与领域协作",
+        "desc": "Agent / Provider / World",
+        "intro": "1",
+        "children": [
+         {
+          "key": "agent",
+          "title": "Agent",
+          "desc": "ConversationAgent · 指令、历史与续轮",
+          "intro": "2",
+          "children": [
+           {
+            "key": "context",
+            "title": "上下文选择",
+            "desc": "完整轮次与当前运行",
+            "details": [
+             "当前输入已进入执行事实，构造请求时只交付一次。",
+             "完整历史轮次整体裁剪；当前运行保留，按 Provider 实际序列化字节计量。",
+             "排队 B 的接收记录留在归档，A 的续轮保持固定输入边界。"
+            ],
+            "source": "src/agent/conversation-agent.ts",
+            "intro": "2"
+           }
+          ]
+         },
+         {
+          "key": "provider",
+          "title": "Provider",
+          "desc": "转换模型协议，收回调用等待资源",
+          "intro": "1",
+          "children": [
+           {
+            "key": "transport",
+            "title": "模型协议与传输",
+            "desc": "Scripted / Responses 兼容",
+            "details": [
+             "Provider 负责序列化、HTTP 与响应转换；平台工具执行由 World 承担。",
+             "measureRequest 测量实际请求体字节，容量包含工具声明和原生项。",
+             "原生 output 保留顺序并以 callId 配对回包。"
+            ],
+            "source": "src/providers/openai-responses-provider.ts",
+            "intro": "1"
+           }
+          ]
+         },
+         {
+          "key": "world",
+          "title": "World / FixtureWorld",
+          "desc": "拥有环境事实、工具与效果判断",
+          "intro": "1",
+          "children": [
+           {
+            "key": "worldtools",
+            "title": "工具声明与回执",
+            "desc": "查询 · 写入 · 结构化结果",
+            "details": [
+             "Core 校验参数结构，World 校验领域语义并执行工具。",
+             "回执保留原 toolName、callId 与状态；未知外部效果保留 unknown。",
+             "可信 effects 随本次声明固定；模型参数无法修改它。"
+            ],
+            "source": "src/protocol/index.ts",
+            "intro": "1"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "key": "store",
+        "title": "Session / State 存储",
+        "desc": "保存会话事实与独立键值状态",
+        "intro": "1",
+        "children": [
+         {
+          "key": "jsonl",
+          "title": "JSONL Session",
+          "desc": "串行追加执行事实",
+          "details": [
+           "事件、请求、响应、调用和回执随运行过程追加。",
+           "appendFile 完成后确认可读；停止等待已进入的追加。",
+           "Session 文件持续增长，普通追加不提供 fsync 保证。"
+          ],
+          "source": "src/state/jsonl-session.ts",
+          "intro": "1"
+         },
+         {
+          "key": "state",
+          "title": "MemoryState",
+          "desc": "独立的实例内键值状态",
+          "details": [
+           "State 与 Session 契约分开。",
+           "当前装配中的 MemoryState 尚未形成长期 Memory 更新与提取流程。"
+          ],
+          "source": "src/state/memory-state.ts",
+          "intro": "1"
+         }
+        ]
+       },
+       {
+        "key": "memory-design",
+        "title": "长期 Memory",
+        "desc": "设计目标 · 尚待确定读写契约",
+        "planned": true,
+        "children": [
+         {
+          "key": "memory-lifecycle",
+          "title": "持续更新与读取",
+          "desc": "提取、提交、可见性与恢复",
+          "details": [
+           "长期 Memory 的更新来源、写入时点、可见性及存储介质仍待设计。",
+           "MemoryState、任务投影与 Session 历史分别记录。"
+          ],
+          "source": "scratch/Off-topic discussion/持续运行Agent设计约束.md",
+          "planned": true
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/ingress/events",
+       "to": "system/runtime/ingress-control/delivery",
+       "label": "顺序信封"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/collaborators/agent/context",
+       "label": "构造请求",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/collaborators/provider/transport",
+       "label": "模型调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/collaborators/world/worldtools",
+       "label": "领域工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/store/jsonl",
+       "label": "追加事实"
+      },
+      {
+       "from": "system/store/jsonl",
+       "to": "system/runtime/execution/context-group/history",
+       "label": "读取历史"
+      },
+      {
+       "from": "system/ingress/console",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "提交输入"
+      },
+      {
+       "from": "system/ingress/heartbeat-source",
+       "to": "system/runtime/ingress-control/heartbeat",
+       "label": "周期 tick"
+      },
+      {
+       "from": "system/runtime/ingress-control/admission",
+       "to": "system/runtime/execution/context-group/current",
+       "label": "出队后执行"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/confirmed-views/history-window",
+       "label": "保存后推进视图"
+      },
+      {
+       "from": "system/runtime/ingress-control/delivery",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "顺序校验后受理"
+      },
+      {
+       "from": "system/runtime/ingress-control/heartbeat",
+       "to": "system/runtime/ingress-control/admission",
+       "label": "合法 tick"
+      },
+      {
+       "from": "system/runtime/execution/context-group/current",
+       "to": "system/runtime/execution/model-group/agent-request",
+       "label": "当前上下文"
+      },
+      {
+       "from": "system/runtime/execution/model-group/response",
+       "to": "system/runtime/execution/tools-group/registry",
+       "label": "需要工具时"
+      },
+      {
+       "from": "system/runtime/execution/model-group/agent-request",
+       "to": "system/runtime/execution/model-group/provider-request-group/measure",
+       "label": "交付请求"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/complete",
+       "to": "system/runtime/execution/model-group/response",
+       "label": "返回响应"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/measure",
+       "to": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "label": "检查通过"
+      },
+      {
+       "from": "system/runtime/execution/model-group/provider-request-group/request-record",
+       "to": "system/runtime/execution/model-group/provider-request-group/complete",
+       "label": "实际调用"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/registry",
+       "to": "system/runtime/execution/tools-group/world-call",
+       "label": "校验后分派"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/world-call",
+       "to": "system/runtime/execution/tools-group/receipt",
+       "label": "原调用回执"
+      },
+      {
+       "from": "system/runtime/execution/tools-group/receipt",
+       "to": "system/runtime/execution/tools-group/continuation",
+       "label": "保存后续轮"
+      },
+      {
+       "from": "system/runtime/task-control/task",
+       "to": "system/runtime/task-control/task-visibility",
+       "label": "提交并确认"
+      },
+      {
+       "from": "system/runtime/response-control/yield",
+       "to": "system/runtime/response-control/operations",
+       "label": "撤权与登记"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "track": "qq",
+   "name": "QQ 接入线",
+   "stages": [
+    {
+     "id": "qq41",
+     "label": "M4.1",
+     "track": "qq",
+     "order": 4,
+     "title": "QQ World 与磁盘记录",
+     "subtitle": "把固定授权会话的消息转成世界事实，用显式工具查询消息和发送文本。",
+     "date": "2026.10.11",
+     "scope": "单账号 · 单固定会话 · 磁盘记录",
+     "status": "真实环境两层验收通过",
+     "changes": [
+      "QQWorld 连接外部 OneBot 服务，拥有领域消息与本地身份。",
+      "捕获记录、顺序投递与显式发送分别确认。"
+     ],
+     "verified": "36 项 QQ 包测试；真实 SnowLuma 桥接与 Provider 两层验收已有记录。",
+     "doc": "../docs/2026-10-11-M4.1进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "QQ World 与磁盘记录",
+      "desc": "局部可继续展开",
+      "children": [
+       {
+        "key": "bridge",
+        "title": "外部 QQ 桥接",
+        "desc": "SnowLuma · OneBot v11 · 部署方维护",
+        "intro": "M4.1",
+        "children": [
+         {
+          "key": "connection",
+          "title": "账号与连接",
+          "desc": "固定账号 / 固定会话",
+          "details": [
+           "认证握手后核对 get_login_info；自身消息和非授权会话在编号前过滤。",
+           "连接重建与响应等待由 Driver 管理；上游断线补齐不在首批契约内。"
+          ],
+          "source": "packages/extensions/world-qq/src/driver.ts",
+          "intro": "M4.1"
+         }
+        ]
+       },
+       {
+        "key": "qqworld",
+        "title": "QQ World",
+        "desc": "捕获消息、分配来源身份、显式查询与发送",
+        "intro": "M4.1",
+        "children": [
+         {
+          "key": "normalization",
+          "title": "消息捕获与过滤",
+          "desc": "文本 + 有界元数据",
+          "details": [
+           "固定一个账号与一个群聊或私聊；过滤自身与其他目标。",
+           "保存文本、mentions / references / unsupported 和原生身份；事件容量有限。"
+          ],
+          "source": "packages/extensions/world-qq/src/normalize.ts",
+          "intro": "M4.1"
+         },
+         {
+          "key": "journal",
+          "title": "QQJournal",
+          "desc": "原生身份 / received / saved / intent / result",
+          "details": [
+           "Journal 串行记录原生键、稳定序号和发送意图；文件锁约束单个活动写入者。",
+           "waitSaved 确认接收保存后推进本地 saved 前缀；重投沿用原信封。",
+           "容量耗尽明确拒绝或停止，身份与未确认操作保持。"
+          ],
+          "source": "packages/extensions/world-qq/src/journal.ts",
+          "intro": "M4.1"
+         },
+         {
+          "key": "qqtools",
+          "title": "查询与显式发送",
+          "desc": "qq.get_message / qq.send_text",
+          "details": [
+           "查询范围为本固定会话的已捕获或确认发送消息。",
+           "fresh 查询要求充分证明消息归属；当前部署桥接缺字段时返回 unproven_message。",
+           "发送先记录意图，再请求桥接并保存确认；提交后效果不明保留 unknown。"
+          ],
+          "source": "packages/extensions/world-qq/src/world.ts",
+          "intro": "M4.1"
+         }
+        ]
+       },
+       {
+        "key": "qqcore",
+        "title": "Core Runtime",
+        "desc": "M4 基线 · 顺序投递 / 结清 / unknown 收束",
+        "intro": "M4.1",
+        "children": [
+         {
+          "key": "qqassembly",
+          "title": "组合根",
+          "desc": "装配决定能力启用",
+          "details": [
+           "composeQQ 使用领域记录与 JSONL Session，绑定同一来源身份。",
+           "任务、心跳和 M6 responsiveness 在当前 QQ chat 装配中未启用。",
+           "模型最终 assistant 文本保留在本地，QQ 回复通过 qq.send_text 显式发送。"
+          ],
+          "source": "examples/qq/compose.ts",
+          "intro": "M4.1"
+         },
+         {
+          "key": "qqconversation",
+          "title": "对话与 Provider",
+          "desc": "模型调用固定会话工具",
+          "details": [
+           "当前阶段通过模型显式查询消息与发送文本。",
+           "Responses 点号工具名的装配侧适配由后续 M5.1 统一进入 Provider。"
+          ],
+          "source": "src/providers/responses-tool-names.ts",
+          "intro": "M4.1"
+         }
+        ]
+       },
+       {
+        "key": "qqstore",
+        "title": "Session / QQJournal 记录",
+        "desc": "Session 记录执行事实；QQJournal 记录平台与投递事实",
+        "intro": "M4.1",
+        "children": [
+         {
+          "key": "qqlifetime",
+          "title": "重启与容量",
+          "desc": "来源身份与 Session 绑定保持",
+          "details": [
+           "来源和 Session 重新打开后先核对绑定与确认历史。",
+           "未知发送与损坏记录保留诊断，启动不会自动重发动作。"
+          ],
+          "source": "src/state/memory-session.ts",
+          "intro": "M4.1"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/bridge/connection",
+       "to": "system/qqworld/normalization",
+       "label": "入站消息"
+      },
+      {
+       "from": "system/qqworld/normalization",
+       "to": "system/qqworld/journal",
+       "label": "捕获与编号"
+      },
+      {
+       "from": "system/qqworld/journal",
+       "to": "system/qqcore/qqconversation",
+       "label": "稳定信封"
+      },
+      {
+       "from": "system/qqcore/qqconversation",
+       "to": "system/qqworld/qqtools",
+       "label": "显式工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/qqworld/qqtools",
+       "to": "system/bridge/connection",
+       "label": "桥接调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/qqcore/qqassembly",
+       "to": "system/qqstore/qqlifetime",
+       "label": "装配记录寿命"
+      }
+     ]
+    },
+    {
+     "id": "qq51",
+     "label": "M5.1",
+     "track": "qq",
+     "order": 5,
+     "title": "QQ 对话与内存记录",
+     "subtitle": "当前消息直接进入模型，后续追问和引用可读取之前的对话；重建整个装配后清空。",
+     "date": "2026.10.11",
+     "scope": "内存 Session + 内存 QQJournal",
+     "status": "人工验收通过 · 已收尾",
+     "changes": [
+      "Session 与 QQJournal 共同选择内存生命周期。",
+      "Provider 统一编码工具线名，保留已结清失败轮次的真实发送事实。"
+     ],
+     "verified": "219 项自动测试；2026.10.12 负责人确认人工验收通过。",
+     "doc": "../docs/2026-10-11-M5.1进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "QQ 对话与内存记录",
+      "desc": "局部可继续展开",
+      "children": [
+       {
+        "key": "bridge",
+        "title": "外部 QQ 桥接",
+        "desc": "SnowLuma · OneBot v11 · 部署方维护",
+        "intro": "M4.1",
+        "children": [
+         {
+          "key": "connection",
+          "title": "账号与连接",
+          "desc": "固定账号 / 固定会话",
+          "details": [
+           "认证握手后核对 get_login_info；自身消息和非授权会话在编号前过滤。",
+           "连接重建与响应等待由 Driver 管理；上游断线补齐不在首批契约内。"
+          ],
+          "source": "packages/extensions/world-qq/src/driver.ts",
+          "intro": "M4.1"
+         }
+        ]
+       },
+       {
+        "key": "qqworld",
+        "title": "QQ World",
+        "desc": "领域记录选择纯内存，共享原有工具边界",
+        "intro": "M4.1",
+        "children": [
+         {
+          "key": "normalization",
+          "title": "消息捕获与过滤",
+          "desc": "文本 + 有界元数据",
+          "details": [
+           "固定一个账号与一个群聊或私聊；过滤自身与其他目标。",
+           "保存文本、mentions / references / unsupported 和原生身份；事件容量有限。"
+          ],
+          "source": "packages/extensions/world-qq/src/normalize.ts",
+          "intro": "M4.1"
+         },
+         {
+          "key": "journal",
+          "title": "QQJournal",
+          "desc": "与 Session 共同选择生命周期",
+          "details": [
+           "记录仅保留于当前 World 实例；stop/start 保留，新实例清空。",
+           "waitSaved 确认接收保存后推进本地 saved 前缀；重投沿用原信封。",
+           "容量耗尽明确拒绝或停止，身份与未确认操作保持。"
+          ],
+          "source": "packages/extensions/world-qq/src/journal.ts",
+          "intro": "M5.1"
+         },
+         {
+          "key": "qqtools",
+          "title": "查询与显式发送",
+          "desc": "qq.get_message / qq.send_text",
+          "details": [
+           "查询范围为本固定会话的已捕获或确认发送消息。",
+           "fresh 查询要求充分证明消息归属；当前部署桥接缺字段时返回 unproven_message。",
+           "发送先记录意图，再请求桥接并保存确认；提交后效果不明保留 unknown。"
+          ],
+          "source": "packages/extensions/world-qq/src/world.ts",
+          "intro": "M4.1"
+         }
+        ]
+       },
+       {
+        "key": "qqcore",
+        "title": "Core Runtime",
+        "desc": "M5 基线 · FIFO / 完整对话 / 显式发送",
+        "intro": "M5.1",
+        "children": [
+         {
+          "key": "qqassembly",
+          "title": "组合根",
+          "desc": "装配决定能力启用",
+          "details": [
+           "composeQQChat 同时启用内存 QQJournal 与 MemorySessionStore。",
+           "任务、心跳和 M6 responsiveness 在当前 QQ chat 装配中未启用。",
+           "模型最终 assistant 文本保留在本地，QQ 回复通过 qq.send_text 显式发送。"
+          ],
+          "source": "examples/qq/compose.ts",
+          "intro": "M5.1"
+         },
+         {
+          "key": "qqconversation",
+          "title": "对话与 Provider",
+          "desc": "当前消息、追问、引用与线名映射",
+          "details": [
+           "Agent 与 Runtime 同时保留完整已结清失败历史，使真实发送事实进入后续判断。",
+           "Responses 工具名采用请求内双射，合法原名优先，冲突别名使用摘要。"
+          ],
+          "source": "src/providers/responses-tool-names.ts",
+          "intro": "M5.1"
+         }
+        ]
+       },
+       {
+        "key": "qqstore",
+        "title": "Session / QQJournal 记录",
+        "desc": "Session + QQJournal · 新装配共同清空",
+        "intro": "M5.1",
+        "children": [
+         {
+          "key": "qqlifetime",
+          "title": "重启与容量",
+          "desc": "stop/start 与新实例分别定义",
+          "details": [
+           "同一装配 stop/start 保留历史；重建装配时两端一起清空。",
+           "内存记录仍有数量与字节容量，达到边界明确报告。"
+          ],
+          "source": "src/state/memory-session.ts",
+          "intro": "M5.1"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/bridge/connection",
+       "to": "system/qqworld/normalization",
+       "label": "入站消息"
+      },
+      {
+       "from": "system/qqworld/normalization",
+       "to": "system/qqworld/journal",
+       "label": "捕获与编号"
+      },
+      {
+       "from": "system/qqworld/journal",
+       "to": "system/qqcore/qqconversation",
+       "label": "稳定信封"
+      },
+      {
+       "from": "system/qqcore/qqconversation",
+       "to": "system/qqworld/qqtools",
+       "label": "显式工具",
+       "twoWay": true
+      },
+      {
+       "from": "system/qqworld/qqtools",
+       "to": "system/bridge/connection",
+       "label": "桥接调用",
+       "twoWay": true
+      },
+      {
+       "from": "system/qqcore/qqassembly",
+       "to": "system/qqstore/qqlifetime",
+       "label": "装配记录寿命"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "track": "tui",
+   "name": "TUI 交互线",
+   "stages": [
+    {
+     "id": "tui21",
+     "label": "M2.1",
+     "track": "tui",
+     "order": 2,
+     "title": "全屏交互与草稿状态",
+     "subtitle": "输出期间仍可编辑草稿，回看活动、查看详情，并在退出后恢复终端。",
+     "date": "2026.10.06",
+     "scope": "同进程原型 · ANSI / VT",
+     "status": "当时原型人工验收通过",
+     "changes": [
+      "行式 Console 增加全屏驱动、草稿、布局和本地活动状态。",
+      "新输出与草稿分开维护；受理成功后按草稿修订清理。"
+     ],
+     "verified": "原型自动化、Windows PTY 与负责人实际终端验收已记录。",
+     "doc": "../docs/2026-10-06-M2.1进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "全屏交互与草稿状态",
+      "desc": "局部可继续展开",
+      "children": [
+       {
+        "key": "operator",
+        "title": "操作者",
+        "desc": "编辑正文、查看活动、发出明确控制",
+        "intro": "M2.1",
+        "children": [
+         {
+          "key": "interaction",
+          "title": "输入与导航",
+          "desc": "Enter 换行 · Ctrl+S 提交",
+          "details": [
+           "帮助与详情返回时保留草稿和可恢复的阅读位置。",
+           "正文提交、查看详情与取消执行采用各自明确入口。"
+          ],
+          "source": "docs/使用说明/全屏TUI.md",
+          "intro": "M2.1"
+         }
+        ]
+       },
+       {
+        "key": "tuiapp",
+        "title": "TUI 应用",
+        "desc": "编辑、活动、布局与驱动",
+        "intro": "M2.1",
+        "children": [
+         {
+          "key": "editor",
+          "title": "草稿编辑",
+          "desc": "字素编辑、粘贴与版本",
+          "details": [
+           "正文、光标与修订独立于后台输出。",
+           "受理拒绝保留草稿；受理成功且修订一致才清理。"
+          ],
+          "source": "docs/2026-10-06-M2.1进度与架构图.md",
+          "intro": "M2.1"
+         },
+         {
+          "key": "reading",
+          "title": "活动与回看",
+          "desc": "关联摘要、详情和阅读位置",
+          "details": [
+           "新输出更新活动；回看暂停自动跟随并显示未读。",
+           "详情展示保留的完整身份与错误，淘汰时明确缺失。"
+          ],
+          "source": "packages/apps/tui/src/state.ts",
+          "intro": "M2.1"
+         },
+         {
+          "key": "terminal",
+          "title": "宿主与终端恢复",
+          "desc": "ANSI / VT / 流与信号",
+          "details": [
+           "退出先收束公共生命周期及写入，再释放终端资源。",
+           "非 TTY 使用调用方显式提供的行式回退。"
+          ],
+          "source": "packages/apps/tui/src/terminal.ts",
+          "intro": "M2.1"
+         }
+        ]
+       },
+       {
+        "key": "contract",
+        "title": "公共控制契约",
+        "desc": "同进程控制形状",
+        "intro": "M2.1",
+        "children": [
+         {
+          "key": "publicapi",
+          "title": "公开控制能力",
+          "desc": "submit / cancel / inspect / subscribe",
+          "details": [
+           "RuntimeControl 提供 inputs、status、start / stop。",
+           "公共诊断包含来源身份、结果与 seq / gap；本端 pending 只统计本端。",
+           "共享接口尚未暴露 M6 responses.yield 与任务概览。"
+          ],
+          "source": "packages/shared/control-api/src/index.ts",
+          "intro": "M2.1"
+         }
+        ]
+       },
+       {
+        "key": "tuicore",
+        "title": "Runtime 执行基座",
+        "desc": "沿用 M2 · 受理、执行、存储与生命周期",
+        "intro": "M2.0",
+        "children": [
+         {
+          "key": "coreboundary",
+          "title": "执行所有权",
+          "desc": "队列、模型、工具与事实继续归 Core",
+          "details": [
+           "TUI 消费公共能力并维护本地界面；业务调度和效果判断保持原有所有权。",
+           "包隔离继续保持核心可独立安装。"
+          ],
+          "source": "src/control/index.ts",
+          "intro": "M2.0"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/operator/interaction",
+       "to": "system/tuiapp/editor",
+       "label": "输入与界面动作"
+      },
+      {
+       "from": "system/tuiapp/editor",
+       "to": "system/contract/publicapi",
+       "label": "提交与控制",
+       "twoWay": true
+      },
+      {
+       "from": "system/contract/publicapi",
+       "to": "system/tuicore/coreboundary",
+       "label": "公开控制 / 诊断",
+       "twoWay": true
+      }
+     ]
+    },
+    {
+     "id": "tui31",
+     "label": "M3.1",
+     "track": "tui",
+     "order": 3,
+     "title": "独立包与公共控制契约",
+     "subtitle": "TUI 成为独立可选包，与 Runtime 共用轻量控制契约；组合根选择并装配两端。",
+     "date": "2026.10.08",
+     "scope": "独立包 · 同进程控制",
+     "status": "迁移与自动验证完成",
+     "changes": [
+      "提取 @1002bot/control-api，TUI 从公共入口消费能力。",
+      "验证核心、TUI、完整工作区与独立 tarball 的安装边界。"
+     ],
+     "verified": "114 项自动测试与独立包检查已记录；迁移后人工复验另列。",
+     "doc": "../docs/2026-10-08-M3.1进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "独立包与公共控制契约",
+      "desc": "局部可继续展开",
+      "children": [
+       {
+        "key": "operator",
+        "title": "操作者",
+        "desc": "编辑正文、查看活动、发出明确控制",
+        "intro": "M3.1",
+        "children": [
+         {
+          "key": "interaction",
+          "title": "输入与导航",
+          "desc": "Enter 换行 · Ctrl+S 提交",
+          "details": [
+           "帮助与详情返回时保留草稿和可恢复的阅读位置。",
+           "正文提交、查看详情与取消执行采用各自明确入口。"
+          ],
+          "source": "docs/使用说明/全屏TUI.md",
+          "intro": "M3.1"
+         }
+        ]
+       },
+       {
+        "key": "tuiapp",
+        "title": "TUI 应用",
+        "desc": "编辑、活动、布局与驱动",
+        "intro": "M3.1",
+        "children": [
+         {
+          "key": "editor",
+          "title": "草稿编辑",
+          "desc": "字素编辑、粘贴与版本",
+          "details": [
+           "正文、光标与修订独立于后台输出。",
+           "受理拒绝保留草稿；受理成功且修订一致才清理。"
+          ],
+          "source": "docs/2026-10-06-M2.1进度与架构图.md",
+          "intro": "M2.1"
+         },
+         {
+          "key": "reading",
+          "title": "活动与回看",
+          "desc": "关联摘要、详情和阅读位置",
+          "details": [
+           "新输出更新活动；回看暂停自动跟随并显示未读。",
+           "详情展示保留的完整身份与错误，淘汰时明确缺失。"
+          ],
+          "source": "packages/apps/tui/src/state.ts",
+          "intro": "M2.1"
+         },
+         {
+          "key": "terminal",
+          "title": "宿主与终端恢复",
+          "desc": "ANSI / VT / 流与信号",
+          "details": [
+           "退出先收束公共生命周期及写入，再释放终端资源。",
+           "非 TTY 使用调用方显式提供的行式回退。"
+          ],
+          "source": "packages/apps/tui/src/terminal.ts",
+          "intro": "M2.1"
+         }
+        ]
+       },
+       {
+        "key": "contract",
+        "title": "公共控制契约",
+        "desc": "轻量公共契约，前端和核心分别消费",
+        "intro": "M3.1",
+        "children": [
+         {
+          "key": "publicapi",
+          "title": "公开控制能力",
+          "desc": "submit / cancel / inspect / subscribe",
+          "details": [
+           "RuntimeControl 提供 inputs、status、start / stop。",
+           "公共诊断包含来源身份、结果与 seq / gap；本端 pending 只统计本端。",
+           "共享接口尚未暴露 M6 responses.yield 与任务概览。"
+          ],
+          "source": "packages/shared/control-api/src/index.ts",
+          "intro": "M3.1"
+         }
+        ]
+       },
+       {
+        "key": "tuicore",
+        "title": "Runtime 执行基座",
+        "desc": "沿用 M3 · 三源调度、执行与存储",
+        "intro": "M3.0",
+        "children": [
+         {
+          "key": "coreboundary",
+          "title": "执行所有权",
+          "desc": "队列、模型、工具与事实继续归 Core",
+          "details": [
+           "TUI 消费公共能力并维护本地界面；业务调度和效果判断保持原有所有权。",
+           "包隔离继续保持核心可独立安装。"
+          ],
+          "source": "src/control/index.ts",
+          "intro": "M3.0"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/operator/interaction",
+       "to": "system/tuiapp/editor",
+       "label": "输入与界面动作"
+      },
+      {
+       "from": "system/tuiapp/editor",
+       "to": "system/contract/publicapi",
+       "label": "提交与控制",
+       "twoWay": true
+      },
+      {
+       "from": "system/contract/publicapi",
+       "to": "system/tuicore/coreboundary",
+       "label": "公开控制 / 诊断",
+       "twoWay": true
+      }
+     ]
+    },
+    {
+     "id": "tui32",
+     "label": "M3.2",
+     "track": "tui",
+     "order": 3,
+     "title": "原生编辑与滚动交互",
+     "subtitle": "OpenTUI React 负责终端组件，原生编辑与滚动保留正文、光标和实际阅读位置。",
+     "date": "2026.10.10",
+     "scope": "feat/TUI · OpenTUI React + Bun",
+     "status": "实现与自验完成",
+     "changes": [
+      "换用原生 Textarea 与 ScrollBox，调整输入、排头和按键。",
+      "保留单列活动、草稿修订、跟随与回看；模式先作为本地标签。"
+     ],
+     "verified": "后续输入及滚动修订已自验，物理终端交互复验待补。",
+     "doc": "../.worktrees/TUI/docs/2026-10-08-M3.2进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "原生编辑与滚动交互",
+      "desc": "局部可继续展开",
+      "children": [
+       {
+        "key": "operator",
+        "title": "操作者",
+        "desc": "编辑正文、查看活动、发出明确控制",
+        "intro": "M3.2",
+        "children": [
+         {
+          "key": "interaction",
+          "title": "输入与导航",
+          "desc": "Enter 提交 · Ctrl+J 换行",
+          "details": [
+           "帮助与详情返回时保留草稿和可恢复的阅读位置。",
+           "正文提交、查看详情与取消执行采用各自明确入口。"
+          ],
+          "source": ".worktrees/TUI/docs/使用说明/全屏TUI.md",
+          "intro": "M3.2"
+         }
+        ]
+       },
+       {
+        "key": "tuiapp",
+        "title": "TUI 应用",
+        "desc": "原生输入、活动与终端恢复",
+        "intro": "M3.2",
+        "children": [
+         {
+          "key": "editor",
+          "title": "草稿编辑",
+          "desc": "Textarea 保存正文与光标",
+          "details": [
+           "原生编辑缓冲保存正文；显示一至两行，长正文在同一缓冲内滚动。",
+           "受理拒绝保留草稿；受理成功且修订一致才清理。"
+          ],
+          "source": ".worktrees/TUI/docs/2026-10-08-M3.2进度与架构图.md",
+          "intro": "M3.2"
+         },
+         {
+          "key": "reading",
+          "title": "活动与回看",
+          "desc": "关联摘要、详情和阅读位置",
+          "details": [
+           "新输出更新活动；回看暂停自动跟随并显示未读。",
+           "详情展示保留的完整身份与错误，淘汰时明确缺失。"
+          ],
+          "source": ".worktrees/TUI/docs/2026-10-08-M3.2进度与架构图.md",
+          "intro": "M3.2"
+         },
+         {
+          "key": "terminal",
+          "title": "宿主与终端恢复",
+          "desc": "Bun / OpenTUI React",
+          "details": [
+           "退出先收束公共生命周期及写入，再释放终端资源。",
+           "非 TTY 使用调用方显式提供的行式回退。"
+          ],
+          "source": ".worktrees/TUI/docs/2026-10-08-M3.2进度与架构图.md",
+          "intro": "M3.2"
+         }
+        ]
+       },
+       {
+        "key": "contract",
+        "title": "公共控制契约",
+        "desc": "轻量公共契约，前端和核心分别消费",
+        "intro": "M3.1",
+        "children": [
+         {
+          "key": "publicapi",
+          "title": "公开控制能力",
+          "desc": "submit / cancel / inspect / subscribe",
+          "details": [
+           "RuntimeControl 提供 inputs、status、start / stop。",
+           "公共诊断包含来源身份、结果与 seq / gap；本端 pending 只统计本端。",
+           "共享接口尚未暴露 M6 responses.yield 与任务概览。"
+          ],
+          "source": "packages/shared/control-api/src/index.ts",
+          "intro": "M3.1"
+         }
+        ]
+       },
+       {
+        "key": "tuicore",
+        "title": "Runtime 执行基座",
+        "desc": "沿用 M3 · 三源调度、执行与存储",
+        "intro": "M3.0",
+        "children": [
+         {
+          "key": "coreboundary",
+          "title": "执行所有权",
+          "desc": "队列、模型、工具与事实继续归 Core",
+          "details": [
+           "TUI 消费公共能力并维护本地界面；业务调度和效果判断保持原有所有权。",
+           "当前 feat/TUI 未合入 M4–M6，先核定兼容目标，再验证同步。"
+          ],
+          "source": "src/control/index.ts",
+          "intro": "M3.0"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/operator/interaction",
+       "to": "system/tuiapp/editor",
+       "label": "输入与界面动作"
+      },
+      {
+       "from": "system/tuiapp/editor",
+       "to": "system/contract/publicapi",
+       "label": "提交与控制",
+       "twoWay": true
+      },
+      {
+       "from": "system/contract/publicapi",
+       "to": "system/tuicore/coreboundary",
+       "label": "公开控制 / 诊断",
+       "twoWay": true
+      }
+     ]
+    },
+    {
+     "id": "tui33",
+     "label": "M3.3",
+     "track": "tui",
+     "order": 3,
+     "title": "应用协调与状态所有权",
+     "subtitle": "统一应用入口，拆开会话控制、界面状态、活动资料与原生适配，让展开后的职责清晰可见。",
+     "date": "2026.10.10",
+     "scope": "feat/TUI / 7ac2fec · Core 基线 M3",
+     "status": "自验通过 · 独立复核待做",
+     "changes": [
+      "Application 协调动作与快照；Controller 负责请求和停止。",
+      "UiState 拥有逻辑阅读位置；ActivityStore 拥有资料；native 管实际位置。"
+     ],
+     "verified": "Node 114 项、原生 24 项及类型检查已有记录；独立审查与本版人工复验待做。",
+     "doc": "../.worktrees/TUI/docs/2026-10-10-M3.3进度与架构图.md",
+     "root": {
+      "key": "system",
+      "title": "应用协调与状态所有权",
+      "desc": "局部可继续展开",
+      "children": [
+       {
+        "key": "operator",
+        "title": "操作者",
+        "desc": "编辑正文、查看活动、发出明确控制",
+        "intro": "M3.3",
+        "children": [
+         {
+          "key": "interaction",
+          "title": "输入与导航",
+          "desc": "Enter 提交 · Ctrl+J 换行",
+          "details": [
+           "帮助与详情返回时保留草稿和可恢复的阅读位置。",
+           "正文提交、查看详情与取消执行采用各自明确入口。"
+          ],
+          "source": ".worktrees/TUI/docs/使用说明/全屏TUI.md",
+          "intro": "M3.3"
+         }
+        ]
+       },
+       {
+        "key": "tuiapp",
+        "title": "TUI 应用",
+        "desc": "应用协调 · 会话资料 · 原生适配 · 组件视图",
+        "intro": "M3.3",
+        "children": [
+         {
+          "key": "application",
+          "title": "Application",
+          "desc": "统一入口与快照",
+          "details": [
+           "submitDraft / dispatchUi / getSnapshot / subscribe 连接受控动作。",
+           "一次资料与界面协调完成后发布快照，编辑和稳定 frame 不产生新业务快照。"
+          ],
+          "source": ".worktrees/TUI/packages/apps/tui/src/application/application.ts",
+          "intro": "M3.3"
+         },
+         {
+          "key": "controller",
+          "title": "Controller",
+          "desc": "请求、受理与停止屏障",
+          "details": [
+           "维护本端 pending / submitting / closing 和唯一 Runtime 订阅。",
+           "accepted 后比较草稿修订再清理；在途新编辑保持。",
+           "EOF 等待可转为 Ctrl+C 立即停止，复用同一个停止 Promise。"
+          ],
+          "source": ".worktrees/TUI/packages/apps/tui/src/application/controller.ts",
+          "intro": "M3.3"
+         },
+         {
+          "key": "uistate",
+          "title": "UiState",
+          "desc": "逻辑焦点、页面与阅读",
+          "details": [
+           "拥有 main / help / details 页面及选择、跟随、未读和逻辑锚点。",
+           "default / edit / test 为本地模式标签，权限规则尚待定义。"
+          ],
+          "source": ".worktrees/TUI/packages/apps/tui/src/model/ui-state.ts",
+          "intro": "M3.3"
+         },
+         {
+          "key": "activity",
+          "title": "ActivityStore",
+          "desc": "有限资料与展示投影",
+          "details": [
+           "按公共 seq 排重，保留 gap；窗口为 128 条 / 512 KiB。",
+           "资料投影与页面焦点分开；淘汰后明确缺失，已发布快照保持稳定。"
+          ],
+          "source": ".worktrees/TUI/packages/apps/tui/src/model/activity-store.ts",
+          "intro": "M3.3"
+         },
+         {
+          "key": "native",
+          "title": "Native 适配",
+          "desc": "原生缓冲与实际滚动",
+          "details": [
+           "Textarea 拥有正文、光标和选区；ScrollBox 拥有实际 scrollTop。",
+           "逻辑锚点等待布局完成后恢复；原生滚轮后读取实际位置。"
+          ],
+          "source": ".worktrees/TUI/packages/apps/tui/src/native/use-reading-viewport.ts",
+          "intro": "M3.3"
+         },
+         {
+          "key": "views",
+          "title": "View / Interaction",
+          "desc": "组件、快捷键与命令路由",
+          "details": [
+           "视图消费快照与属性；命令分类不执行 Runtime 业务。",
+           "Enter 提交，Shift+Enter / Ctrl+J 换行；Tab 切换输入与活动焦点。"
+          ],
+          "source": ".worktrees/TUI/packages/apps/tui/src/view/app.tsx",
+          "intro": "M3.3"
+         }
+        ]
+       },
+       {
+        "key": "contract",
+        "title": "公共控制契约",
+        "desc": "轻量公共契约，前端和核心分别消费",
+        "intro": "M3.1",
+        "children": [
+         {
+          "key": "publicapi",
+          "title": "公开控制能力",
+          "desc": "submit / cancel / inspect / subscribe",
+          "details": [
+           "RuntimeControl 提供 inputs、status、start / stop。",
+           "公共诊断包含来源身份、结果与 seq / gap；本端 pending 只统计本端。",
+           "共享接口尚未暴露 M6 responses.yield 与任务概览。"
+          ],
+          "source": "packages/shared/control-api/src/index.ts",
+          "intro": "M3.1"
+         }
+        ]
+       },
+       {
+        "key": "tuicore",
+        "title": "Runtime 执行基座",
+        "desc": "沿用 M3 · 三源调度、执行与存储",
+        "intro": "M3.0",
+        "children": [
+         {
+          "key": "coreboundary",
+          "title": "执行所有权",
+          "desc": "队列、模型、工具与事实继续归 Core",
+          "details": [
+           "TUI 消费公共能力并维护本地界面；业务调度和效果判断保持原有所有权。",
+           "当前 feat/TUI 未合入 M4–M6，先核定兼容目标，再验证同步。"
+          ],
+          "source": "src/control/index.ts",
+          "intro": "M3.0"
+         }
+        ]
+       }
+      ]
+     },
+     "edges": [
+      {
+       "from": "system/operator/interaction",
+       "to": "system/tuiapp/views",
+       "label": "输入与界面动作"
+      },
+      {
+       "from": "system/tuiapp/controller",
+       "to": "system/contract/publicapi",
+       "label": "提交与控制",
+       "twoWay": true
+      },
+      {
+       "from": "system/contract/publicapi",
+       "to": "system/tuicore/coreboundary",
+       "label": "公开控制 / 诊断",
+       "twoWay": true
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

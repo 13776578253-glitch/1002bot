@@ -1,0 +1,47 @@
+{
+  "name": "@1002bot/visualization",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive architecture evolution canvas for the 1002bot project",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node tools/clean-dist.mjs && tsc -p tsconfig.build.json && node tools/rewrite-declaration-imports.mjs && node tools/check-dist.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "gen:data": "node --experimental-strip-types tools/gen-playground-data.mjs",
+    "dev": "node --experimental-strip-types tools/gen-playground-data.mjs && vite --config playground/vite.config.ts",
+    "build:web": "vite build --config playground/vite.config.ts",
+    "check:dist": "node tools/check-dist.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^5.7.2",
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.12.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zustand": "^5.0.15"
+  }
+}
