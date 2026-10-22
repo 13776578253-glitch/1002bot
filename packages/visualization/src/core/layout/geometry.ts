@@ -24,6 +24,65 @@ export interface Obstacle {
   bottom: number;
 }
 
+export type PortSide = 'top' | 'right' | 'bottom' | 'left' | 'auto';
+
+/** Convert a world-space point into a parent-local coordinate. */
+export function toLocalPoint(point: Point, parentOrigin: Point): Point {
+  return { x: point.x - parentOrigin.x, y: point.y - parentOrigin.y };
+}
+
+/** Convert a parent-local point into world coordinates. */
+export function toWorldPoint(point: Point, parentOrigin: Point): Point {
+  return { x: point.x + parentOrigin.x, y: point.y + parentOrigin.y };
+}
+
+export function rectFromPointSize(at: Point, size: { w: number; h: number }): Rect {
+  return { x: at.x, y: at.y, w: size.w, h: size.h };
+}
+
+export function insetRect(rect: Rect, inset: number): Rect {
+  return {
+    x: rect.x + inset,
+    y: rect.y + inset,
+    w: Math.max(0, rect.w - inset * 2),
+    h: Math.max(0, rect.h - inset * 2),
+  };
+}
+
+export function rectContains(outer: Rect, inner: Rect, tolerance = 0): boolean {
+  return inner.x >= outer.x - tolerance
+    && inner.y >= outer.y - tolerance
+    && inner.x + inner.w <= outer.x + outer.w + tolerance
+    && inner.y + inner.h <= outer.y + outer.h + tolerance;
+}
+
+export function rectIntersects(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/** Resolve a stable edge anchor from a node rectangle and port side. */
+export function portAnchor(rect: Rect, side: PortSide, fraction = 0.5): Point {
+  const t = Math.max(0, Math.min(1, fraction));
+  switch (side) {
+    case 'top': return { x: rect.x + rect.w * t, y: rect.y };
+    case 'bottom': return { x: rect.x + rect.w * t, y: rect.y + rect.h };
+    case 'left': return { x: rect.x, y: rect.y + rect.h * t };
+    case 'right': return { x: rect.x + rect.w, y: rect.y + rect.h * t };
+    case 'auto': {
+      return { x: rect.x + rect.w, y: rect.y + rect.h * t };
+    }
+  }
+}
+
+export function obstacleFromRect(rect: Rect, padding = 0): Obstacle {
+  return {
+    left: rect.x - padding,
+    right: rect.x + rect.w + padding,
+    top: rect.y - padding,
+    bottom: rect.y + rect.h + padding,
+  };
+}
+
 export function simplifyPoints(points: readonly Point[]): Point[] {
   if (points.length <= 2) return [...points];
   const simple: Point[] = [];

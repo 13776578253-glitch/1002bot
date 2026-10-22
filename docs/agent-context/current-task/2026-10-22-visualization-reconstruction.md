@@ -78,3 +78,39 @@ Verification: 计划文件 diff check 通过；本轮只修改规划和任务记
 Open issues: 进入实现前需要按 Phase 0 冻结 GraphPatch、metrics measurement round-trip 和 ELK provider 的具体 API。
 
 Commit suggestion: docs(visualization): refine graph layer boundaries
+
+## 2026-10-22 执行批准：Graph/Scene/Layout 重构启动
+
+Intent: 用户批准在 feat/visualization 分支实施完整重构，重点是 Canvas Renderer 与 Layout Engine；样式先对齐参考图的轻量视觉约束，具体参数通过 Theme/metrics 保持可调。
+
+Scope: Canonical Graph、Projection、Layout、engine/scene.ts、React Flow Adapter、Canvas Renderer、Store 和 1002bot adapter；保持数据/样式/解析/递归核心分离；不把业务数据引入正式包入口。
+
+Accepted design: layered.ts 是唯一 ELK 结构布局；pinned.ts 仅提供约束和输出修正；geometry.ts 只处理坐标/边界/端口几何；router.ts 负责最终关系路径；metrics.ts 与 React 实际尺寸闭环；engine/scene.ts 是唯一场景装配入口；React panels 只保留单一 Inspector/Delta 实现。
+
+Visual direction: 参考图的浅色网格/点阵背景、白色圆角节点、状态色边框、聚合虚线容器、细灰正交箭头与少量增量色标，样式实现必须通过 theme tokens 和 metrics 调整。
+
+Verification plan: 先通过 Core/React 单元与集成测试，再执行 typecheck、build、build:web、check:dist；使用 Codex 原生方式验收 playground，重点检查布局、折叠投影、异步场景版本、拖拽位置、端口和面板单一归属。
+
+Open issues: implementation in progress
+
+## 2026-10-22 重构实现收尾
+
+Change:
+1. 完成扁平 Canonical Graph、Graph Patch revision、schema/graph 双层校验、stable ID Projection、boundary port 和 stable evolution diff。
+2. 完成唯一 layered/ELK provider、pinned 约束装饰、metrics、geometry、router 与世界坐标 LayoutResult；删除竞争性的独立 tidy 实现，保留兼容转发。
+3. 新增 engine/scene.ts 唯一场景装配入口和异步 use-canvas-scene request sequence；React Flow Adapter 改为稳定 node/edge/handle ID 与 parent-local 坐标转换。
+4. 重构 Canvas Renderer、Store、Card/Aggregate/Ports、Inspector/DeltaPanel；删除 playground 重复面板；主题增加点阵背景、白色圆角节点和聚合虚线边界的可调 token。
+5. 1002bot adapter 改为 flat graph snapshots，重新生成 12 阶段 playground 数据；正式包入口保持通用 Core/React，不依赖业务数据。
+6. 用新契约测试替换旧递归模型测试，覆盖 Graph Patch、Projection、Scene、Layout 和 React Flow Adapter。
+
+Verification:
+- node --experimental-strip-types --test packages/visualization/tests/*.test.ts：8/8 通过。
+- packages/visualization tsconfig、tsconfig.web、tsconfig.build：通过。
+- typed dist 编译、声明重写、check-dist：通过。
+- playground Vite production build：201 modules，通过。
+- 12 个 1002bot 阶段均可生成 CanvasScene。
+- Codex 原生浏览器页面已观察到 playground、阶段导航、Inspector、展开后的嵌套节点和 React Flow 控件；另一个新端口页面受本机浏览器 localhost 访问限制。
+
+Open issues: 具体色值、状态文案和卡片细节留在 Theme/metrics 后续微调；当前 pnpm 仍受 Corepack 网络隔离影响。
+
+Commit suggestion: refactor(visualization): rebuild scene and layout pipeline

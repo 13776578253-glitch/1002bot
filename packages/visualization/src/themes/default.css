@@ -7,18 +7,18 @@
   --av-font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   --av-grid-size: 20px;
   --av-grid-color: rgba(31, 39, 46, 0.055);
-  --av-canvas-bg: #fafbfc;
+  --av-canvas-bg: #fbfcfb;
   --av-surface: #ffffff;
   --av-surface-subtle: #f7f8f9;
-  --av-surface-aggregate: rgba(247, 248, 249, 0.84);
+  --av-surface-aggregate: rgba(247, 249, 248, 0.72);
   --av-border: #e2e5e8;
   --av-border-strong: #d3d7db;
   --av-shadow: 0 1px 2px rgba(23, 31, 38, 0.04), 0 4px 14px rgba(23, 31, 38, 0.045);
   --av-text: #25282c;
   --av-text-muted: #767c84;
   --av-text-faint: #9a9fa5;
-  --av-radius-card: 10px;
-  --av-radius-aggregate: 12px;
+  --av-radius-card: 14px;
+  --av-radius-aggregate: 16px;
   --av-radius-pill: 999px;
   --av-card-width: 278px;
   --av-card-padding: 14px;
@@ -48,6 +48,7 @@
   --av-edge-label-text: #777d84;
   --av-edge-label-bg: #ffffff;
   --av-focus: #4e7fa8;
+  --av-aggregate-border: #9eb4cc;
 }
 
 .av-theme.react-flow,
@@ -86,6 +87,30 @@
 
 .av-theme .react-flow__node-card {
   z-index: 1;
+}
+
+.av-theme .react-flow__edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.av-theme .react-flow__node-aggregate .av-aggregate {
+  border-style: dashed;
+  border-width: 2px;
+  border-color: var(--av-aggregate-border);
+  box-shadow: none;
+}
+
+.av-theme .av-canvas-delta {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  z-index: 4;
+  width: auto;
+  border: 1px solid var(--av-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(29, 42, 33, 0.05);
 }
 
 /* Handles stay invisible until hover; edges attach to the card border. */

@@ -48,7 +48,7 @@ export function OrthoEdge(props: EdgeProps<OrthoEdgeType>) {
         id={props.id}
         path={path}
         markerEnd="url(#av-arrow)"
-        {...(props.data?.twoWay ? { markerStart: 'url(#av-arrow)' } : {})}
+        {...(props.data?.direction === 'bidirectional' ? { markerStart: 'url(#av-arrow)' } : {})}
       />
       {props.data?.label && (
         <EdgeLabelRenderer>

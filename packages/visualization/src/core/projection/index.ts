@@ -1,104 +1,208 @@
 /**
- * Graph Projection Engine.
+ * Pure graph projection.
  *
- * Given a snapshot and a set of expanded paths, computes what is visible:
- * which nodes render as cards, which as expanded aggregate frames, and how
- * edge endpoints resolve — folded edges attach to the nearest visible
- * ancestor, expanded edges reach the concrete internal interface.
- *
- * Pure computation; no UI dependency.
+ * Expansion is keyed by canonical node id. The projection resolves each
+ * endpoint to the nearest visible ancestor and creates deterministic boundary
+ * ports for folded endpoints; it never computes layout or React data.
  */
 
-import type { GraphEdge, NodePath, StageSnapshot } from '../schema/types.ts';
-import { indexGraph, splitEndpoint, type IndexedGraph } from '../graph/index.ts';
+import type {
+  CanonicalEndpoint,
+  CanonicalEdge,
+  GraphNodeId,
+  StageSnapshot,
+} from '../schema/types.ts';
+import { indexGraph, type IndexedGraph } from '../graph/index.ts';
+
+export interface ExpansionState {
+  expanded: ReadonlySet<GraphNodeId>;
+}
 
 export interface VisibleNode {
-  path: NodePath;
-  /** True when the node is expanded and its children render inside it. */
-  expanded: boolean;
-  /** Depth from the root (root = 0). */
+  id: GraphNodeId;
+  canonicalId: GraphNodeId;
+  parentId?: GraphNodeId;
   depth: number;
+  expanded: boolean;
+  expandable: boolean;
+}
+
+export interface VisibleEndpoint {
+  nodeId: GraphNodeId;
+  portId?: string;
+  canonicalNodeId: GraphNodeId;
+  canonicalPortId?: string;
+  foldedFrom?: GraphNodeId;
+  boundary: boolean;
 }
 
 export interface ProjectedEdge {
-  edge: GraphEdge;
-  /** Visible endpoint after ancestor projection (port preserved when the concrete node is visible). */
-  from: string;
-  to: string;
-  /** True when at least one endpoint was folded to an ancestor. */
+  id: string;
+  canonicalEdgeId: string;
+  source: VisibleEndpoint;
+  target: VisibleEndpoint;
   folded: boolean;
+  label?: string;
+  relation: CanonicalEdge['relation'];
+  direction: CanonicalEdge['direction'];
+  edge: CanonicalEdge;
 }
 
 export interface Projection {
+  rootId: GraphNodeId;
   nodes: VisibleNode[];
   edges: ProjectedEdge[];
+  nodeById: Map<GraphNodeId, VisibleNode>;
+  hiddenToVisible: Map<GraphNodeId, GraphNodeId>;
 }
 
-/** A node is visible when every ancestor on its path is expanded. */
-function isVisible(path: NodePath, graph: IndexedGraph, expanded: ReadonlySet<NodePath>): boolean {
-  // Root itself is always visible (as the implicit container).
-  if (path === graph.snapshot.root.key) return true;
-  // Direct children of the root are visible when nothing blocks them.
-  let cursor: NodePath | undefined = path;
-  while (cursor !== undefined) {
-    const parent: NodePath | undefined = graph.parentOf.get(cursor);
-    if (parent === undefined || parent === graph.snapshot.root.key) return true;
-    if (!expanded.has(parent)) return false;
-    cursor = parent;
+function parseEndpoint(endpoint: CanonicalEndpoint | string, graph: IndexedGraph): CanonicalEndpoint {
+  if (typeof endpoint !== 'string') return endpoint;
+  const hash = endpoint.indexOf('#');
+  const path = hash < 0 ? endpoint : endpoint.slice(0, hash);
+  const portId = hash < 0 ? undefined : endpoint.slice(hash + 1);
+  const node = graph.byPath.get(path);
+  if (!node) throw new Error('unknown endpoint path "' + path + '"');
+  return portId === undefined ? { nodeId: node.id } : { nodeId: node.id, portId };
+}
+
+function hasChildren(graph: IndexedGraph, id: GraphNodeId): boolean {
+  return (graph.childrenOf.get(id)?.length ?? 0) > 0;
+}
+
+function isVisible(id: GraphNodeId, graph: IndexedGraph, expanded: ReadonlySet<GraphNodeId>): boolean {
+  const node = graph.byId.get(id);
+  if (!node) return false;
+  let cursor: GraphNodeId | null = id;
+  while (cursor !== null) {
+    const current = graph.byId.get(cursor);
+    if (!current) return false;
+    if (cursor !== id && !expanded.has(cursor) && cursor !== graph.graph.rootId) return false;
+    cursor = current.parentId;
   }
-  return true;
+  return node.parentId === graph.graph.rootId || node.parentId === null || id === graph.graph.rootId || (() => {
+    let parent: GraphNodeId | null = node.parentId;
+    while (parent !== null) {
+      if (parent === graph.graph.rootId) return true;
+      if (!expanded.has(parent)) return false;
+      parent = graph.byId.get(parent)?.parentId ?? null;
+    }
+    return true;
+  })();
 }
 
-/** Nearest ancestor (or self) that is visible under the expansion state. */
-export function resolveVisibleEndpoint(endpoint: string, graph: IndexedGraph, expanded: ReadonlySet<NodePath>): { endpoint: string; folded: boolean } {
-  const { path, port } = splitEndpoint(endpoint);
-  if (isVisible(path, graph, expanded)) return { endpoint, folded: false };
-  // Walk upward from the endpoint. The first visible ancestor is the deepest
-  // card that represents the hidden subtree.
-  let cursor: NodePath | undefined = graph.parentOf.get(path);
-  while (cursor !== undefined) {
-    if (isVisible(cursor, graph, expanded)) return { endpoint: cursor, folded: true };
-    cursor = graph.parentOf.get(cursor);
+function boundaryPort(endpoint: CanonicalEndpoint, edgeId: string, role: 'source' | 'target'): string {
+  return 'boundary:' + edgeId + ':' + role + ':' + endpoint.nodeId + ':' + (endpoint.portId ?? 'surface');
+}
+
+export function resolveVisibleEndpoint(
+  endpoint: CanonicalEndpoint | string,
+  graph: IndexedGraph,
+  expanded: ReadonlySet<GraphNodeId>,
+  edgeId = 'endpoint',
+  role: 'source' | 'target' = 'source',
+): VisibleEndpoint {
+  const canonical = parseEndpoint(endpoint, graph);
+  const original = graph.byId.get(canonical.nodeId);
+  if (!original) throw new Error('unknown endpoint node "' + canonical.nodeId + '"');
+  if (isVisible(canonical.nodeId, graph, expanded)) {
+    return {
+      nodeId: canonical.nodeId,
+      canonicalNodeId: canonical.nodeId,
+      ...(canonical.portId === undefined ? {} : { portId: canonical.portId, canonicalPortId: canonical.portId }),
+      boundary: false,
+    };
   }
-  return { endpoint: graph.snapshot.root.key, folded: true };
+
+  let cursor = original.parentId;
+  while (cursor !== null) {
+    if (isVisible(cursor, graph, expanded)) {
+      return {
+        nodeId: cursor,
+        canonicalNodeId: canonical.nodeId,
+        portId: boundaryPort(canonical, edgeId, role),
+        ...(canonical.portId === undefined ? {} : { canonicalPortId: canonical.portId }),
+        foldedFrom: canonical.nodeId,
+        boundary: true,
+      };
+    }
+    cursor = graph.byId.get(cursor)?.parentId ?? null;
+  }
+  return {
+    nodeId: graph.graph.rootId,
+    canonicalNodeId: canonical.nodeId,
+    portId: boundaryPort(canonical, edgeId, role),
+    ...(canonical.portId === undefined ? {} : { canonicalPortId: canonical.portId }),
+    foldedFrom: canonical.nodeId,
+    boundary: true,
+  };
 }
 
-export function projectGraph(snapshot: StageSnapshot, expandedPaths: Iterable<NodePath>): Projection {
+export function projectGraph(
+  snapshot: StageSnapshot,
+  expandedInput: Iterable<GraphNodeId> | ExpansionState,
+): Projection {
   const graph = indexGraph(snapshot);
-  const expanded = new Set(expandedPaths);
-  // Expansion only applies to nodes that actually have children.
-  for (const path of [...expanded]) {
-    const node = graph.byPath.get(path);
-    if (!node?.children?.length) expanded.delete(path);
-  }
+  const requested = expandedInput instanceof Set
+    ? expandedInput
+    : 'expanded' in expandedInput
+      ? expandedInput.expanded
+      : new Set(expandedInput);
+  const expanded = new Set<GraphNodeId>();
+  for (const id of requested) if (graph.byId.has(id) && hasChildren(graph, id)) expanded.add(id);
 
   const nodes: VisibleNode[] = [];
-  for (const [path] of graph.byPath) {
-    if (path === graph.snapshot.root.key) continue;
-    if (!isVisible(path, graph, expanded)) continue;
-    nodes.push({ path, expanded: expanded.has(path), depth: path.split('/').length - 1 });
+  const nodeById = new Map<GraphNodeId, VisibleNode>();
+  const hiddenToVisible = new Map<GraphNodeId, GraphNodeId>();
+
+  for (const node of graph.graph.nodes) {
+    if (node.id === graph.graph.rootId || !isVisible(node.id, graph, expanded)) continue;
+    let parentId: GraphNodeId | undefined;
+    if (node.parentId !== null && node.parentId !== graph.graph.rootId && nodeById.has(node.parentId)) parentId = node.parentId;
+    const visible: VisibleNode = {
+      id: node.id,
+      canonicalId: node.id,
+      ...(parentId === undefined ? {} : { parentId }),
+      depth: graph.pathById.get(node.id)?.split('/').length ?? 1,
+      expanded: expanded.has(node.id),
+      expandable: hasChildren(graph, node.id),
+    };
+    nodes.push(visible);
+    nodeById.set(node.id, visible);
+  }
+
+  for (const node of graph.graph.nodes) {
+    if (node.id === graph.graph.rootId) continue;
+    let cursor = node.id;
+    while (!nodeById.has(cursor)) {
+      const parent = graph.byId.get(cursor)?.parentId;
+      if (parent === null || parent === undefined) {
+        cursor = graph.graph.rootId;
+        break;
+      }
+      cursor = parent;
+    }
+    hiddenToVisible.set(node.id, cursor);
   }
 
   const edges: ProjectedEdge[] = [];
-  const seen = new Set<string>();
   for (const edge of graph.edges) {
-    const from = resolveVisibleEndpoint(edge.from, graph, expanded);
-    const to = resolveVisibleEndpoint(edge.to, graph, expanded);
-    if (from.endpoint === to.endpoint) continue;
-    // Keep distinct labels, ports, and original endpoints when projection
-    // folds multiple semantic relationships onto one visible pair.
-    const key = JSON.stringify([
-      from.endpoint,
-      to.endpoint,
-      edge.from,
-      edge.to,
-      edge.label ?? '',
-      edge.twoWay ?? false,
-    ]);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    edges.push({ edge, from: from.endpoint, to: to.endpoint, folded: from.folded || to.folded });
+    const source = resolveVisibleEndpoint(edge.source, graph, expanded, edge.id, 'source');
+    const target = resolveVisibleEndpoint(edge.target, graph, expanded, edge.id, 'target');
+    if (source.nodeId === target.nodeId) continue;
+    if (!nodeById.has(source.nodeId) || !nodeById.has(target.nodeId)) continue;
+    edges.push({
+      id: edge.id + '@' + source.nodeId + '>' + target.nodeId,
+      canonicalEdgeId: edge.id,
+      source,
+      target,
+      folded: source.boundary || target.boundary,
+      ...(edge.label === undefined ? {} : { label: edge.label }),
+      relation: edge.relation,
+      direction: edge.direction,
+      edge,
+    });
   }
 
-  return { nodes, edges };
+  return { rootId: graph.graph.rootId, nodes, edges, nodeById, hiddenToVisible };
 }

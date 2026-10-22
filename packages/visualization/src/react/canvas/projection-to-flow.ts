@@ -1,212 +1,128 @@
-/**
- * Adapt a core Projection to React Flow nodes and edges.
- * Layout positions come from a LayoutEngine; this adapter only maps shapes.
- */
-
 import type { Edge, Node } from '@xyflow/react';
-import type { Projection, ProjectedEdge, VisibleNode } from '../../core/projection/index.ts';
-import type { LayoutResult, PlacedNode, RoutedEdge } from '../../core/layout/index.ts';
-import type { StageDelta } from '../../core/evolution/index.ts';
-import type { CanvasModel } from '../../core/engine/index.ts';
+import type { CanonicalPort } from '../../core/schema/types.ts';
+import type { CanvasScene, SceneNode } from '../../core/engine/scene.ts';
 
+export interface FlowPortData {
+  id: string;
+  direction: CanonicalPort['direction'];
+  side: CanonicalPort['side'];
+  label?: string;
+}
 export interface FlowNodeData extends Record<string, unknown> {
+  nodeId: string;
   path: string;
-  key?: string | undefined;
   title: string;
-  desc?: string | undefined;
-  details?: string[] | undefined;
+  summary?: string;
+  details?: readonly string[];
+  kind: string;
   expanded: boolean;
-  hasChildren: boolean;
-  deltaKind?: string | undefined;
-  deltaNote?: string | undefined;
-  planned?: boolean | undefined;
-  source?: string | undefined;
-  onToggle?: (() => void) | undefined;
-  onSelect?: (() => void) | undefined;
+  expandable: boolean;
+  planned: boolean;
+  ports: readonly FlowPortData[];
+  deltaKind?: string;
+  deltaNote?: string;
+  sourceRefs?: readonly string[];
+  onToggle?: () => void;
+  onSelect?: () => void;
 }
-
 export interface FlowEdgeData extends Record<string, unknown> {
-  label?: string | undefined;
+  label?: string;
   folded: boolean;
-  deltaKind?: string | undefined;
-  twoWay?: boolean | undefined;
-  points?: { x: number; y: number }[] | undefined;
+  relation: string;
+  direction: string;
+  points?: readonly { x: number; y: number }[];
+  deltaKind?: string;
 }
 
-export function projectionToFlow(
-  projection: Projection,
-  layout: LayoutResult,
-  delta: StageDelta | undefined,
-  lookup: { title(path: string): string; desc(path: string): string | undefined; hasChildren(path: string): boolean; planned(path: string): boolean; source(path: string): string | undefined; key?(path: string): string },
-): { nodes: Node<FlowNodeData>[]; edges: Edge<FlowEdgeData>[] } {
-  const placed = new Map(layout.nodes.map((n) => [n.path, n]));
-  const nodeDelta = new Map((delta?.nodes ?? []).map((d) => [d.path, d]));
-  const edgeDelta = new Map(
-    (delta?.edges ?? [])
-      .filter((e) => e.kind !== 'inherited')
-      .map((e) => [`${e.from}>${e.to}`, e]),
-  );
-
-  // React Flow subflow: children use parentId + position relative to parent.
-  const parentOf = new Map<string, string>();
-  for (const vn of projection.nodes) {
-    const cut = vn.path.lastIndexOf('/');
-    if (cut < 0) continue;
-    const parent = vn.path.slice(0, cut);
-    if (placed.has(parent)) parentOf.set(vn.path, parent);
-  }
-  const nodes: Node<FlowNodeData>[] = projection.nodes.map((vn) => {
-    const parent = parentOf.get(vn.path);
-    const node = flowNode(vn, placed.get(vn.path), nodeDelta.get(vn.path), lookup);
-    if (parent) {
-      const parentPlaced = placed.get(parent);
-      node.parentId = parent;
-      node.extent = 'parent';
-      node.position = {
-        x: node.position.x - (parentPlaced?.at.x ?? 0),
-        y: node.position.y - (parentPlaced?.at.y ?? 0),
-      };
-    }
-    return node;
-  });
-  const edges: Edge<FlowEdgeData>[] = projection.edges.map((pe, i) => flowEdge(pe, i, layout.edges[i], edgeDelta, lookup));
-  return { nodes, edges };
+function reactNodeId(id: string): string { return 'node:' + id; }
+function reactEdgeId(id: string): string { return 'edge:' + id; }
+export function portHandleId(nodeId: string, portId: string, direction: 'in' | 'out'): string {
+  return 'port:' + nodeId + ':' + portId + ':' + direction;
 }
 
-/** Adapt the canonical Core model without recomputing graph semantics. */
-export function canvasModelToFlow(
-  model: CanvasModel,
-  positions?: ReadonlyMap<string, { x: number; y: number }>,
-  selected?: string,
-  interactions?: { toggle(path: string): void; select(path: string): void },
-): { nodes: Node<FlowNodeData>[]; edges: Edge<FlowEdgeData>[] } {
-  const nodes: Node<FlowNodeData>[] = model.nodes.map((item) => {
-    const savedPosition = positions?.get(item.path);
-    const node: Node<FlowNodeData> = {
-      id: item.path,
-      type: item.expanded ? 'aggregate' : 'card',
-      position: savedPosition ?? item.position,
-      selected: selected === item.path,
-      style: { width: item.size.w, height: item.size.h },
-      data: {
-        path: item.path,
-        key: item.key,
-        title: item.title,
-        ...(item.desc === undefined ? {} : { desc: item.desc }),
-        ...(item.details === undefined ? {} : { details: item.details }),
-        expanded: item.expanded,
-        hasChildren: item.hasChildren,
-        ...(item.delta?.kind === undefined ? {} : { deltaKind: item.delta.kind }),
-        ...(item.delta?.note === undefined ? {} : { deltaNote: item.delta.note }),
-        planned: item.planned,
-        ...(item.source === undefined ? {} : { source: item.source }),
-        ...(interactions === undefined ? {} : {
-          onToggle: () => interactions.toggle(item.path),
-          onSelect: () => interactions.select(item.path),
-        }),
-      },
-    };
-    if (item.parentPath !== undefined) {
-      const parent = model.nodes.find((candidate) => candidate.path === item.parentPath);
-      node.parentId = item.parentPath;
-      node.extent = 'parent';
-      if (savedPosition === undefined) {
-        node.position = {
-          x: item.position.x - (parent?.position.x ?? 0),
-          y: item.position.y - (parent?.position.y ?? 0),
-        };
-      }
-    }
-    return node;
-  });
-  const edges: Edge<FlowEdgeData>[] = model.edges.map((item) => {
-    const fromNode = model.nodes.find((n) => n.path === item.from);
-    const toNode = model.nodes.find((n) => n.path === item.to);
-    const isTargetOnRight = (toNode?.position.x ?? 0) >= (fromNode?.position.x ?? 0);
-
-    const sourceHandle = item.sourceHandle ?? (isTargetOnRight ? 'right' : 'left');
-    const targetHandle = item.targetHandle ?? (isTargetOnRight ? 'left' : 'right');
-
-    return {
-      id: item.id,
-      source: item.from,
-      target: item.to,
-      sourceHandle,
-      targetHandle,
-      type: 'ortho',
-      ...(item.delta?.kind === undefined ? {} : { className: `av-edge-${item.delta.kind}` }),
-      data: {
-        ...(item.label === undefined ? {} : { label: item.label }),
-        folded: item.folded,
-        deltaKind: item.delta?.kind,
-        twoWay: item.twoWay,
-        ...(item.route?.points ? { points: item.route.points } : {}),
-      },
-    };
-  });
-  return { nodes, edges };
+function nodePorts(node: SceneNode): FlowPortData[] {
+  return node.ports.map((port) => ({
+    id: port.id,
+    direction: port.direction,
+    side: port.side,
+    ...(port.label === undefined ? {} : { label: port.label }),
+  }));
 }
 
 function flowNode(
-  vn: VisibleNode,
-  placed: PlacedNode | undefined,
-  delta: { kind: string; note?: string | undefined } | undefined,
-  lookup: { title(path: string): string; desc(path: string): string | undefined; hasChildren(path: string): boolean; planned(path: string): boolean; source(path: string): string | undefined; key?(path: string): string },
+  node: SceneNode,
+  parentWorld: { x: number; y: number } | undefined,
+  selected: boolean,
+  interactions: { toggle(id: string): void; select(id: string): void } | undefined,
 ): Node<FlowNodeData> {
-  const key = vn.path.split('/').pop() ?? vn.path;
+  const position = {
+    x: node.worldRect.x - (parentWorld?.x ?? 0),
+    y: node.worldRect.y - (parentWorld?.y ?? 0),
+  };
   return {
-    id: vn.path,
-    type: vn.expanded ? 'aggregate' : 'card',
-    position: { x: placed?.at.x ?? 0, y: placed?.at.y ?? 0 },
-    ...(placed
-      ? {
-          style: {
-            width: placed.size.w,
-            height: placed.size.h,
-          },
-        }
-      : {}),
+    id: reactNodeId(node.id),
+    type: node.expanded ? 'aggregate' : 'card',
+    position,
+    selected,
+    style: { width: node.worldRect.w, height: node.worldRect.h },
+    ...(node.parentId === undefined ? {} : { parentId: reactNodeId(node.parentId), extent: 'parent' as const }),
     data: {
-      path: vn.path,
-      title: lookup.title(vn.path) || key,
-      desc: lookup.desc(vn.path),
-      expanded: vn.expanded,
-      hasChildren: lookup.hasChildren(vn.path),
-      deltaKind: delta?.kind,
-      deltaNote: delta?.note ?? undefined,
-      planned: lookup.planned(vn.path),
-      source: lookup.source(vn.path),
+      nodeId: node.id,
+      path: node.path,
+      title: node.label,
+      ...(node.summary === undefined ? {} : { summary: node.summary }),
+      ...(node.details === undefined ? {} : { details: node.details }),
+      kind: node.kind,
+      expanded: node.expanded,
+      expandable: node.expandable,
+      planned: node.planned,
+      ports: nodePorts(node),
+      ...(node.sourceRefs === undefined ? {} : { sourceRefs: node.sourceRefs }),
+      ...(node.delta ? { deltaKind: node.delta.kind, ...(node.delta.note === undefined ? {} : { deltaNote: node.delta.note }) } : {}),
+      ...(interactions ? {
+        onToggle: () => interactions.toggle(node.id),
+        onSelect: () => interactions.select(node.id),
+      } : {}),
     },
   };
 }
 
-function flowEdge(
-  pe: ProjectedEdge,
-  index: number,
-  routed: RoutedEdge | undefined,
-  edgeDelta: Map<string, { kind: string }>,
-  lookup: { title(path: string): string; key?(path: string): string },
-): Edge<FlowEdgeData> {
-  const fromEndpoint = pe.from.split('#');
-  const toEndpoint = pe.to.split('#');
-  const fromPath = fromEndpoint[0] ?? pe.from;
-  const toPath = toEndpoint[0] ?? pe.to;
-  const fromKey = lookup.key?.(fromPath) ?? fromPath.split('/').pop() ?? fromPath;
-  const toKey = lookup.key?.(toPath) ?? toPath.split('/').pop() ?? toPath;
-  const deltaKind = edgeDelta.get(`${fromKey}>${toKey}`)?.kind;
-  return {
-    id: `e${index}-${pe.from}-${pe.to}`,
-    source: fromPath,
-    target: toPath,
-    ...(fromEndpoint[1] === undefined ? {} : { sourceHandle: fromEndpoint[1] }),
-    ...(toEndpoint[1] === undefined ? {} : { targetHandle: toEndpoint[1] }),
-    type: 'ortho',
-    ...(deltaKind === undefined ? {} : { className: `av-edge-${deltaKind}` }),
-    data: {
-      label: pe.edge.label,
-      folded: pe.folded,
-      deltaKind,
-      twoWay: pe.edge.twoWay,
-    },
-  };
+function endpointHandle(nodeId: string, portId: string | undefined, direction: 'in' | 'out'): string {
+  return portId ? portHandleId(nodeId, portId, direction) : (direction === 'out' ? 'right' : 'left');
 }
+
+export function canvasSceneToFlow(
+  scene: CanvasScene,
+  positions?: ReadonlyMap<string, { x: number; y: number }>,
+  selected?: string,
+  interactions?: { toggle(id: string): void; select(id: string): void },
+): { nodes: Node<FlowNodeData>[]; edges: Edge<FlowEdgeData>[] } {
+  const byId = new Map(scene.nodes.map((node) => [node.id, node]));
+  const nodes = scene.nodes.map((node) => {
+    const parent = node.parentId ? byId.get(node.parentId) : undefined;
+    const flow = flowNode(node, parent?.worldRect, selected === node.id, interactions);
+    const saved = positions?.get(node.id);
+    if (saved) flow.position = saved;
+    return flow;
+  });
+  const edges = scene.edges.map((edge) => ({
+    id: reactEdgeId(edge.id),
+    source: reactNodeId(edge.source.nodeId),
+    target: reactNodeId(edge.target.nodeId),
+    sourceHandle: endpointHandle(edge.source.nodeId, edge.source.portId, 'out'),
+    targetHandle: endpointHandle(edge.target.nodeId, edge.target.portId, 'in'),
+    type: 'ortho',
+    ...(edge.delta ? { className: 'av-edge-' + edge.delta.kind } : {}),
+    data: {
+      ...(edge.label === undefined ? {} : { label: edge.label }),
+      folded: edge.folded,
+      relation: edge.relation,
+      direction: edge.direction,
+      ...(edge.route ? { points: edge.route.points } : {}),
+      ...(edge.delta ? { deltaKind: edge.delta.kind } : {}),
+    },
+  } satisfies Edge<FlowEdgeData>));
+  return { nodes, edges };
+}
+
+export const sceneToFlow = canvasSceneToFlow;

@@ -70,8 +70,13 @@ import { EvolutionCanvas, useCanvasStore } from '@1002bot/visualization/react';
 `check:dist`.
 
 The React canvas keeps expansion, selection, camera, and manual node positions
-in the canvas store. Core `CanvasModel` is the only graph computation entry;
-React Flow consumes it directly.
+in the canvas store. Core `engine/scene.ts` is the only scene assembly entry:
+it runs graph projection, boundary resolution, layered layout, pin constraints,
+and edge routing before the React Flow adapter runs.
+
+Canonical stages use flat nodes, explicit parent IDs, stable edge and port IDs,
+and graph revisions. Business data stays in `examples/1002bot`; the package
+entry points export the generic Core and React surfaces only.
 
 ## Design
 

@@ -17,7 +17,7 @@ export function AggregateNode({ data, selected }: NodeProps<AggregateNodeType>) 
       data-status-label={status}
       role="button"
       tabIndex={0}
-      aria-label={`${data.title}${data.desc ? `：${data.desc}` : ''}`}
+      aria-label={`${data.title}${data.summary ? `：${data.summary}` : ''}`}
       aria-expanded="true"
       onClick={(event) => { event.stopPropagation(); data.onSelect?.(); }}
       onKeyDown={(event) => {
@@ -27,7 +27,7 @@ export function AggregateNode({ data, selected }: NodeProps<AggregateNodeType>) 
         data.onToggle?.();
       }}
     >
-      <NodePorts customPorts={data.ports as string[] | undefined} />
+      <NodePorts customPorts={data.ports} />
       <div className="av-aggregate-header">
         <span className="av-aggregate-icon" aria-hidden>▦</span>
         <span className="av-aggregate-title">{data.title}</span>
@@ -36,7 +36,7 @@ export function AggregateNode({ data, selected }: NodeProps<AggregateNodeType>) 
           <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
         </button>
       </div>
-      {data.desc && <div className="av-aggregate-desc">{data.desc}</div>}
+      {data.summary && <div className="av-aggregate-desc">{data.summary}</div>}
     </div>
   );
 }

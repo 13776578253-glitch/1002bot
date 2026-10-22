@@ -1,90 +1,115 @@
 /**
- * Structural validation for snapshots. Runs at build time; failures
- * point at the node path or edge that breaks the contract.
+ * Structural validation for the canonical graph schema.
+ *
+ * This module checks object shape and local field contracts. Graph identity,
+ * parent cycles and endpoint semantics belong to core/graph/validate.ts.
  */
 
-import type { GraphEdge, GraphNode, StageSnapshot, TrackSeries } from './types.ts';
+import type { CanonicalGraph, CanonicalNode, StageSnapshot, TrackSeries } from './types.ts';
 
 export interface ValidationIssue {
   message: string;
   path?: string;
 }
 
-function walk(
-  node: GraphNode,
-  path: string,
-  issues: ValidationIssue[],
-  keys: Map<string, string>,
-  nodes: Map<string, GraphNode>,
-): void {
-  const existing = keys.get(node.key);
-  if (existing !== undefined) {
-    issues.push({ message: `duplicate key "${node.key}" (also at ${existing})`, path });
-  }
-  keys.set(node.key, path);
-  nodes.set(path, node);
-  if (!node.title) issues.push({ message: 'node missing title', path });
-  const portIds = new Set<string>();
-  for (const port of node.ports ?? []) {
-    if (portIds.has(port.id)) issues.push({ message: `duplicate port "${port.id}"`, path });
-    portIds.add(port.id);
-  }
-  for (const child of node.children ?? []) walk(child, `${path}/${child.key}`, issues, keys, nodes);
+const NODE_KINDS = new Set(['root', 'group', 'component', 'actor', 'store', 'adapter', 'planned']);
+const PORT_DIRECTIONS = new Set(['in', 'out', 'bidirectional']);
+const PORT_SIDES = new Set(['top', 'right', 'bottom', 'left', 'auto']);
+const RELATIONS = new Set(['data', 'control', 'call', 'event', 'storage', 'unknown']);
+const DIRECTIONS = new Set(['directed', 'bidirectional']);
+
+function requiredString(value: unknown, field: string, path: string, issues: ValidationIssue[]): void {
+  if (typeof value !== 'string' || value.length === 0) issues.push({ message: field + ' must be a non-empty string', path });
 }
 
-function checkEdge(edge: GraphEdge, index: number, nodes: Map<string, GraphNode>, issues: ValidationIssue[]): void {
-  for (const [end, value] of [['from', edge.from], ['to', edge.to]] as const) {
-    const nodePath = value.split('#')[0] ?? '';
-    const node = nodes.get(nodePath);
-    if (!node) {
-      issues.push({ message: `edge[${index}].${end} references unknown node "${nodePath}"` });
-      continue;
-    }
-    const hash = value.indexOf('#');
-    if (hash >= 0) {
-      const port = value.slice(hash + 1);
-      if (!port || !(node.ports ?? []).some((candidate) => candidate.id === port)) {
-        issues.push({ message: `edge[${index}].${end} references unknown port "${port}"`, path: nodePath });
-      }
+function checkNodeShape(node: CanonicalNode, index: number, issues: ValidationIssue[]): void {
+  const path = 'graph.nodes[' + index + ']';
+  requiredString(node.id, 'node id', path, issues);
+  requiredString(node.label, 'node label', path, issues);
+  if (node.parentId !== null && typeof node.parentId !== 'string') issues.push({ message: 'node parentId must be string or null', path });
+  if (!NODE_KINDS.has(node.kind)) issues.push({ message: 'unknown node kind "' + String(node.kind) + '"', path });
+  if (!Number.isFinite(node.order)) issues.push({ message: 'node order must be finite', path });
+  if (node.details !== undefined && (!Array.isArray(node.details) || node.details.some((value) => typeof value !== 'string'))) {
+    issues.push({ message: 'node details must be an array of strings', path });
+  }
+  if (!Array.isArray(node.ports)) {
+    issues.push({ message: 'node ports must be an array', path });
+    return;
+  }
+  for (const [portIndex, port] of node.ports.entries()) {
+    const portPath = path + '.ports[' + portIndex + ']';
+    requiredString(port.id, 'port id', portPath, issues);
+    if (!PORT_DIRECTIONS.has(port.direction)) issues.push({ message: 'unknown port direction "' + String(port.direction) + '"', path: portPath });
+    if (!PORT_SIDES.has(port.side)) issues.push({ message: 'unknown port side "' + String(port.side) + '"', path: portPath });
+    if (!Number.isFinite(port.order)) issues.push({ message: 'port order must be finite', path: portPath });
+    if (port.label !== undefined && typeof port.label !== 'string') issues.push({ message: 'port label must be a string', path: portPath });
+    if (port.role !== undefined && typeof port.role !== 'string') issues.push({ message: 'port role must be a string', path: portPath });
+  }
+}
+
+function checkGraphShape(graph: CanonicalGraph, issues: ValidationIssue[]): void {
+  requiredString(graph.rootId, 'graph rootId', 'graph', issues);
+  if (!Array.isArray(graph.nodes)) {
+    issues.push({ message: 'graph nodes must be an array', path: 'graph' });
+  } else {
+    graph.nodes.forEach((node, index) => checkNodeShape(node, index, issues));
+  }
+  if (!Array.isArray(graph.edges)) {
+    issues.push({ message: 'graph edges must be an array', path: 'graph' });
+  } else {
+    for (const [index, edge] of graph.edges.entries()) {
+      const path = 'graph.edges[' + index + ']';
+      requiredString(edge.id, 'edge id', path, issues);
+      if (!edge.source || typeof edge.source.nodeId !== 'string') issues.push({ message: 'edge source must reference a node id', path });
+      if (!edge.target || typeof edge.target.nodeId !== 'string') issues.push({ message: 'edge target must reference a node id', path });
+      if (!RELATIONS.has(edge.relation)) issues.push({ message: 'unknown edge relation "' + String(edge.relation) + '"', path });
+      if (!DIRECTIONS.has(edge.direction)) issues.push({ message: 'unknown edge direction "' + String(edge.direction) + '"', path });
+      if (!Number.isFinite(edge.order)) issues.push({ message: 'edge order must be finite', path });
+      if (edge.label !== undefined && typeof edge.label !== 'string') issues.push({ message: 'edge label must be a string', path });
     }
   }
+  if (graph.revision !== undefined) requiredString(graph.revision, 'graph revision', 'graph', issues);
 }
 
 export function validateSnapshot(snapshot: StageSnapshot): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const keys = new Map<string, string>();
-  const nodes = new Map<string, GraphNode>();
-  walk(snapshot.root, snapshot.root.key, issues, keys, nodes);
-  (snapshot.edges ?? []).forEach((edge, i) => checkEdge(edge, i, nodes, issues));
+  requiredString(snapshot.id, 'stage id', 'stage', issues);
+  requiredString(snapshot.label, 'stage label', 'stage', issues);
+  requiredString(snapshot.title, 'stage title', 'stage', issues);
+  requiredString(snapshot.track, 'stage track', 'stage', issues);
+  if (!Number.isFinite(snapshot.order)) issues.push({ message: 'stage order must be finite', path: 'stage' });
+  if (!snapshot.graph || typeof snapshot.graph !== 'object') issues.push({ message: 'stage graph is required', path: 'stage' });
+  else checkGraphShape(snapshot.graph, issues);
   return issues;
 }
 
 export function assertValidSnapshot(snapshot: StageSnapshot): void {
   const issues = validateSnapshot(snapshot);
   if (issues.length) {
-    const detail = issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('\n');
-    throw new Error(`invalid snapshot "${snapshot.id}":\n${detail}`);
+    const detail = issues.map((issue) => (issue.path ? issue.path + ': ' + issue.message : issue.message)).join('\n');
+    throw new Error('invalid snapshot "' + snapshot.id + '":\n' + detail);
   }
 }
 
 export function validateTrackSeries(series: TrackSeries): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  requiredString(series.track, 'track', 'series', issues);
+  requiredString(series.name, 'name', 'series', issues);
+  if (!Array.isArray(series.stages)) {
+    issues.push({ message: 'stages must be an array', path: 'series' });
+    return issues;
+  }
   const stageIds = new Set<string>();
   for (const [index, stage] of series.stages.entries()) {
-    const path = `stages[${index}]`;
-    if (stageIds.has(stage.id)) issues.push({ message: `duplicate stage id "${stage.id}"`, path });
+    const path = 'stages[' + index + ']';
+    if (stageIds.has(stage.id)) issues.push({ message: 'duplicate stage id "' + stage.id + '"', path });
     stageIds.add(stage.id);
-    if (!Number.isFinite(stage.order)) issues.push({ message: 'stage order must be finite', path });
-    if (stage.track !== series.track) {
-      issues.push({ message: `stage track "${stage.track}" does not match series "${series.track}"`, path });
-    }
-    for (const issue of validateSnapshot(stage)) {
-      issues.push({ message: issue.message, path: issue.path ? `${path}.${issue.path}` : path });
-    }
+    if (stage.track !== series.track) issues.push({ message: 'stage track "' + stage.track + '" does not match series "' + series.track + '"', path });
+    for (const issue of validateSnapshot(stage)) issues.push({ message: issue.message, path: issue.path ? path + '.' + issue.path : path });
   }
   for (const [index, step] of (series.events ?? []).entries()) {
-    const path = `events[${index}]`;
-    if (!stageIds.has(step.stage)) issues.push({ message: `event step references unknown stage "${step.stage}"`, path });
+    const path = 'events[' + index + ']';
+    if (!stageIds.has(step.stage)) issues.push({ message: 'event step references unknown stage "' + step.stage + '"', path });
   }
   return issues;
 }
@@ -92,7 +117,7 @@ export function validateTrackSeries(series: TrackSeries): ValidationIssue[] {
 export function assertValidTrackSeries(series: TrackSeries): void {
   const issues = validateTrackSeries(series);
   if (issues.length) {
-    const detail = issues.map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message)).join('\n');
-    throw new Error(`invalid track series "${series.track}":\n${detail}`);
+    const detail = issues.map((issue) => (issue.path ? issue.path + ': ' + issue.message : issue.message)).join('\n');
+    throw new Error('invalid track series "' + series.track + '":\n' + detail);
   }
 }

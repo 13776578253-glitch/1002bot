@@ -1,59 +1,97 @@
 /**
- * Layout contracts. The core defines the data shapes the render layer
- * consumes; concrete algorithms (manual coordinates, grid tidy, ELK.js)
- * implement these interfaces.
+ * Layout contracts shared by the layered provider, pin constraints and
+ * final edge router. Coordinates produced here are always world coordinates.
  */
 
-import type { NodePath } from '../schema/types.ts';
+import type { CanonicalPort, GraphNodeId } from '../schema/types.ts';
+import type { PortSide, Point, Rect } from './geometry.ts';
 
-export interface Size {
-  w: number;
-  h: number;
+export interface Size { w: number; h: number; }
+
+export interface LayoutNodeInput {
+  id: GraphNodeId;
+  parentId?: GraphNodeId;
+  kind: string;
+  expanded: boolean;
+  minSize?: Size;
+  measuredSize?: Size;
+  headerSize?: number;
+  order: number;
+  ports: readonly CanonicalPort[];
 }
 
-export interface Point {
-  x: number;
-  y: number;
+export interface LayoutEndpointInput {
+  nodeId: GraphNodeId;
+  portId?: string;
+  side?: PortSide;
+  fraction?: number;
 }
 
-export interface PlacedNode {
-  path: NodePath;
-  /** Absolute canvas position. */
-  at: Point;
-  size: Size;
+export interface LayoutEdgeInput {
+  id: string;
+  source: LayoutEndpointInput;
+  target: LayoutEndpointInput;
+  label?: string;
+}
+
+export interface LayoutConstraints {
+  pinned?: ReadonlyMap<GraphNodeId, Point>;
+  expandedBefore?: ReadonlyMap<GraphNodeId, Point>;
+  keepWithinParent?: boolean;
+}
+
+export interface LayoutInput {
+  nodes: readonly LayoutNodeInput[];
+  edges: readonly LayoutEdgeInput[];
+  constraints?: LayoutConstraints;
+  previous?: LayoutResult;
+}
+
+export interface NodeLayout {
+  id: GraphNodeId;
+  parentId?: GraphNodeId;
+  worldRect: Rect;
+  contentRect?: Rect;
+  headerRect?: Rect;
+  anchors: ReadonlyMap<string, Point>;
   expanded: boolean;
 }
 
-export interface RoutedEdge {
-  /** Projected endpoints (already resolved by the projection engine). */
-  from: NodePath;
-  to: NodePath;
-  /** Orthogonal waypoints in canvas coordinates. */
-  points: Point[];
+export interface EdgeRoute {
+  id: string;
+  points: readonly Point[];
+  sourceAnchor: Point;
+  targetAnchor: Point;
+  labelPoint: Point;
   label?: string;
 }
 
 export interface LayoutResult {
-  nodes: PlacedNode[];
-  edges: RoutedEdge[];
-  bounds: { x: number; y: number; w: number; h: number };
+  nodes: readonly NodeLayout[];
+  edges: readonly EdgeRoute[];
+  bounds: Rect;
 }
 
-export interface LayoutEngine {
-  /** Compute positions for the visible projection. */
-  layout(
-    nodes: { path: NodePath; expanded: boolean }[],
-    edges: { from: NodePath; to: NodePath; label?: string }[],
-  ): LayoutResult;
-}
+export interface LayoutEngine { layout(input: LayoutInput): LayoutResult; }
+export interface LayoutProvider extends LayoutEngine { layoutAsync(input: LayoutInput): Promise<LayoutResult>; }
 
-export { createElkLayout } from './elk.ts';
-export { createTidyLayout, LAYOUT_METRICS } from './tidy.ts';
+export { createLayeredLayout, createElkLayout } from './layered.ts';
+export { createPinnedLayout, applyPinnedConstraints } from './pinned.ts';
+export { LAYOUT_METRICS, cssVariables, nodeSize, aggregateSize, type LayoutMetrics, type NodeMeasurement } from './metrics.ts';
+export { routeVisibleEdges, validateOrthogonalPath, type RouteEndpoint, type RouteRequest, type RoutedPath } from './router.ts';
 export {
-  routeOrthogonal,
-  svgPathFromPoints,
   midpointOfPoints,
+  obstacleFromRect,
+  portAnchor,
+  rectContains,
+  rectFromPointSize,
+  rectIntersects,
   simplifyPoints,
+  svgPathFromPoints,
+  toLocalPoint,
+  toWorldPoint,
   type Obstacle,
+  type Point,
+  type PortSide,
   type Rect,
 } from './geometry.ts';

@@ -1,6 +1,6 @@
 export interface ToolbarProps {
   selectedTitle?: string | undefined;
-  visibleNodeCount: number;
+  visibleNodeCount?: number | undefined;
   canExpandOneLevel: boolean;
   hasExpandedNodes: boolean;
   onExpandOneLevel: () => void;
@@ -54,7 +54,7 @@ export function Toolbar({
         </button>
       </div>
       <div className="av-toolbar-group">
-        <span className="av-visible-count">{visibleNodeCount} 个可见节点</span>
+        {visibleNodeCount === undefined ? null : <span className="av-visible-count">{visibleNodeCount} 个可见节点</span>}
         <button type="button" className="av-tool-btn" onClick={onResetLayout}>
           自动整理
         </button>

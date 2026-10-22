@@ -1,27 +1,20 @@
 /**
- * Owner: `src/data/canonical-model.ts`.
+ * 1002bot business adapter.
  *
- * Converts the canonical graph source into validated, stage-complete snapshots.
+ * This module is the only place that parses the source tree used by the
+ * example. Core receives flat CanonicalGraph snapshots and never reads these
+ * source objects directly.
  */
 
-import type {
-  GraphEdge,
-  GraphNode,
-  StageSnapshot,
-  TrackSeries,
-} from '../../src/core/schema/types.ts';
+import type { CanonicalEdge, CanonicalNode, CanonicalPort, StageSnapshot, TrackSeries } from '../../src/core/schema/types.ts';
 import { assertValidSnapshot } from '../../src/core/schema/validate.ts';
+import { assertValidGraph } from '../../src/core/graph/validate.ts';
 import { normalizeTrackSeries } from '../../src/core/schema/normalize.ts';
 import { STAGE_NAMES, STAGES } from './stages.ts';
 import { buildGraph as buildCanonicalGraph, setTrack as setCanonicalTrack, stages as canonicalStages } from './canonical-model.ts';
 
-interface SourceEdge {
-  from: string;
-  to: string;
-  label?: string;
-  twoWay?: boolean;
-}
-
+interface SourcePort { id: string; label?: string; direction?: CanonicalPort['direction']; side?: CanonicalPort['side']; order?: number; role?: string; }
+interface SourceEdge { from: string; to: string; label?: string; twoWay?: boolean; relation?: CanonicalEdge['relation']; }
 interface SourceNode {
   id: string;
   title: string;
@@ -30,213 +23,153 @@ interface SourceNode {
   file?: string;
   children?: SourceNode[];
   edges?: SourceEdge[];
+  ports?: SourcePort[];
   intro?: string | number;
   planned?: boolean;
 }
-
-interface CanonicalSource {
-  stages: Record<string, Array<Record<string, unknown>>>;
-  buildGraph(stage: Record<string, unknown>): SourceNode;
-  setTrack(track: string): void;
-}
-
-interface SourceGraph {
-  root: SourceNode;
-  edgeByOwner: Map<string, { edge: SourceEdge; owner: string }[]>;
-}
-
-interface ConvertedPath {
-  key: string;
-  path: string;
-}
-
-type SourceDetails = readonly unknown[];
-
+interface SourceStage { id: string; label: string; n: number; title: string; subtitle?: string; date?: string; scope?: string; status?: string; changes?: string[]; verified?: string; doc?: string; }
 const TRACKS = ['main', 'qq', 'tui'] as const;
-function loadCanonicalSource(): CanonicalSource {
-  return {
-    stages: canonicalStages as CanonicalSource['stages'],
-    buildGraph: buildCanonicalGraph as CanonicalSource['buildGraph'],
-    setTrack: setCanonicalTrack,
-  };
-}
 
-function readSourceGraph(sourceRoot: SourceNode): SourceGraph {
-  const root: SourceNode = {
-    ...sourceRoot,
-    children: Array.from(sourceRoot.children ?? []),
-    edges: Array.from(sourceRoot.edges ?? []),
-  };
-  const edgeByOwner = new Map<string, { edge: SourceEdge; owner: string }[]>();
-
-  function walk(node: SourceNode, path: string): void {
-    const children = Array.from(node.children ?? [], (child) => ({
-      ...child,
-      details: Array.from((Array.isArray(child.details) ? child.details : []) as SourceDetails),
-      children: Array.from(child.children ?? []),
-      edges: Array.from(child.edges ?? []),
-    }));
-    node.details = Array.from((Array.isArray(node.details) ? node.details : []) as SourceDetails);
-    node.children = children;
-    node.edges = Array.from(node.edges ?? []);
-    edgeByOwner.set(
-      path,
-      node.edges.map((edge) => ({ edge, owner: path })),
-    );
-    for (const child of children) walk(child, `${path}/${child.id}`);
-  }
-
-  walk(root, 'system');
-  return { root, edgeByOwner };
-}
-
-function stringDetails(details: unknown): string[] | undefined {
-  if (!Array.isArray(details)) return undefined;
-  const values = details.filter((value): value is string => typeof value === 'string');
+function sourceDetails(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.filter((item): item is string => typeof item === 'string');
   return values.length ? values : undefined;
 }
 
-const FALLBACK_KEYS: Record<string, string> = {
-  'system/runtime/execution/context': 'context-group',
-  'system/runtime/execution/model': 'model-group',
-  'system/runtime/execution/tools': 'tools-group',
-  'system/runtime/execution/model/provider-request': 'provider-request-group',
-};
-
-function uniqueKey(source: SourceNode, path: string, used: Set<string>): string {
-  const candidate = source.id === 'system'
-    ? 'system'
-    : FALLBACK_KEYS[path] ?? source.id;
-  let key = candidate;
-  let index = 2;
-  while (used.has(key)) key = `${candidate}-${index++}`;
-  return key;
+function sourcePorts(value: SourcePort[] | undefined): CanonicalPort[] {
+  return (value ?? []).map((port, order) => ({
+    id: port.id,
+    ...(port.label === undefined ? {} : { label: port.label }),
+    direction: port.direction ?? 'bidirectional',
+    side: port.side ?? 'auto',
+    order: port.order ?? order,
+    ...(port.role === undefined ? {} : { role: port.role }),
+  }));
 }
 
-function assignPaths(
-  source: SourceNode,
-  sourcePath: string,
-  parentPath: string,
-  used: Set<string>,
-  pathBySourcePath: Map<string, ConvertedPath>,
-): string {
-  const key = uniqueKey(source, sourcePath, used);
-  used.add(key);
-  const nodePath = parentPath ? `${parentPath}/${key}` : key;
-  pathBySourcePath.set(sourcePath, { key, path: nodePath });
-  for (const child of source.children ?? []) {
-    const childPath = `${sourcePath}/${child.id}`;
-    assignPaths(child, childPath, nodePath, used, pathBySourcePath);
-  }
-  return key;
+function relationFor(edge: SourceEdge): CanonicalEdge['relation'] {
+  if (edge.relation) return edge.relation;
+  const value = (edge.label ?? '').toLowerCase();
+  if (value.includes('存') || value.includes('save') || value.includes('record')) return 'storage';
+  if (value.includes('工具') || value.includes('tool') || value.includes('调用') || value.includes('call')) return 'call';
+  if (value.includes('事件') || value.includes('event') || value.includes('tick')) return 'event';
+  return 'control';
 }
 
-function convertNode(
-  source: SourceNode,
-  sourcePath: string,
-  pathBySourcePath: ReadonlyMap<string, ConvertedPath>,
-  planned: boolean,
-): GraphNode {
-  const converted = pathBySourcePath.get(sourcePath)!;
-  const marker = planned || source.planned === true;
-  const details = stringDetails(source.details);
-  const node: GraphNode = {
-    key: converted.key,
-    title: source.title,
-    ...(source.desc === undefined ? {} : { desc: source.desc }),
-    ...(details === undefined ? {} : { details }),
-    ...(source.file === undefined ? {} : { source: source.file }),
-    ...(source.intro === undefined ? {} : { intro: String(source.intro) }),
-    ...(marker ? { planned: true } : {}),
+function idFor(source: SourceNode, used: Set<string>): string {
+  const candidate = source.id || 'node';
+  let result = candidate;
+  let suffix = 2;
+  while (used.has(result)) result = candidate + '-' + suffix++;
+  used.add(result);
+  return result;
+}
+
+function endpointPath(value: string, ownerPath: string): string {
+  const hash = value.indexOf('#');
+  const raw = hash < 0 ? value : value.slice(0, hash);
+  const suffix = hash < 0 ? '' : value.slice(hash);
+  const path = raw.startsWith('system') ? raw : ownerPath + '/' + raw;
+  return path + suffix;
+}
+
+function convertStage(sourceStage: SourceStage, track: string): StageSnapshot {
+  setCanonicalTrack(track);
+  const root = buildCanonicalGraph(sourceStage);
+  const sourceByPath = new Map<string, SourceNode>();
+  const parentByPath = new Map<string, string | null>();
+  const idByPath = new Map<string, string>();
+  const used = new Set<string>();
+
+  const walk = (node: SourceNode, path: string, parentPath: string | null): void => {
+    sourceByPath.set(path, node);
+    parentByPath.set(path, parentPath);
+    idByPath.set(path, idFor(node, used));
+    for (const child of node.children ?? []) walk(child, path + '/' + child.id, path);
   };
-  const children = Array.from(source.children ?? [], (child) =>
-    convertNode(child, `${sourcePath}/${child.id}`, pathBySourcePath, marker)
-  );
-  if (children.length) node.children = children;
-  return node;
-}
+  walk(root, 'system', null);
 
-function endpointPath(endpoint: string): string {
-  const hash = endpoint.indexOf('#');
-  return hash < 0 ? endpoint : endpoint.slice(0, hash);
-}
-
-function endpointSuffix(endpoint: string): string {
-  const hash = endpoint.indexOf('#');
-  return hash < 0 ? '' : endpoint.slice(hash);
-}
-
-function keyEndpoint(
-  sourcePath: string,
-  pathBySourcePath: ReadonlyMap<string, ConvertedPath>,
-  owner: string,
-): string {
-  const path = endpointPath(sourcePath);
-  const fullPath = owner === 'system' ? `system/${path}` : `${owner}/${path}`;
-  const converted = pathBySourcePath.get(fullPath);
-  if (converted === undefined) {
-    throw new Error(
-      `Unresolved source edge endpoint "${sourcePath}" in "${owner}" (${fullPath})`,
-    );
+  const nodes: CanonicalNode[] = [];
+  for (const [path, source] of sourceByPath) {
+    const parentPath = parentByPath.get(path) ?? null;
+    const nodeId = idByPath.get(path)!;
+    const details = sourceDetails(source.details);
+    const node: CanonicalNode = {
+      id: nodeId,
+      parentId: parentPath === null ? null : idByPath.get(parentPath!) ?? null,
+      kind: parentPath === null ? 'root' : source.planned ? 'planned' : (source.children?.length ? 'group' : 'component'),
+      label: source.title,
+      ...(source.desc === undefined ? {} : { summary: source.desc }),
+      ...(details === undefined ? {} : { details }),
+      ports: sourcePorts(source.ports),
+      ...(source.file === undefined ? {} : { sourceRefs: [source.file] }),
+      ...(source.intro === undefined ? {} : { introducedAt: String(source.intro) }),
+      ...(source.planned ? { planned: true } : {}),
+      order: path.split('/').length * 1000,
+    };
+    nodes.push(node);
   }
-  return converted.path + endpointSuffix(sourcePath);
-}
 
-function convertEdge(
-  edge: SourceEdge,
-  pathBySourcePath: ReadonlyMap<string, ConvertedPath>,
-  scope: string,
-): GraphEdge {
-  return {
-    from: keyEndpoint(edge.from, pathBySourcePath, scope),
-    to: keyEndpoint(edge.to, pathBySourcePath, scope),
-    ...(edge.label === undefined ? {} : { label: edge.label }),
-    ...(edge.twoWay === undefined ? {} : { twoWay: edge.twoWay }),
-  };
-}
+  const edges: CanonicalEdge[] = [];
+  let edgeOrder = 0;
+  for (const [ownerPath, owner] of sourceByPath) {
+    for (const [localIndex, edge] of (owner.edges ?? []).entries()) {
+      const sourcePath = endpointPath(edge.from, ownerPath);
+      const targetPath = endpointPath(edge.to, ownerPath);
+      const sourceHash = sourcePath.indexOf('#');
+      const targetHash = targetPath.indexOf('#');
+      const sourceNodeId = idByPath.get(sourceHash < 0 ? sourcePath : sourcePath.slice(0, sourceHash));
+      const targetNodeId = idByPath.get(targetHash < 0 ? targetPath : targetPath.slice(0, targetHash));
+      if (!sourceNodeId || !targetNodeId) {
+        throw new Error('Unresolved source edge endpoint in ' + track + '/' + sourceStage.id + ': ' + sourcePath + ' -> ' + targetPath);
+      }
+      edges.push({
+        id: sourceStage.id + ':edge:' + edgeOrder + ':' + ownerPath + ':' + localIndex,
+        source: { nodeId: sourceNodeId, ...(sourceHash < 0 ? {} : { portId: sourcePath.slice(sourceHash + 1) }) },
+        target: { nodeId: targetNodeId, ...(targetHash < 0 ? {} : { portId: targetPath.slice(targetHash + 1) }) },
+        relation: relationFor(edge),
+        direction: edge.twoWay ? 'bidirectional' : 'directed',
+        ...(edge.label === undefined ? {} : { label: edge.label }),
+        order: edgeOrder++,
+      });
+    }
+  }
 
-function loadTrack(world: CanonicalSource, track: string): TrackSeries {
-  world.setTrack(track);
-  const stages = STAGES[track as keyof typeof STAGES];
-  if (!stages) throw new Error(`Unknown source track "${track}"`);
-
-  return normalizeTrackSeries({
+  const graph = { rootId: idByPath.get('system')!, nodes, edges, revision: track + ':' + sourceStage.id };
+  assertValidGraph(graph);
+  const snapshot: StageSnapshot = {
+    id: sourceStage.id,
+    label: sourceStage.label,
     track,
-    name: STAGE_NAMES[track as keyof typeof STAGE_NAMES],
-    stages: stages.map((stage) => {
-      const sourceStage = world.stages[track]?.find(({ id }) => id === stage.id);
-      if (!sourceStage) throw new Error(`Missing source stage "${stage.id}"`);
-      const graph = readSourceGraph(world.buildGraph(sourceStage));
-      const pathBySourcePath = new Map<string, ConvertedPath>();
-      assignPaths(graph.root, 'system', '', new Set(), pathBySourcePath);
-      const root = convertNode(graph.root, 'system', pathBySourcePath, false);
-      root.title = stage.title;
-      const edges = [...graph.edgeByOwner.values()]
-        .flat()
-        .map(({ edge, owner }) => convertEdge(edge, pathBySourcePath, owner));
-      const snapshot: StageSnapshot = {
-        id: stage.id,
-        label: stage.label,
-        track,
-        order: stage.n,
-        title: stage.title,
-        subtitle: stage.subtitle,
-        date: stage.date,
-        ...(stage.scope === undefined ? {} : { scope: stage.scope }),
-        status: stage.status,
-        ...(stage.changes === undefined ? {} : { changes: stage.changes }),
-        ...(stage.verified === undefined ? {} : { verified: stage.verified }),
-        doc: stage.doc,
-        root,
-        edges,
-      };
-      assertValidSnapshot(snapshot);
-      return snapshot;
-    }),
-  });
+    order: sourceStage.n,
+    title: sourceStage.title,
+    ...(sourceStage.subtitle === undefined ? {} : { subtitle: sourceStage.subtitle }),
+    ...(sourceStage.date === undefined ? {} : { date: sourceStage.date }),
+    ...(sourceStage.scope === undefined ? {} : { scope: sourceStage.scope }),
+    ...(sourceStage.status === undefined ? {} : { status: sourceStage.status }),
+    ...(sourceStage.changes === undefined ? {} : { changes: sourceStage.changes }),
+    ...(sourceStage.verified === undefined ? {} : { verified: sourceStage.verified }),
+    ...(sourceStage.doc === undefined ? {} : { doc: sourceStage.doc }),
+    graph,
+  };
+  assertValidSnapshot(snapshot);
+  return snapshot;
 }
 
 export function loadBotStages(): { tracks: TrackSeries[] } {
-  const world = loadCanonicalSource();
-  return { tracks: TRACKS.map((track) => loadTrack(world, track)) };
+  return {
+    tracks: TRACKS.map((track) => {
+      setCanonicalTrack(track);
+      const stages = STAGES[track as keyof typeof STAGES] as SourceStage[];
+      return normalizeTrackSeries({
+        track,
+        name: STAGE_NAMES[track as keyof typeof STAGE_NAMES],
+        stages: stages.map((stage) => {
+          const sourceStage = (canonicalStages[track] as SourceStage[]).find((candidate) => candidate.id === stage.id);
+          if (!sourceStage) throw new Error('Missing source stage "' + stage.id + '"');
+          return convertStage(sourceStage, track);
+        }),
+      });
+    }),
+  };
 }

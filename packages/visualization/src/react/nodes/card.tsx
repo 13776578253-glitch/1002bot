@@ -17,20 +17,20 @@ export function CardNode({ data, selected }: NodeProps<CardNodeType>) {
       className={['av-card', `av-delta-${status}`, selected ? 'av-card--selected' : ''].join(' ')}
       data-status-label={status}
       data-expanded={data.expanded ? 'true' : 'false'}
-      title={data.deltaNote ?? data.desc}
+      title={data.deltaNote ?? data.summary}
       role="button"
       tabIndex={0}
-      aria-label={`${data.title}${data.desc ? `：${data.desc}` : ''}`}
+      aria-label={`${data.title}${data.summary ? `：${data.summary}` : ''}`}
       onClick={(event) => { event.stopPropagation(); data.onSelect?.(); }}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         event.stopPropagation();
-        if (data.hasChildren) data.onToggle?.();
+        if (data.expandable) data.onToggle?.();
         else data.onSelect?.();
       }}
     >
-      <NodePorts customPorts={data.ports as string[] | undefined} />
+      <NodePorts customPorts={data.ports} />
       <span className="av-card-status" aria-label={status} />
       <div className="av-card-body">
         <div className="av-card-icon" aria-hidden>
@@ -38,17 +38,17 @@ export function CardNode({ data, selected }: NodeProps<CardNodeType>) {
         </div>
         <div className="av-card-copy">
           <div className="av-card-title">{data.title}</div>
-          {data.desc && <div className="av-card-desc">{data.desc}</div>}
+          {data.summary && <div className="av-card-desc">{data.summary}</div>}
         </div>
-        {data.hasChildren && (
+        {data.expandable && (
           <button type="button" className="av-card-action nodrag" aria-expanded={data.expanded} aria-label={data.expanded ? '收起' : '展开'} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}>
             <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
           </button>
         )}
       </div>
-      {data.source && (
+      {data.sourceRefs && data.sourceRefs.length > 0 && (
         <div className="av-card-meta">
-          <span className="av-card-meta-item">{data.source}</span>
+          <span className="av-card-meta-item">{data.sourceRefs?.[0]}</span>
         </div>
       )}
     </div>
