@@ -64,3 +64,17 @@ Verification:
 Open issues: 需要按规划 Phase 1-6 实施；本轮未改动运行时代码。
 
 Commit suggestion: docs(visualization): plan stable graph layer rewrite
+
+## 2026-10-22 规划修订：数据边界、单一布局与 Scene 装配
+
+Change:
+1. 明确 Canonical Graph、Projection、Layout/Scene、React Store 四类数据的唯一权威位置；adapter 负责节点解析和 Graph Patch，Core 负责递归与投影，React 不解析业务节点。
+2. 将 layered.ts 定义为唯一 ELK 结构布局；pinned.ts 仅作为 ELK 输入约束和输出修正器；geometry.ts 只负责坐标/边界/端口几何；router.ts 负责最终关系路径及校验；metrics.ts 与 CSS variables、ResizeObserver 共同收敛实际尺寸。
+3. 将 core/engine/scene.ts 定义为唯一场景装配入口，增加 sceneVersion、graphRevision、stageId、metricsRevision 和 React hook request sequence；Inspector/Delta 统一归属 react/panels，playground/board 只做组合和布局。
+4. 划清 schema/validate.ts 与 graph/validate.ts 的结构校验和图语义校验职责；保留 examples/1002bot 为业务过渡目录，并核对当前没有 ./stages 消费者。
+
+Verification: 计划文件 diff check 通过；本轮只修改规划和任务记录，上一轮可视化 28/28 测试及 Core/Web/Build 类型检查保持通过。
+
+Open issues: 进入实现前需要按 Phase 0 冻结 GraphPatch、metrics measurement round-trip 和 ELK provider 的具体 API。
+
+Commit suggestion: docs(visualization): refine graph layer boundaries

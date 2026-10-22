@@ -16,6 +16,21 @@ Canonical Graph → Projection → Layout Engine → React Flow Adapter → Canv
 
 范围包含通用 Core、1002bot adapter、React Flow 适配器和 Canvas Renderer。主题颜色、阶段文案和业务数据内容不作为第一阶段目标。
 
+## 四类数据与模块边界
+
+四类数据必须只有一个权威位置：
+
+| 数据 | 唯一权威位置 | 允许的消费者 |
+| --- | --- | --- |
+| 原始节点、端口、关系和阶段事实 | Canonical Graph / examples adapter | Graph Index、Evolution、Projection |
+| 折叠后当前可见的节点和关系 | Projection | Layout、Scene、Inspector |
+| 坐标、尺寸、端口锚点和折线路径 | Layout / CanvasScene | React Flow Adapter、Edge Renderer |
+| 展开、选择、viewport、手工位置和布局约束 | React Store | Scene 请求和 UI 交互 |
+
+递归遍历只存在于 Graph Index 和 Projection。节点解析、业务数据增量、样式渲染和 React Flow 事件不得反向写入递归核心。Zustand 不保存 Canonical Graph 的副本；增量事实先经过 adapter 的 Graph Patch，再由 Core 生成新的不可变 revision。
+
+样式与几何也分开：Theme 只提供颜色、字体、边框和状态 token；`metrics.ts` 提供布局尺寸契约；节点组件消费 token，不在组件内写入会改变布局的独立尺寸常量。
+
 ## 当前基线与需要推倒的部分
 
 - `GraphNode.children` 同时承担树存储、父子关系和可视化层次；`GraphEdge.from/to` 使用路径字符串，路径由 key 拼接而成。
@@ -93,6 +108,28 @@ interface StageSnapshot {
 }
 ```
 
+### 增量更新契约
+
+Canonical Graph 支持以稳定 ID 为目标的不可变 patch，不要求每次从头替换业务数据：
+
+```ts
+interface GraphPatch {
+  baseRevision: string;
+  nextRevision: string;
+  operations: readonly (
+    | { kind: 'upsertNode'; node: CanonicalNode }
+    | { kind: 'removeNode'; id: GraphNodeId }
+    | { kind: 'reparentNode'; id: GraphNodeId; parentId: GraphNodeId | null }
+    | { kind: 'upsertPort'; nodeId: GraphNodeId; port: CanonicalPort }
+    | { kind: 'removePort'; nodeId: GraphNodeId; portId: GraphPortId }
+    | { kind: 'upsertEdge'; edge: CanonicalEdge }
+    | { kind: 'removeEdge'; id: GraphEdgeId }
+  )[];
+}
+```
+
+`applyGraphPatch` 是纯函数：校验 `baseRevision`，应用操作，重新运行 graph 语义校验并返回新 revision。UI Store 只保存当前 revision 的引用、用户状态和 layout override；它不接受业务节点编辑作为第二事实源。
+
 关键规则：
 
 - 根节点是图模型中的真实容器，但默认不映射成 React Flow 节点；其直接子节点成为顶层可见节点。
@@ -101,6 +138,12 @@ interface StageSnapshot {
 - 路径由 `GraphIndex.pathOf(nodeId)` 派生，用于 Inspector、日志和调试，不进入边端点契约。
 - 每个节点的端口 ID 在节点内唯一；方向、侧边和顺序是布局及 Handle 的输入。
 - 图校验必须拒绝重复 ID、重复端口、未知父节点、父循环、多个根、未知端点、端口方向不匹配和不允许的跨容器关系。
+
+### 校验职责
+
+- `schema/validate.ts` 只检查结构契约：字段类型、必填字段、枚举值、数组项形状和基本格式；它不建立全局 ID 索引。
+- `graph/validate.ts` 只检查图语义：ID 冲突、未知父节点、父子循环、根数量、悬空边、端口引用、方向兼容性和跨容器约束。
+- `indexGraph` 调用 graph validator 的结果构建索引，不再在 `schema/validate.ts` 和 `graph/index.ts` 各实现一遍身份检查。
 
 ### 2. Evolution
 
@@ -178,8 +221,14 @@ interface LayoutInput {
     ports: readonly CanonicalPort[];
   }[];
   edges: readonly ProjectedEdge[];
-  pinned?: ReadonlyMap<GraphNodeId, Point>;
+  constraints?: LayoutConstraints;
   previous?: LayoutResult;
+}
+
+interface LayoutConstraints {
+  pinned: ReadonlyMap<GraphNodeId, Point>;
+  expandedBefore?: ReadonlyMap<GraphNodeId, Point>;
+  keepWithinParent?: boolean;
 }
 
 interface NodeLayout {
@@ -209,15 +258,19 @@ interface LayoutResult {
 实现拆分：
 
 - `layout/metrics.ts`：卡片、聚合头部、内容区、内边距、网格和最小间距的唯一来源。
-- `layout/layered.ts`：按显式 parentId 递归布局；每个 group 先布局子图，再由子图 bounds 反推容器 bounds；同层使用稳定 order，环路使用稳定 SCC 顺序。
-- `layout/pinned.ts`：将用户拖拽位置按 node ID 合并进自动布局；父节点变化或超出容器时重新吸附到合法局部坐标。
-- `layout/geometry.ts`：只处理矩形、端口锚点、正交避障、折线简化、圆角 SVG 路径。
-- `layout/router.ts`：对每条 projected edge 按 edge id 路由；障碍物包含可见卡片和聚合头部，source/target 自身从障碍集合排除。
-- `layout/index.ts`：只导出契约、默认 layered engine、可选 ELK provider 和 router。
+- `layout/layered.ts`：唯一的结构布局入口，使用 ELK 计算分层、嵌套 bounds、同层顺序和端口侧边；同层稳定 order，环路使用稳定 SCC 顺序。
+- `layout/pinned.ts`：不是第二套布局引擎，而是 ELK 输入约束和输出修正器。它提交用户拖拽位置、展开前位置和局部约束，校正父子局部坐标，处理节点迁移和越界吸附，再把约束交给 layered provider。
+- `layout/geometry.ts`：只处理世界坐标/父局部坐标转换、矩形、内容区、端口锚点和边界计算；不决定节点顺序，也不生成关系路径。
+- `layout/router.ts`：在 layered + pinned 得到最终可见矩形后，对每条 projected edge 按 edge id 生成并校验正交路径；障碍物包含可见卡片和聚合头部，source/target 自身从障碍集合排除。
+- `layout/index.ts`：只导出契约、唯一 layered provider、pinned constraint decorator、geometry 和 router。禁止再暴露两个可竞争的完整布局入口。
 
 布局结果统一使用世界坐标。React Flow 适配器再将有 parentId 的节点转换为父节点局部坐标，避免 Core 与 React Flow 各自解释坐标。
 
-默认策略为“分层自动布局 + 稳定手动位置覆盖”。ELK.js 如需引入，只实现 `LayoutProvider`，不能让 schema、projection 或 renderer 依赖 ELK。
+默认策略为“ELK 分层布局 + pinned 约束 + 最终路由”。布局 provider 以异步 `Promise<LayoutResult>` 提供结果；Core Scene 不持有 AbortController 或 React 请求状态。ELK.js 只实现 `LayoutProvider`，不能让 schema、projection 或 renderer 依赖 ELK。
+
+### 实际尺寸一致性
+
+`metrics.ts` 同时导出布局尺寸和 CSS variables。React 节点使用同一组变量，并通过 `ResizeObserver` 收集实际渲染尺寸。首次场景使用 metrics 估算；测量结果变化超过 1px 时触发一次新的 layout revision，稳定后停止重排。禁止节点 CSS 自行改变宽高而不回写 measurement，避免 ELK 矩形与实际卡片穿模。
 
 ## React Flow Adapter 重写
 
@@ -235,16 +288,20 @@ interface LayoutResult {
 
 为通用输入保留一个 `canonicalGraphToFlow`，为完整 `CanvasScene` 提供一个组合入口；删除当前同时接受 Projection、Layout、CanvasModel 并重复推断的三套转换分支。
 
+适配器只把 `CanvasScene` 转成 React Flow 数据，不调用 Projection、Layout 或 Graph Index，也不修正 route。所有递归、boundary resolution、尺寸和路径决策都在 Scene 之前完成。
+
 ## Canvas Renderer 重写
 
 职责拆成四个模块：
 
-1. `react/canvas/use-canvas-scene.ts`：根据 stage、previous、evolution 和 store 状态调用 Core Engine，返回不可变 Scene。
-2. `react/canvas/CanvasScene.tsx`：只负责 React Flow、节点类型、边类型、viewport、drag/select 事件。
-3. `react/panels/Inspector.tsx`、`DeltaPanel.tsx`：只消费 Scene 的选中项和 stage delta。
-4. `playground/src/board/ArchitectureBoard.tsx`：管理 track/stage 导航、Sidebar、Stagebar、Toolbar、DeltaBar，并组合 CanvasScene 与 Inspector。
+1. `core/engine/scene.ts`：唯一的场景装配入口。接收 Canonical Graph、阶段演进状态、ExpansionState 和 LayoutConstraints，按 `Projection → Boundary Resolution → Layered Layout + Pinning → Edge Routing` 顺序生成不可变 `CanvasScene`。
+2. `react/canvas/use-canvas-scene.ts`：根据 stage 和 React Store 创建 Scene 请求；递增 request sequence，只接受最后一次请求的结果，防止快速切换阶段时旧的异步 ELK 结果覆盖新场景。
+3. `react/canvas/CanvasScene.tsx`：只负责 React Flow、节点类型、边类型、viewport、drag/select 事件。
+4. `react/panels/Inspector.tsx`、`DeltaPanel.tsx`：唯一的 Inspector/Delta 实现，只消费 Scene 的选中项和 stage delta。`playground/src/board/` 只负责外壳布局、导航和传参，不再复制这些组件。
 
 `EvolutionCanvas` 不再自己重复渲染 Inspector。看板外壳与画布共享同一个 selection/scene 入口。
+
+`CanvasScene` 至少包含 `sceneVersion`、`graphRevision`、`stageId` 和 `metricsRevision`。React hook 用请求序号处理异步结果；版本字段用于调试、缓存失效和验收，不把并发控制污染纯 Core。
 
 Store 改为：
 
@@ -273,12 +330,15 @@ interface CanvasState {
 
 保留业务源数据在 `examples/1002bot/`，但 adapter 变为纯函数：
 
+- `source.ts` 或现有业务模型只负责原始事实与增量输入；`adapter.ts` 负责解析节点、分配稳定 ID、展开端口和关系引用，并输出 Canonical Graph/GraphPatch。
+- `src/core` 不读取业务源文件、不解析业务字段、不生成产品文案；`src/react` 不解析节点，也不参与递归关系计算。
 - 删除 `setTrack` 这类全局可变状态；
 - 每个业务 stage source 先生成 `CanonicalGraphInput` 的扁平 nodes/edges；
 - source tree 若继续作为编写便利，只在 adapter 内转换，不能穿过包边界；
 - source 的 `id`、`file`、`rules` 等字段映射到 canonical node/port/sourceRefs；
 - 每个 stage 运行 `validateCanonicalGraph`，再按 order 生成 TrackSeries；
 - adapter tests 覆盖三条 track、稳定 ID、moved/split/merged、端口传播和边端点完整性。
+- 包正式入口不依赖 `examples/1002bot`。当前仓库未发现 `@1002bot/visualization/stages` 的消费者；迁移期间如出现现有消费者，才新增兼容的 `./stages` app-only export，并同步生成脚本，禁止把业务数据重新混入 `.` 或 `./react`。
 
 ## 推荐目标目录
 
@@ -346,8 +406,6 @@ packages/visualization/
         Sidebar.tsx
         Stagebar.tsx
         Toolbar.tsx
-        DeltaBar.tsx
-        Inspector.tsx
       generated/
         bot-stages.json
   tests/
@@ -371,7 +429,7 @@ packages/visualization/
 ### Phase 1：Schema + Graph Index
 
 - 引入扁平 CanonicalGraph、稳定 node/edge/port ID。
-- 重写 validate、normalize、indexGraph；路径改为派生值。
+- 重写 schema validate、graph validate、normalize、indexGraph；路径改为派生值；增加 GraphPatch 和 revision 校验。
 - 先保留旧 adapter 的转换入口，禁止新 Core 读取 `children` 或路径边端点。
 - 验收：重复 ID、父循环、未知端点、端口方向和根约束均有失败测试；同一 ID 在三阶段移动后仍保持索引身份。
 
@@ -384,10 +442,11 @@ packages/visualization/
 
 ### Phase 3：Layout + Router
 
-- 实现 metrics、layered、pinned、router。
+- 实现 metrics、唯一 ELK layered provider、pinned constraint decorator、geometry 和 router。
 - 布局输入只使用 Projection 输出，坐标只在 Layout 产生。
 - 路由按 edge ID 绑定，验证每段折线不穿越可见障碍，父 bounds 包含子 bounds。
-- 验收：同一输入输出确定性；无重叠；子节点在父内容区；拖拽位置可跨重算保留；路由点与端口锚点一致。
+- 增加 ResizeObserver measurement round-trip；验证 CSS 实际宽高与 Layout metrics 一致。
+- 验收：同一输入输出确定性；无重叠；子节点在父内容区；拖拽位置可跨重算保留；路由点与端口锚点一致；不存在第二套完整布局引擎。
 
 ### Phase 4：React Flow Adapter
 
@@ -398,9 +457,10 @@ packages/visualization/
 
 ### Phase 5：Canvas Renderer + Playground
 
-- 拆出 CanvasScene/use-canvas-scene/Inspector；ArchitectureBoard 成为唯一看板编排入口。
+- 实现 `core/engine/scene.ts` 唯一装配入口和异步 request sequence；拆出 CanvasScene/use-canvas-scene。
+- 将 Inspector/DeltaPanel 归入 `src/react/panels/`，ArchitectureBoard 只负责组合、导航和外壳布局。
 - Store 迁移到按 stage/track 保存的 node ID 状态。
-- 逐条迁移 Sidebar、Stagebar、Toolbar、DeltaBar 和 Inspector。
+- 逐条迁移 Sidebar、Stagebar、Toolbar，并由 `react/panels` 提供 DeltaPanel 和 Inspector。
 - 验收：三条路线切换、阶段导航、节点选择、展开/收起、拖拽、自动整理、viewport、键盘和 aria 行为。
 
 ### Phase 6：删除旧契约与收口
@@ -415,12 +475,14 @@ packages/visualization/
 | 层 | 必须证明的行为 |
 | --- | --- |
 | Schema | stable ID、显式 parent、端口方向、edge endpoint 和 root 约束 |
+| Incremental data | Graph Patch 按 revision 应用；Store 不复制 Canonical Graph |
 | Graph | 无重复/环路；path 是派生值；索引不覆盖 |
 | Projection | expansion 按 node ID；折叠到最近可见祖先；boundary port 和平行 edge 保留 |
 | Evolution | moved/split/merged/rewired 不依赖路径 |
 | Layout | 父子 bounds、确定性、手动位置、端口锚点和稳定路由 |
+| Metrics/Theme | CSS 变量、React 实际测量与 Layout 尺寸经过同一契约收敛 |
 | Adapter | stable React IDs、parent-local 坐标、Handle ID、route points |
-| Renderer | 画布不做业务推导；Inspector 不重复；交互状态跨阶段连续 |
+| Scene/Renderer | `engine/scene.ts` 是唯一装配入口；React 只消费 Scene；Inspector/Delta 单一实现 |
 | Example | 1002bot 三轨数据全部经过同一 canonical contract |
 | Release | core/react declarations、build、build:web、check:dist 和 README 同步 |
 
