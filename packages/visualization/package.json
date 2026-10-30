@@ -1,9 +1,9 @@
 {
   "name": "@1002bot/visualization",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Interactive architecture evolution canvas for the 1002bot project",
+  "description": "Recursive architecture canvas with explicit baseline changes",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -18,15 +18,15 @@
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
-    }
+    },
+    "./styles.css": "./dist/react/styles.css"
   },
   "scripts": {
-    "build": "node tools/clean-dist.mjs && tsc -p tsconfig.build.json && node tools/rewrite-declaration-imports.mjs && node tools/check-dist.mjs",
+    "build": "node tools/clean-dist.mjs && tsc -p tsconfig.build.json && node tools/rewrite-declaration-imports.mjs && node tools/copy-css.mjs && node tools/check-dist.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "gen:data": "node --experimental-strip-types tools/gen-playground-data.mjs",
-    "dev": "node --experimental-strip-types tools/gen-playground-data.mjs && vite --config playground/vite.config.ts",
+    "test": "node --experimental-strip-types --test src/react/model/__tests__/*.test.ts tests/*.test.ts tests/integration/*.test.ts tests/architecture/*.test.ts",
+    "dev": "vite --config playground/vite.config.ts",
     "build:web": "vite build --config playground/vite.config.ts",
     "check:dist": "node tools/check-dist.mjs"
   },
@@ -41,7 +41,6 @@
   "dependencies": {
     "@xyflow/react": "^12.12.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "zustand": "^5.0.15"
+    "react-dom": "^19.3.1"
   }
 }

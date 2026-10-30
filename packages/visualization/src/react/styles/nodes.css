@@ -1,0 +1,33 @@
+:where(.canvas-app) .react-flow__node-card { border:0; padding:0; background:transparent; border-radius:13px; }
+:where(.canvas-app) .flow-card { width:100%; height:100%; background:var(--surface); border:1px solid var(--line); border-radius:13px; padding:15px 16px; transition:border-color .12s,box-shadow .12s,background .12s; }
+:where(.canvas-app) .flow-card:hover { border-color:var(--muted); background:var(--hover); }
+:where(.canvas-app) .flow-card.is-selected { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent); }
+:where(.canvas-app) .is-neighbor .flow-card { border-color:color-mix(in srgb,var(--accent) 62%,var(--line)); }
+:where(.canvas-app) .is-planned { border-style:dashed; }
+:where(.canvas-app) .card-title { font-size:16px; font-weight:600; display:flex; align-items:center; gap:10px; line-height:24px; }
+:where(.canvas-app) .card-name { min-width:0; flex:1; }
+:where(.canvas-app) .change-badge { flex:none; display:inline-flex; align-items:center; justify-content:center; padding:0 5px; border-radius:4px; color:var(--change-color); background:color-mix(in srgb,var(--change-color) 10%,var(--surface)); font-size:11px; font-weight:400; line-height:20px; white-space:nowrap; }
+:where(.canvas-app) .flow-card:not(.is-selected):is([data-change="added"],[data-change="replaced"]),:where(.canvas-app) .structure-frame:not(.is-selected):is([data-change="added"],[data-change="replaced"]) { border-color:var(--change-color); }
+:where(.canvas-app) .card-summary { font-size:12.5px; line-height:20px; margin-top:4px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+:where(.canvas-app) .planned-badge { margin-left:auto; font-size:11px; line-height:20px; padding:0 5px; border-radius:4px; background:var(--hover); color:var(--muted); font-weight:400; }
+:where(.canvas-app) .react-flow__handle { width:5px; height:5px; min-width:5px; min-height:5px; background:var(--accent); border:0; opacity:0; pointer-events:none; }
+:where(.canvas-app) .flow-card:hover .react-flow__handle,:where(.canvas-app) .flow-card.is-selected .react-flow__handle { opacity:.8; }
+:where(.canvas-app) .react-flow__node-cluster,:where(.canvas-app) .react-flow__node-structure { border:0; padding:0; border-radius:20px; background:transparent; pointer-events:none!important; }
+:where(.canvas-app) .structure-header,:where(.canvas-app) .cluster-drag-handle { pointer-events:auto; }
+:where(.canvas-app) .structure-frame { width:100%; height:100%; border:1.5px dashed var(--group-line); border-radius:20px; background:var(--group-bg); }
+:where(.canvas-app) .structure-frame.is-selected { border-color:var(--accent); }
+:where(.canvas-app) .structure-header { height:68px; display:flex; align-items:center; gap:12px; padding:12px 20px; cursor:grab; }
+:where(.canvas-app) .structure-heading { flex:1; min-width:0; }
+:where(.canvas-app) .structure-header .card-title { font-size:17px; }
+:where(.canvas-app) .structure-header .card-summary { margin-top:1px; }
+:where(.canvas-app) .structure-toggle { margin-left:auto; display:flex; align-items:center; justify-content:center; gap:3px; min-width:36px; height:28px; padding:0 3px; color:var(--muted); border:0; border-radius:5px; background:transparent; font-size:11px; font-weight:400; }
+:where(.canvas-app) .structure-toggle:hover { color:var(--accent); background:var(--hover); }
+:where(.canvas-app) .structure-toggle svg { width:14px; height:14px; }
+:where(.canvas-app) .cluster { width:100%; height:100%; border:1.5px solid var(--group-line); border-radius:20px; background:var(--group-bg); }
+:where(.canvas-app) .cluster.is-selected { border-color:var(--accent); }
+:where(.canvas-app) .cluster-drag-handle { display:flex; align-items:center; gap:12px; height:54px; padding:12px 20px; cursor:grab; }
+:where(.canvas-app) .cluster-drag-handle input { border:0; outline:0; min-width:0; width:100%; background:transparent; font-size:16px; font-weight:600; color:var(--muted); border-radius:3px; }
+:where(.canvas-app) .cluster-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:16px!important; font-weight:600; cursor:text; }
+:where(.canvas-app) .cluster-grip { display:grid; place-items:center; flex:none; cursor:grab; }
+:where(.canvas-app) .cluster-drag-handle input:focus { background:var(--surface); outline:1px solid var(--accent); }
+:where(.canvas-app) .cluster-drag-handle span { color:var(--muted); font-size:12px; }

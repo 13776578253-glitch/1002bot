@@ -12,9 +12,10 @@
     "useUnknownInCatchVariables": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
+    "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx"]
 }

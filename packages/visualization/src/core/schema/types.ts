@@ -2,15 +2,12 @@
  * UI-independent canonical graph contracts.
  *
  * A stage owns a flat graph. Parentage, endpoint identity and ports are
- * explicit references; paths are derived by the graph index and never carry
- * identity across stages.
+ * explicit references. Stable IDs carry identity across stages.
  */
 
 export type GraphNodeId = string;
 export type GraphEdgeId = string;
 export type GraphPortId = string;
-export type NodeKey = GraphNodeId;
-export type NodePath = string;
 
 export type NodeKind =
   | 'root'
@@ -98,83 +95,4 @@ export interface StageSnapshot extends StageMeta {
   order: number;
   title: string;
   graph: CanonicalGraph;
-}
-
-export type EvolutionKind =
-  | 'added'
-  | 'modified'
-  | 'moved'
-  | 'split'
-  | 'merged'
-  | 'removed'
-  | 'rewired';
-
-interface EvolutionBase {
-  kind: EvolutionKind;
-  note?: string;
-}
-
-export interface AddedEvent extends EvolutionBase {
-  kind: 'added';
-  ids: GraphNodeId[];
-}
-
-export interface ModifiedEvent extends EvolutionBase {
-  kind: 'modified';
-  ids: GraphNodeId[];
-}
-
-export interface MovedEvent extends EvolutionBase {
-  kind: 'moved';
-  id: GraphNodeId;
-}
-
-export interface SplitEvent extends EvolutionBase {
-  kind: 'split';
-  from: GraphNodeId;
-  into: GraphNodeId[];
-}
-
-export interface MergedEvent extends EvolutionBase {
-  kind: 'merged';
-  from: GraphNodeId[];
-  into: GraphNodeId;
-}
-
-export interface RemovedEvent extends EvolutionBase {
-  kind: 'removed';
-  ids: GraphNodeId[];
-}
-
-export interface RewiredEvent extends EvolutionBase {
-  kind: 'rewired';
-  edgeId?: GraphEdgeId;
-  before: CanonicalEndpointPair;
-  after: CanonicalEndpointPair;
-}
-
-export interface CanonicalEndpointPair {
-  source: CanonicalEndpoint;
-  target: CanonicalEndpoint;
-}
-
-export type EvolutionEvent =
-  | AddedEvent
-  | ModifiedEvent
-  | MovedEvent
-  | SplitEvent
-  | MergedEvent
-  | RemovedEvent
-  | RewiredEvent;
-
-export interface EvolutionStep {
-  stage: string;
-  events: EvolutionEvent[];
-}
-
-export interface TrackSeries {
-  track: string;
-  name: string;
-  stages: StageSnapshot[];
-  events?: EvolutionStep[];
 }

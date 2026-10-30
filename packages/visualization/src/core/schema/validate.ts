@@ -5,7 +5,7 @@
  * parent cycles and endpoint semantics belong to core/graph/validate.ts.
  */
 
-import type { CanonicalGraph, CanonicalNode, StageSnapshot, TrackSeries } from './types.ts';
+import type { CanonicalGraph, CanonicalNode, StageSnapshot } from './types.ts';
 
 export interface ValidationIssue {
   message: string;
@@ -88,36 +88,5 @@ export function assertValidSnapshot(snapshot: StageSnapshot): void {
   if (issues.length) {
     const detail = issues.map((issue) => (issue.path ? issue.path + ': ' + issue.message : issue.message)).join('\n');
     throw new Error('invalid snapshot "' + snapshot.id + '":\n' + detail);
-  }
-}
-
-export function validateTrackSeries(series: TrackSeries): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  requiredString(series.track, 'track', 'series', issues);
-  requiredString(series.name, 'name', 'series', issues);
-  if (!Array.isArray(series.stages)) {
-    issues.push({ message: 'stages must be an array', path: 'series' });
-    return issues;
-  }
-  const stageIds = new Set<string>();
-  for (const [index, stage] of series.stages.entries()) {
-    const path = 'stages[' + index + ']';
-    if (stageIds.has(stage.id)) issues.push({ message: 'duplicate stage id "' + stage.id + '"', path });
-    stageIds.add(stage.id);
-    if (stage.track !== series.track) issues.push({ message: 'stage track "' + stage.track + '" does not match series "' + series.track + '"', path });
-    for (const issue of validateSnapshot(stage)) issues.push({ message: issue.message, path: issue.path ? path + '.' + issue.path : path });
-  }
-  for (const [index, step] of (series.events ?? []).entries()) {
-    const path = 'events[' + index + ']';
-    if (!stageIds.has(step.stage)) issues.push({ message: 'event step references unknown stage "' + step.stage + '"', path });
-  }
-  return issues;
-}
-
-export function assertValidTrackSeries(series: TrackSeries): void {
-  const issues = validateTrackSeries(series);
-  if (issues.length) {
-    const detail = issues.map((issue) => (issue.path ? issue.path + ': ' + issue.message : issue.message)).join('\n');
-    throw new Error('invalid track series "' + series.track + '":\n' + detail);
   }
 }

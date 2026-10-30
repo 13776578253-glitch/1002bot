@@ -56,16 +56,6 @@ export interface Projection {
   hiddenToVisible: Map<GraphNodeId, GraphNodeId>;
 }
 
-function parseEndpoint(endpoint: CanonicalEndpoint | string, graph: IndexedGraph): CanonicalEndpoint {
-  if (typeof endpoint !== 'string') return endpoint;
-  const hash = endpoint.indexOf('#');
-  const path = hash < 0 ? endpoint : endpoint.slice(0, hash);
-  const portId = hash < 0 ? undefined : endpoint.slice(hash + 1);
-  const node = graph.byPath.get(path);
-  if (!node) throw new Error('unknown endpoint path "' + path + '"');
-  return portId === undefined ? { nodeId: node.id } : { nodeId: node.id, portId };
-}
-
 function hasChildren(graph: IndexedGraph, id: GraphNodeId): boolean {
   return (graph.childrenOf.get(id)?.length ?? 0) > 0;
 }
@@ -80,15 +70,7 @@ function isVisible(id: GraphNodeId, graph: IndexedGraph, expanded: ReadonlySet<G
     if (cursor !== id && !expanded.has(cursor) && cursor !== graph.graph.rootId) return false;
     cursor = current.parentId;
   }
-  return node.parentId === graph.graph.rootId || node.parentId === null || id === graph.graph.rootId || (() => {
-    let parent: GraphNodeId | null = node.parentId;
-    while (parent !== null) {
-      if (parent === graph.graph.rootId) return true;
-      if (!expanded.has(parent)) return false;
-      parent = graph.byId.get(parent)?.parentId ?? null;
-    }
-    return true;
-  })();
+  return true;
 }
 
 function boundaryPort(endpoint: CanonicalEndpoint, edgeId: string, role: 'source' | 'target'): string {
@@ -96,13 +78,13 @@ function boundaryPort(endpoint: CanonicalEndpoint, edgeId: string, role: 'source
 }
 
 export function resolveVisibleEndpoint(
-  endpoint: CanonicalEndpoint | string,
+  endpoint: CanonicalEndpoint,
   graph: IndexedGraph,
   expanded: ReadonlySet<GraphNodeId>,
   edgeId = 'endpoint',
   role: 'source' | 'target' = 'source',
 ): VisibleEndpoint {
-  const canonical = parseEndpoint(endpoint, graph);
+  const canonical = endpoint;
   const original = graph.byId.get(canonical.nodeId);
   if (!original) throw new Error('unknown endpoint node "' + canonical.nodeId + '"');
   if (isVisible(canonical.nodeId, graph, expanded)) {
@@ -158,12 +140,14 @@ export function projectGraph(
   for (const node of graph.graph.nodes) {
     if (node.id === graph.graph.rootId || !isVisible(node.id, graph, expanded)) continue;
     let parentId: GraphNodeId | undefined;
-    if (node.parentId !== null && node.parentId !== graph.graph.rootId && nodeById.has(node.parentId)) parentId = node.parentId;
+    if (node.parentId !== null && node.parentId !== graph.graph.rootId) parentId = node.parentId;
+    let depth = 0, ancestor: string | null = node.parentId;
+    while (ancestor !== null) { depth += 1; ancestor = graph.byId.get(ancestor)!.parentId; }
     const visible: VisibleNode = {
       id: node.id,
       canonicalId: node.id,
       ...(parentId === undefined ? {} : { parentId }),
-      depth: graph.pathById.get(node.id)?.split('/').length ?? 1,
+      depth,
       expanded: expanded.has(node.id),
       expandable: hasChildren(graph, node.id),
     };

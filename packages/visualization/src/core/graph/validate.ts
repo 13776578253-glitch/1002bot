@@ -13,14 +13,9 @@ import type {
   GraphNodeId,
   GraphPatch,
   GraphPatchOperation,
-  NodePath,
   StageSnapshot,
 } from '../schema/types.ts';
 import { validateSnapshot, type ValidationIssue } from '../schema/validate.ts';
-
-function endpointPath(path: NodePath, id: GraphNodeId): NodePath {
-  return path ? path + '/' + id : id;
-}
 
 export function validateGraph(graph: CanonicalGraph): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -102,13 +97,10 @@ export interface IndexedGraph {
   snapshot: StageSnapshot;
   graph: CanonicalGraph;
   byId: Map<GraphNodeId, CanonicalNode>;
-  byPath: Map<NodePath, CanonicalNode>;
-  pathById: Map<GraphNodeId, NodePath>;
   parentOf: Map<GraphNodeId, GraphNodeId>;
   childrenOf: Map<GraphNodeId, GraphNodeId[]>;
   edgesById: Map<GraphEdgeId, CanonicalEdge>;
   edges: CanonicalEdge[];
-  pathOf(id: GraphNodeId): NodePath | undefined;
 }
 
 export function indexGraph(snapshot: StageSnapshot): IndexedGraph {
@@ -120,27 +112,10 @@ export function indexGraph(snapshot: StageSnapshot): IndexedGraph {
   assertValidGraph(snapshot.graph);
 
   const byId = new Map(snapshot.graph.nodes.map((node) => [node.id, node]));
-  const pathById = new Map<GraphNodeId, NodePath>();
-  const byPath = new Map<NodePath, CanonicalNode>();
   const parentOf = new Map<GraphNodeId, GraphNodeId>();
   const childrenOf = new Map<GraphNodeId, GraphNodeId[]>();
 
-  const pathFor = (id: GraphNodeId, active = new Set<GraphNodeId>()): NodePath => {
-    const existing = pathById.get(id);
-    if (existing !== undefined) return existing;
-    if (active.has(id)) throw new Error('parent cycle includes "' + id + '"');
-    const node = byId.get(id);
-    if (!node) throw new Error('unknown node "' + id + '"');
-    active.add(id);
-    const path = node.parentId === null ? node.id : endpointPath(pathFor(node.parentId, active), node.id);
-    active.delete(id);
-    pathById.set(id, path);
-    byPath.set(path, node);
-    return path;
-  };
-
   for (const node of snapshot.graph.nodes) {
-    const path = pathFor(node.id);
     if (node.parentId !== null) {
       parentOf.set(node.id, node.parentId);
       const siblings = childrenOf.get(node.parentId) ?? [];
@@ -155,13 +130,10 @@ export function indexGraph(snapshot: StageSnapshot): IndexedGraph {
     snapshot,
     graph: snapshot.graph,
     byId,
-    byPath,
-    pathById,
     parentOf,
     childrenOf,
     edgesById,
     edges: [...snapshot.graph.edges].sort((a, b) => a.order - b.order),
-    pathOf: (id) => pathById.get(id),
   };
   return indexed;
 }
@@ -254,11 +226,4 @@ export function applyGraphPatch(graph: CanonicalGraph, patch: GraphPatch): Canon
   next = { ...next, revision: patch.nextRevision };
   assertValidGraph(next);
   return next;
-}
-
-/** Split a derived path plus an optional port, retained for diagnostics. */
-export function splitEndpoint(endpoint: string): { path: NodePath; port?: string } {
-  const hash = endpoint.indexOf('#');
-  if (hash < 0) return { path: endpoint };
-  return { path: endpoint.slice(0, hash), port: endpoint.slice(hash + 1) };
 }

@@ -6,5 +6,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "playground/**/*.ts", "playground/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx", "playground/**/*.ts", "playground/**/*.tsx"]
 }

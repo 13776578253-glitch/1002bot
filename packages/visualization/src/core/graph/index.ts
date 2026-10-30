@@ -5,7 +5,6 @@ export {
   assertValidGraph,
   edgesTouching,
   indexGraph,
-  splitEndpoint,
   validateGraph,
 } from './validate.ts';
 export type { IndexedGraph } from './validate.ts';

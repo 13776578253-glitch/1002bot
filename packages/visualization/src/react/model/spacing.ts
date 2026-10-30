@@ -1,0 +1,72 @@
+import { CARD_SIZE, restoreSiblings, separateSiblings, type CanvasNode } from './grouping.ts';
+
+export { MIN_EDGE_GAP } from './grouping.ts';
+export const SNAP_SCREEN_DISTANCE = 6;
+export const MAX_CONTAINER_EXTRA = 800;
+export const MAX_CONTAINER_RATIO = 1;
+export const containerInset = (node: CanvasNode) => ({ x: 24, top: node.type === 'structure' ? 72 : 60, bottom: 24 });
+const extra = (size: number) => Math.min(MAX_CONTAINER_EXTRA, size * MAX_CONTAINER_RATIO);
+
+function containerContentBounds(node: CanvasNode, nodes: readonly CanvasNode[]) {
+  const inset = containerInset(node);
+  const children = nodes.filter((child) => child.parentId === node.id);
+  const anchor = { x: -(node.data.fitOffset?.x ?? 0), y: -(node.data.fitOffset?.y ?? 0) };
+  const left = Math.min(anchor.x, ...children.map((child) => child.position.x - inset.x));
+  const top = Math.min(anchor.y, ...children.map((child) => child.position.y - inset.top));
+  const right = Math.max(anchor.x + 288, ...children.map((child) => child.position.x + (child.width ?? CARD_SIZE.width) + inset.x));
+  const bottom = Math.max(anchor.y + inset.top + CARD_SIZE.height + inset.bottom, ...children.map((child) => child.position.y + (child.height ?? CARD_SIZE.height) + inset.bottom));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+export function containerContentSize(node: CanvasNode, nodes: readonly CanvasNode[]) {
+  const { width, height } = containerContentBounds(node, nodes);
+  return { width, height };
+}
+
+export function containerGrowthCeiling(node: CanvasNode) {
+  const width = node.data.contentWidth ?? node.width!;
+  const height = node.data.contentHeight ?? node.height!;
+  return {
+    width: width + extra(width), height: height + extra(height),
+  };
+}
+
+export function preferredContainerSize(node: CanvasNode, nodes: readonly CanvasNode[]) {
+  const content = containerContentSize(node, nodes);
+  return {
+    width: content.width,
+    height: content.height,
+    contentWidth: content.width, contentHeight: content.height,
+  };
+}
+
+export function containerSizeLimits(node: CanvasNode, nodes: readonly CanvasNode[]) {
+  const content = containerContentSize(node, nodes);
+  const ceiling = containerGrowthCeiling(node);
+  return { minWidth: content.width, minHeight: content.height, maxWidth: Math.max(content.width, ceiling.width), maxHeight: Math.max(content.height, ceiling.height) };
+}
+
+/** Refit from the deepest parent outward while retaining the fixed expansion ceiling. */
+export function fitMovedContainers(input: readonly CanvasNode[], movedIds: readonly string[]): CanvasNode[] {
+  let nodes = [...input];
+  const ancestors = new Set<string>();
+  for (const id of movedIds) {
+    let parent = nodes.find((node) => node.id === id)?.parentId;
+    while (parent) { ancestors.add(parent); parent = nodes.find((node) => node.id === parent)?.parentId; }
+  }
+  const depth = (id: string): number => { const parent = nodes.find((node) => node.id === id)?.parentId; return parent ? depth(parent) + 1 : 0; };
+  const excluded = new Set([...ancestors, ...movedIds]);
+  for (const id of [...ancestors].sort((a, b) => depth(b) - depth(a))) {
+    const node = nodes.find((item) => item.id === id)!;
+    const { x, y, width, height } = containerContentBounds(node, nodes);
+    nodes = nodes.map((item) => {
+      if (item.id === id) return { ...item, position: { x: item.position.x + x, y: item.position.y + y }, width, height, measured: { width, height }, style: { ...item.style, width, height }, data: { ...item.data, contentWidth: item.data.contentWidth ?? item.width!, contentHeight: item.data.contentHeight ?? item.height!, fitOffset: { x: (item.data.fitOffset?.x ?? 0) + x, y: (item.data.fitOffset?.y ?? 0) + y }, ...(item.data.reflowOrigin ? { reflowOrigin: { x: item.data.reflowOrigin.x + x, y: item.data.reflowOrigin.y + y } } : {}) } };
+      return item.parentId === id ? { ...item, position: { x: item.position.x - x, y: item.position.y - y }, ...(item.data.reflowOrigin ? { data: { ...item.data, reflowOrigin: { x: item.data.reflowOrigin.x - x, y: item.data.reflowOrigin.y - y } } } : {}) } : item;
+    });
+    nodes = restoreSiblings(nodes, node.parentId, excluded);
+    if (x || y || width > node.width! || height > node.height!) {
+      nodes = separateSiblings(nodes, id, true);
+    }
+  }
+  return nodes;
+}
