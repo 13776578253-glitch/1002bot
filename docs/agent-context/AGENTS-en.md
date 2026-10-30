@@ -92,17 +92,17 @@ Do not interpret `__tests__/` as the directory where every test must live. It in
 
 - Before every commit, `pnpm test` and `pnpm run typecheck` must pass. Check browser code with `pnpm typecheck:web`.
 - After changing `src/web/client/`, `src/web/shared/`, or any `console/client.ts`, run `pnpm build:web`. Do not run it while a bot process is alive on this machine because the running console serves the bundle being overwritten.
-- Never start a real bot to verify a change. Use tests, `pnpm dev:console` with fake data, or a script under `scratch/`.
+- Never start a real bot to verify a change. Use tests, `pnpm dev:console` with fake data, or a script under `.scratch/`.
 - `pnpm logq` queries run logs; `pnpm check:extension <dir>` validates an extension package; `pnpm audit:release` runs the release audit.
 
 ## 6. Scratch
 
-Put disposable work such as probes, one-off scripts, dumps, and experiments under `scratch/`. Promote it deliberately only when it becomes a tool.
+Put disposable work such as probes, one-off scripts, dumps, and experiments under `.scratch/`. Promote it deliberately only when it becomes a tool.
 
 ## 7. Documentation
 
 - Every page under `docs/` and every README for a code unit must name, in its first line, the file or interface it shadows, called its owner. A commit that changes the owner must also change the page. Management records under `docs/agent-context/` follow section 2 instead of the code-owner page requirement.
-- Text without a code owner, such as plans, migration records, and decision history, lives in `scratch/` while active and in `deprecated/` when retired. Both are gitignored.
+- Text without a code owner, such as plans, migration records, and decision history, lives in `.scratch/` while active and in `deprecated/` when retired. Both are gitignored.
 - `PHILOSOPHY.md` is exempt because it is written for first-time readers and may repeat other files.
 
 ## 8. Git

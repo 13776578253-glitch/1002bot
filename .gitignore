@@ -16,7 +16,7 @@ coverage/
 /.worktree-local/
 
 # Disposable work and retired ownerless documents (AGENTS-en.md)
-/scratch/
+/.scratch/
 /deprecated/
 
 # Local runtime data; keep source and test fixtures trackable
