@@ -13,8 +13,9 @@ async function files(folder: string): Promise<string[]> {
 test('library dependencies stay inside the generic source boundary', async () => {
   for (const file of (await files(join(root, 'src'))).filter((item) => /\.tsx?$/.test(item) && !item.includes('__tests__'))) {
     const text = await readFile(file, 'utf8');
-    assert.doesNotMatch(text, /(?:from\s*|import\s*)['"][^'"]*(?:examples|playground|proposal|legacy)[\/]/, relative(root, file));
+    assert.doesNotMatch(text, /(?:from\s*|import\s*)['"][^'"]*(?:examples|datasets|playground|proposal|legacy)[\/]/, relative(root, file));
     if (relative(root, file).replaceAll('\\', '/').startsWith('src/core/')) assert.doesNotMatch(text, /from\s*['"][^'"]*(?:react|xyflow)/, file);
+    if (relative(root, file).replaceAll('\\', '/').startsWith('src/adapters/')) assert.doesNotMatch(text, /from\s*['"](?:node:|react|@xyflow)|\b(?:fetch|localStorage|document)\b/, file);
   }
 });
 

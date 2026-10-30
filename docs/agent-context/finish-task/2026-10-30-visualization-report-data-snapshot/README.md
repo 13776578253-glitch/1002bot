@@ -1,0 +1,37 @@
+# Task-record archive snapshot
+
+All listed current-task records are archived in this snapshot. Originals remain in place; MANIFEST.json records SHA-256 for each byte-identical copy.
+
+- docs/agent-context/current-task/2026-10-03-p0决策问题合集.md -> 2026-10-03-p0决策问题合集.md
+- docs/agent-context/current-task/2026-10-04-m1-p1-baseline.md -> 2026-10-04-m1-p1-baseline.md
+- docs/agent-context/current-task/2026-10-04-m1-p2-acceptance-cleanup.md -> 2026-10-04-m1-p2-acceptance-cleanup.md
+- docs/agent-context/current-task/2026-10-04-m1交接整理.md -> 2026-10-04-m1交接整理.md
+- docs/agent-context/current-task/2026-10-05-阶段汇报规范与文档对齐.md -> 2026-10-05-阶段汇报规范与文档对齐.md
+- docs/agent-context/current-task/2026-10-05-注释规范与Cortico对照.md -> 2026-10-05-注释规范与Cortico对照.md
+- docs/agent-context/current-task/2026-10-05-m1复核与下一阶段规划.md -> 2026-10-05-m1复核与下一阶段规划.md
+- docs/agent-context/current-task/2026-10-05-m2闭环方案设计.md -> 2026-10-05-m2闭环方案设计.md
+- docs/agent-context/current-task/2026-10-05-m2独立审查.md -> 2026-10-05-m2独立审查.md
+- docs/agent-context/current-task/2026-10-05-m2进度文档拆分与结构校正.md -> 2026-10-05-m2进度文档拆分与结构校正.md
+- docs/agent-context/current-task/2026-10-05-m2终端闭环实现.md -> 2026-10-05-m2终端闭环实现.md
+- docs/agent-context/current-task/2026-10-06-首批验收与工作线拆分.md -> 2026-10-06-首批验收与工作线拆分.md
+- docs/agent-context/current-task/2026-10-06-agent-context目录迁移.md -> 2026-10-06-agent-context目录迁移.md
+- docs/agent-context/current-task/2026-10-06-console全屏TUI规划.md -> 2026-10-06-console全屏TUI规划.md
+- docs/agent-context/current-task/2026-10-06-consoleTUI首批开发.md -> 2026-10-06-consoleTUI首批开发.md
+- docs/agent-context/current-task/2026-10-06-git仓库初始化.md -> 2026-10-06-git仓库初始化.md
+- docs/agent-context/current-task/2026-10-06-M2目标偏差与文档归类.md -> 2026-10-06-M2目标偏差与文档归类.md
+- docs/agent-context/current-task/2026-10-06-m2修复复核.md -> 2026-10-06-m2修复复核.md
+- docs/agent-context/current-task/2026-10-06-m3统一触发调度.md -> 2026-10-06-m3统一触发调度.md
+- docs/agent-context/current-task/2026-10-08-阶段报告主线编号统一.md -> 2026-10-08-阶段报告主线编号统一.md
+- docs/agent-context/current-task/2026-10-08-m4主线基座规划.md -> 2026-10-08-m4主线基座规划.md
+- docs/agent-context/current-task/2026-10-11-qq-world.md -> 2026-10-11-qq-world.md
+- docs/agent-context/current-task/2026-10-19-visualization-adapter.md -> 2026-10-19-visualization-adapter.md
+- docs/agent-context/current-task/2026-10-19-visualization-theme-cards.md -> 2026-10-19-visualization-theme-cards.md
+- docs/agent-context/current-task/2026-10-20-visualization-aggregate-layout.md -> 2026-10-20-visualization-aggregate-layout.md
+- docs/agent-context/current-task/2026-10-20-visualization-canvas-runtime.md -> 2026-10-20-visualization-canvas-runtime.md
+- docs/agent-context/current-task/2026-10-21-visualization-wave0.md -> 2026-10-21-visualization-wave0.md
+- docs/agent-context/current-task/2026-10-22-visualization-reconstruction.md -> 2026-10-22-visualization-reconstruction.md
+- docs/agent-context/current-task/2026-10-23-visualization-flat-baseline.md -> 2026-10-23-visualization-flat-baseline.md
+- docs/agent-context/current-task/2026-10-29-visualization-ui-proposal.md -> 2026-10-29-visualization-ui-proposal.md
+- docs/agent-context/current-task/2026-10-30-visualization-comments.md -> 2026-10-30-visualization-comments.md
+- docs/agent-context/current-task/2026-10-30-visualization-new-baseline.md -> 2026-10-30-visualization-new-baseline.md
+- docs/agent-context/current-task/2026-10-30-visualization-report-data.md -> 2026-10-30-visualization-report-data.md

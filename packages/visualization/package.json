@@ -19,6 +19,10 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
     },
+    "./adapters/progress-reports": {
+      "types": "./dist/adapters/progress-reports/index.d.ts",
+      "import": "./dist/adapters/progress-reports/index.js"
+    },
     "./styles.css": "./dist/react/styles.css"
   },
   "scripts": {

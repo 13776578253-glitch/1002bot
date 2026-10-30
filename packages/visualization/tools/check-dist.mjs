@@ -19,7 +19,7 @@ for (const file of files) {
   const text = await readFile(file, 'utf8');
   if (/\.d\.ts$/.test(file)) assert.ok(!/\.tsx?['"]/.test(text), `Source extension in ${file}`);
   if (/\.(js|css)$/.test(file)) {
-    assert.ok(!/(?:playground|examples|proposal|legacy)[\\/]/.test(text), `Example or retired dependency in ${file}`);
+    assert.ok(!/(?:playground|examples|datasets|proposal|legacy)[\\/]/.test(text), `Data or retired dependency in ${file}`);
     const imports = file.endsWith('.css') ? [...text.matchAll(/@import\s+['"]([^'"]+)['"]/g)] : [...text.matchAll(/(?:from\s*|import\s*)['"]([^'"]+)['"]/g)];
     for (const [, specifier] of imports) {
       if (specifier.startsWith('.')) {
@@ -33,8 +33,10 @@ for (const file of files) {
 }
 const core = await import(pathToFileURL(join(dist, 'index.js')).href);
 const react = await import(pathToFileURL(join(dist, 'react/index.js')).href);
+const reports = await import(pathToFileURL(join(dist, 'adapters/progress-reports/index.js')).href);
 assert.equal(typeof core.assertValidBaselines, 'function');
 assert.equal(typeof core.projectGraph, 'function');
 assert.equal(typeof react.VisualizationCanvas, 'function');
+assert.equal(typeof reports.adaptProgressReports, 'function');
 assert.ok(!('EvolutionCanvas' in react) && !('useCanvasStore' in react));
 console.log(`visualization dist verified (${files.length} JS/declaration/style artifacts)`);

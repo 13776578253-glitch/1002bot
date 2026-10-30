@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json` and `src/react/VisualizationCanvas.tsx`
+Owner: `packages/visualization/package.json`, `src/react/VisualizationCanvas.tsx`, `src/adapters/progress-reports/index.ts`
 
 # Visualization
 
@@ -31,10 +31,19 @@ pnpm check:dist
 | `src/react/canvas` | 受控交互状态与场景派生 |
 | `src/react/components` | 节点、关系和控制组件 |
 | `src/react/styles` | 画布作用域内的主题、节点、连线和控制样式 |
+| `src/adapters/progress-reports` | 将可序列化的报告目录与阶段增量转换为完整基线；无 IO 或 UI 依赖 |
+| `datasets/progress-reports/architecture.json` | 依据进度汇报整理的 M1.0–M6.0 架构事实与来源 |
 | `examples/baselines.ts` | 独立 M1/M2 样例输入 |
-| `playground/src/main.tsx` | 公共画布与样例的装配入口 |
+| `playground/src/baselines.ts` | 通过 URL 加载独立 JSON 资源，调用报告适配器 |
+| `playground/src/main.tsx` | 公共画布与报告基线的装配入口 |
 
-Core 不依赖 React；库源码不导入示例或 Playground。测试按模型单元、模块协作、输入合同和架构边界划分。
+Core 不依赖 React；库源码不导入示例、数据集或 Playground。测试按模型单元、模块协作、输入合同和架构边界划分。
+
+## 进度汇报数据
+
+当前站点消费 `datasets/progress-reports/architecture.json`，覆盖进度目录的十份阶段报告。每个节点保留报告与实现文件的仓库相对引用。数据是按报告整理的历史架构，阶段状态保存在 `stage.status`。
+
+报告适配器通过 `@1002bot/visualization/adapters/progress-reports` 独立导出，接收 `ReportDataset`，返回 `VisualizationBaseline[]`。调用方负责文件、HTTP 或其他加载方式；适配器只处理实体目录、累计阶段和变化标记。数据维护与迁移约定见 [数据说明](datasets/progress-reports/README.md)。
 
 ## React 接入
 
