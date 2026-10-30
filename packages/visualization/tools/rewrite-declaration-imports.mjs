@@ -1,3 +1,4 @@
+/** Strips .ts extensions from TypeScript declaration imports in dist. */
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';

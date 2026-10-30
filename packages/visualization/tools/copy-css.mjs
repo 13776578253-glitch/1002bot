@@ -1,3 +1,4 @@
+/** Copies CSS stylesheets to dist preserving relative module structure. */
 import { cp, mkdir } from 'node:fs/promises';
 
 const destination = new URL('../dist/react/', import.meta.url);

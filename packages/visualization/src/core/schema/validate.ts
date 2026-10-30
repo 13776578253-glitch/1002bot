@@ -71,6 +71,7 @@ function checkGraphShape(graph: CanonicalGraph, issues: ValidationIssue[]): void
   if (graph.revision !== undefined) requiredString(graph.revision, 'graph revision', 'graph', issues);
 }
 
+/** 校验阶段快照的基础类型与字段形状，返回非致命的结构问题列表。 */
 export function validateSnapshot(snapshot: StageSnapshot): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   requiredString(snapshot.id, 'stage id', 'stage', issues);
@@ -83,6 +84,7 @@ export function validateSnapshot(snapshot: StageSnapshot): ValidationIssue[] {
   return issues;
 }
 
+/** 断言阶段快照结构合法；遇到缺失字段或非法类型直接抛出格式化异常。 */
 export function assertValidSnapshot(snapshot: StageSnapshot): void {
   const issues = validateSnapshot(snapshot);
   if (issues.length) {

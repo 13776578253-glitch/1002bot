@@ -1,3 +1,4 @@
+/** Custom orthogonal edge renderer with obstacle-avoiding label capsule. */
 import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
 import type { ChangeMark } from '../../core/schema/baseline.ts';
 import { svgPathFromPoints, type Point } from '../../core/layout/geometry.ts';
@@ -12,6 +13,7 @@ export interface LinkData extends Record<string, unknown> {
   onSelect(id: string): void;
 }
 
+/** 正交避障连线组件；渲染圆角平滑路径并在指定无重叠坐标处渲染胶囊标签。 */
 export function Link(props: EdgeProps<Edge<LinkData>>) {
   const path = svgPathFromPoints(props.data!.points, 14);
   const { x, y, width, height } = props.data!.label;

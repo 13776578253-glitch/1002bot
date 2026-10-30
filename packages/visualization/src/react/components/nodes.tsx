@@ -1,9 +1,11 @@
+/** Flow node renderers: Card, recursive Structure container and interactive Cluster group. */
 import { useNodes, type NodeProps } from '@xyflow/react';
 import type { CanvasNode } from '../model/grouping.ts';
 import { ChangeBadge } from './change-badge.tsx';
 import { Icon } from './icon.tsx';
 import { Ports } from './ports.tsx';
 
+/** 基础卡片节点；展示实体标题、演进徽标与展开按钮。 */
 export function Card({ data, selected }: NodeProps<CanvasNode>) {
   return <div className={`flow-card ${selected ? 'is-selected' : ''} ${data.planned ? 'is-planned' : ''}`} data-change={data.change?.kind}>
     <Ports />
@@ -12,6 +14,7 @@ export function Card({ data, selected }: NodeProps<CanvasNode>) {
   </div>;
 }
 
+/** 展开后的层级结构容器；头部固定标题栏，内部容纳直接子级节点。 */
 export function Structure({ data, selected }: NodeProps<CanvasNode>) {
   return <div className={`structure-frame ${selected ? 'is-selected' : ''}`} data-change={data.change?.kind}>
     <Ports />
@@ -22,6 +25,7 @@ export function Structure({ data, selected }: NodeProps<CanvasNode>) {
   </div>;
 }
 
+/** 交互式聚合分组框；支持标题行内编辑与整体拖动。 */
 export function Cluster({ id, data, selected }: NodeProps<CanvasNode>) {
   const children = useNodes<CanvasNode>().filter((node) => node.parentId === id);
   return <div className={`cluster ${selected ? 'is-selected' : ''}`}>

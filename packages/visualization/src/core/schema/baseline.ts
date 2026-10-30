@@ -1,6 +1,8 @@
+/** Baseline presentation contracts and boundary validation. */
 import type { StageSnapshot } from './types.ts';
 import { assertValidSnapshot } from './validate.ts';
 
+/** 基线实体演进类型；added/replaced 显示变更徽标与强调色，baseline/inherited 保持常规展示。 */
 export type ChangeKind = 'baseline' | 'added' | 'inherited' | 'replaced';
 
 export interface ChangeMark {
@@ -9,16 +11,20 @@ export interface ChangeMark {
   note?: string;
 }
 
-/** One complete architecture version with explicit presentation changes and optional initial coordinates. */
+/** 完整架构版本基线合同；包含阶段快照、显示变更标记及可选的初始位置映射。 */
 export interface VisualizationBaseline {
   id: string;
   stage: StageSnapshot;
+  /** 节点初始坐标；根节点为画布绝对坐标，子节点为直接父节点局部坐标。缺省时自动使用网格布局。 */
   positions?: Readonly<Record<string, { x: number; y: number }>>;
   nodeChanges: Readonly<Record<string, ChangeMark>>;
   edgeChanges: Readonly<Record<string, ChangeMark>>;
 }
 
-/** Validate a complete baseline set at the data-source boundary. */
+/**
+ * 数据源边界校验。
+ * 断言基线非空、ID 唯一、快照结构完备、全量非根节点及连线具备合法变更标记且坐标数值有限。
+ */
 export function assertValidBaselines(baselines: readonly VisualizationBaseline[]): void {
   if (!baselines.length) throw new Error('At least one visualization baseline is required');
   const ids = new Set<string>();

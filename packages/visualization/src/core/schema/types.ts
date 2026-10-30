@@ -18,6 +18,7 @@ export type NodeKind =
   | 'adapter'
   | 'planned';
 
+/** 节点显式连接桩，定义连线附着方位与方向约束。 */
 export interface CanonicalPort {
   id: GraphPortId;
   label?: string;
@@ -29,6 +30,7 @@ export interface CanonicalPort {
 
 export interface CanonicalNode {
   id: GraphNodeId;
+  /** 父节点 ID；图根节点固定为 null，子节点通过显式父引用构成扁平树。 */
   parentId: GraphNodeId | null;
   kind: NodeKind;
   label: string;
@@ -41,6 +43,7 @@ export interface CanonicalNode {
   order: number;
 }
 
+/** 关系端点，未指定 portId 时由布局与连线算法计算表面吸附点。 */
 export interface CanonicalEndpoint {
   nodeId: GraphNodeId;
   portId?: GraphPortId;
@@ -57,12 +60,15 @@ export interface CanonicalEdge {
 }
 
 export interface CanonicalGraph {
+  /** 唯一顶层根节点 ID；其 parentId 必须为 null。 */
   rootId: GraphNodeId;
   nodes: readonly CanonicalNode[];
   edges: readonly CanonicalEdge[];
+  /** 图快照版本号；源数据替换时递增以触发画布会话重建。 */
   revision?: string;
 }
 
+/** 增量图更新补丁；执行时核验 baseRevision 并原子产出 nextRevision。 */
 export interface GraphPatch {
   baseRevision: string;
   nextRevision: string;
@@ -88,6 +94,7 @@ export interface StageMeta {
   doc?: string;
 }
 
+/** 阶段完整快照，包含单阶段元数据与完整 CanonicalGraph。 */
 export interface StageSnapshot extends StageMeta {
   id: string;
   label: string;

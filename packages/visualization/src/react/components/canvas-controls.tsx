@@ -1,3 +1,4 @@
+/** Canvas toolbar controls: zoom, fit view, marquee mode and background grid. */
 import { Icon } from './icon.tsx';
 
 export interface CanvasControlsProps {
@@ -11,6 +12,7 @@ export interface CanvasControlsProps {
   onToggleGrid(): void;
 }
 
+/** 底部浮动控制栏；提供缩放级别显示、视口自适应、框选切换与网格底纹开关。 */
 export function CanvasControls({ zoom, boxMode, grid, onZoomOut, onZoomIn, onFit, onToggleBox, onToggleGrid }: CanvasControlsProps) {
   return <div className="canvas-controls" role="toolbar" aria-label="画布操作">
     <button className="icon-button" aria-label="缩小" onClick={onZoomOut}><Icon name="minus" /></button>

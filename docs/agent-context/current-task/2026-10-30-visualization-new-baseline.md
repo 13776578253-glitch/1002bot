@@ -27,3 +27,15 @@ Commit suggestion: refactor(visualization)!: promote the accepted canvas baselin
 Archive: 新基线计划原文复制至docs/agent-context/history/plans/2026-10-30-visualization-new-baseline.md，SHA-256一致。
 
 Task archive: current-task 超过20条，全部31条原文复制至finish-task/2026-10-30-visualization-baseline-snapshot；MANIFEST.json逐文件SHA-256通过，README标记原记录归档快照，原记录及快照前内容保留。
+# Playground editor configuration follow-up
+
+Intent: Resolve TS2882 diagnostics for the active Playground CSS imports.
+
+Logic: Add a discoverable playground/tsconfig.json extending the existing web configuration so editor project discovery includes the shared CSS declaration. Enable noUncheckedSideEffectImports in the web configuration to check these imports during validation.
+
+Impact: TypeScript project configuration only; the active Playground and public canvas remain unchanged.
+
+Verification: Check the discovered project includes main.tsx and styles.d.ts, run package typechecks and the web build.
+
+Result: Editor project discovery selects playground/tsconfig.json and includes main.tsx plus src/react/styles.d.ts. Core and Playground typechecks pass with side-effect import checking enabled; the web build passes with 197 modules. Existing unrelated comment edits remain untouched.
+

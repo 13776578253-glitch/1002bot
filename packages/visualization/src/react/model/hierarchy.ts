@@ -1,9 +1,14 @@
+/** Hierarchical card tree, container expansion/collapse and cross-baseline expansion synchronization. */
 import { projectGraph, type Projection } from '../../core/projection/index.ts';
 import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
 import { preferredContainerSize } from './spacing.ts';
 import type { CanonicalNode, StageSnapshot } from '../../core/schema/types.ts';
 import { indexGraph } from '../../core/graph/index.ts';
 
+/**
+ * 将阶段快照转换为初始画布节点集合。
+ * 深度优先遍历建立扁平树；未显式指定坐标的节点按 3 列网格分配初始局部坐标。
+ */
 export function createHierarchyNodes(stage: StageSnapshot, positions: Readonly<Record<string, { x: number; y: number }>> = {}): CanvasNode[] {
   const parents = new Map<string, number>();
   for (const node of stage.graph.nodes) if (node.parentId) parents.set(node.parentId, (parents.get(node.parentId) ?? 0) + 1);
@@ -34,10 +39,12 @@ export function createHierarchyNodes(stage: StageSnapshot, positions: Readonly<R
   });
 }
 
+/** 基于当前画布节点的展开标记计算逻辑图投影。 */
 export function hierarchyProjection(nodes: readonly CanvasNode[], stage: StageSnapshot): Projection {
   return projectGraph(stage, new Set(nodes.filter((node) => node.data.expanded).map((node) => node.id)));
 }
 
+/** 判断节点在当前投影下是否可见；聚合分组在其内含任一可见节点时显示。 */
 export function nodeIsVisible(node: CanvasNode, nodes: readonly CanvasNode[], projection: Projection): boolean {
   if (node.type !== 'cluster') return projection.nodeById.has(node.id);
   let parent = nodes.find((item) => item.id === node.parentId);
@@ -72,6 +79,13 @@ function resize(nodes: CanvasNode[], id: string, width: number, height: number, 
   }
 }
 
+/**
+ * 原位切换节点展开/收起状态：
+ * 1. 在 card 与 structure 类型之间原位切换；
+ * 2. 展开时自动按推荐尺寸撑开并向上级联重算父容器尺寸；
+ * 3. 沿 X/Y 轴推开受波及的同级兄弟节点；
+ * 4. 重新计算投影并更新内部节点的选中与可见性。
+ */
 export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
   let nodes = input.map((node) => ({ ...node }));
   const index = nodes.findIndex((node) => node.id === id);
@@ -101,6 +115,10 @@ export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage:
   return nodes;
 }
 
+/**
+ * 跨基线展开状态同步。
+ * 关闭操作按层级由深至浅执行，打开操作按层级由浅至深执行，确保容器尺寸级联计算正确。
+ */
 export function syncHierarchyExpansion(target: readonly CanvasNode[], source: readonly CanvasNode[], stage: StageSnapshot): CanvasNode[] {
   const sourceState = new Map(source.filter((node) => node.data.expandable).map((node) => [node.id, !!node.data.expanded]));
   const depth = (node: CanvasNode): number => {
@@ -114,6 +132,7 @@ export function syncHierarchyExpansion(target: readonly CanvasNode[], source: re
   return [...closing, ...opening].reduce((nodes, node) => toggleHierarchy(nodes, node.id, stage), [...target]);
 }
 
+/** 按两节点世界坐标相对夹角计算最佳出入连接桩（水平优先选择左右侧，垂直优先选择上下侧）。 */
 export function edgeHandles(nodes: readonly CanvasNode[], sourceId: string, targetId: string): { sourceHandle: string; targetHandle: string } {
   const source = nodes.find((node) => node.id === sourceId)!, target = nodes.find((node) => node.id === targetId)!;
   const a = worldPosition(source, nodes), b = worldPosition(target, nodes);

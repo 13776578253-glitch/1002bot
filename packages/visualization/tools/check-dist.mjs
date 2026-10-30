@@ -1,3 +1,4 @@
+/** Verifies packaged distribution artifacts, export entry points, and relative imports. */
 import assert from 'node:assert/strict';
 import { access, readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve, relative } from 'node:path';

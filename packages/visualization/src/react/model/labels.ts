@@ -1,3 +1,4 @@
+/** Edge label placement avoiding cards, frame boundaries and path bends. */
 import type { Point, Rect } from '../../core/layout/geometry.ts';
 
 export interface EdgeLabelPlacement extends Point {
@@ -34,7 +35,13 @@ function inside(outer: Rect, inner: Rect): boolean {
     && inner.y + inner.h <= outer.y + outer.h + EPSILON;
 }
 
-/** Prefer a capsule on its own route, keeping eight pixels clear of content and frame borders. */
+/**
+ * 计算连线胶囊标签的无碰撞放置坐标。
+ * 1. 优先沿自身折线路径居中吸附，保持 8px 内容避障余量与 12px 折角避让；
+ * 2. 发生重叠时尝试侧向平移（±4px / ±8px）；
+ * 3. 仍重叠时向外投影查找离路径最近的无遮挡可行点；
+ * 4. 保底放置于内容区域最右侧开阔平面。
+ */
 export function placeEdgeLabel(
   points: readonly Point[],
   text: string,
@@ -62,8 +69,7 @@ export function placeEdgeLabel(
     total += length;
   }
 
-  // Every change in whether a capsule intersects an obstacle occurs on one of these
-  // center coordinates. Testing them preserves narrow free subsegments near borders.
+  // 沿障碍物边缘提取可能产生无交集可行区域的候选中心线
   const boundaryX = new Set<number>();
   const boundaryY = new Set<number>();
   for (const rect of content) {
@@ -105,14 +111,10 @@ export function placeEdgeLabel(
   };
   const inline = candidates(() => [0]).find(valid);
   if (inline) return { x: inline.x, y: inline.y, width, height };
-  // Small shifts still overlap the line under the opaque capsule; side placements
-  // leave only a four-pixel gap. Do not progressively double/triple the offset.
+
   const offset = candidates((halfAcross) => [-4, 4, -8, 8, -halfAcross - SIDE_GAP, halfAcross + SIDE_GAP]).find(valid);
   if (offset) return { x: offset.x, y: offset.y, width, height };
 
-  // If route spacing leaves no capsule-sized segment, choose the closest free
-  // center to the entire route rather than searching arbitrary rings around its
-  // midpoint. Frame/obstacle boundaries contain every nearest feasible region.
   const anchor = points[0] ?? { x: 0, y: 0 };
   const allX = new Set<number>(boundaryX);
   const allY = new Set<number>(boundaryY);
@@ -145,8 +147,6 @@ export function placeEdgeLabel(
   }
   if (nearest) return { x: nearest.x, y: nearest.y, width, height };
 
-  // The unbounded plane always has free space beyond finite content. This also
-  // supplies a stable result for a path with no segments or obstacles.
   const farthestRight = Math.max(anchor.x, ...content.map((rect) => rect.x + rect.w), ...frames.map((rect) => rect.x + rect.w + CLEARANCE));
   return { x: farthestRight + width / 2, y: anchor.y, width, height };
 }

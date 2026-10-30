@@ -1,3 +1,4 @@
+/** Interactive recursive architecture canvas with explicit baseline changes. */
 import { useMemo } from 'react';
 import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, SelectionMode, ViewportPortal, type Edge } from '@xyflow/react';
 import { assertValidBaselines } from '../core/schema/baseline.ts';
@@ -43,7 +44,7 @@ function CanvasContent(props: VisualizationCanvasProps) {
   </main>;
 }
 
-/** Render one immutable baseline set. Advance graph.revision when replacing source data. */
+/** 渲染一组不可变架构基线 源数据替换时递增 stage.graph.revision 以重建内部画布会话 */
 export function VisualizationCanvas(props: VisualizationCanvasProps) {
   useMemo(() => {
     assertValidBaselines(props.baselines);

@@ -1,3 +1,4 @@
+/** Scene derivation: edge routing, label placement, link highlighting and z-index ordering. */
 import { useMemo, type Dispatch, type SetStateAction } from 'react';
 import { MarkerType, type Edge } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
@@ -22,9 +23,12 @@ interface SceneState {
   setNodes: Dispatch<SetStateAction<CanvasNode[]>>;
 }
 
-export function useCanvasScene({ nodes, baseline, selectedEdge, alignment, zoom, toggleNode, chooseEdge, setNodes }: SceneState) {
+/** 派生当前画布的渲染场景：连线路由、避障标签、高亮关联拓扑及层级 zIndex。 */
+export function useCanvasScene({ nodes, baseline, selectedEdge, alignment, zoom: _zoom, toggleNode, chooseEdge, setNodes }: SceneState) {
   const expandedKey = nodes.filter((node) => node.data.expanded).map((node) => node.id).join('|');
   const projection = useMemo(() => hierarchyProjection(nodes, baseline.stage), [expandedKey, baseline]);
+
+  // 计算每条可见连线的避障路径与标签坐标
   const routes = useMemo(() => {
     const visible = nodes.filter((node) => nodeIsVisible(node, nodes, projection));
     const bounds = (node: CanvasNode): Rect => ({ ...worldPosition(node, nodes), w: node.width!, h: node.height! });
@@ -40,10 +44,13 @@ export function useCanvasScene({ nodes, baseline, selectedEdge, alignment, zoom,
       return [edge.canonicalEdgeId, { ...route, label, text, change }];
     }));
   }, [nodes, projection, baseline]);
+
   const selected = nodes.filter((node) => node.selected && nodeIsVisible(node, nodes, projection));
   const selectedIds = new Set(selected.map((node) => node.id));
   const leafIds = leafMembers(nodes, selectedIds);
   const connected = new Set<string>();
+
+  // 派生连线列表并计算与当前选中项关联的邻居高亮
   const edges: Edge<LinkData>[] = projection.edges.map((edge) => {
     const id = edge.canonicalEdgeId;
     const route = routes.get(id)!;
@@ -59,6 +66,8 @@ export function useCanvasScene({ nodes, baseline, selectedEdge, alignment, zoom,
       markerEnd: { type: MarkerType.ArrowClosed, color: `var(--change-${route.change.kind})`, width: 16, height: 16 },
     };
   });
+
+  // 派生渲染节点：计算可见性、层深堆叠深度与高亮样式类名
   const displayNodes = nodes.map((node): CanvasNode => {
     const parent = nodes.find((item) => item.id === node.parentId);
     const visible = nodeIsVisible(node, nodes, projection);
@@ -73,6 +82,7 @@ export function useCanvasScene({ nodes, baseline, selectedEdge, alignment, zoom,
       ariaLabel: node.type === 'cluster' ? `聚合框：${node.data.title}` : node.data.title,
     };
   });
+
   const roots = selectionRoots(nodes).filter((node) => nodeIsVisible(node, nodes, projection));
   const selectedGroup = selected.length === 1 && selected[0]?.type === 'cluster' ? selected[0] : undefined;
   const selectedContainer = selected.length === 1 && (selected[0]?.type === 'cluster' || selected[0]?.type === 'structure') ? selected[0] : undefined;

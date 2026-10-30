@@ -17,6 +17,13 @@ import type {
 } from '../schema/types.ts';
 import { validateSnapshot, type ValidationIssue } from '../schema/validate.ts';
 
+/**
+ * 验证图级拓扑与语义约束：
+ * 1. 节点 ID 全局唯一，单节点内端口 ID 唯一；
+ * 2. 存在且仅存在一个 parentId 为 null 的图根节点；
+ * 3. 所有子节点的 parentId 均指向已知节点且不存在父子祖先环路；
+ * 4. 连线两端节点必须存在，且端口方向匹配（in 端口不可作为 source，out 端口不可作为 target）。
+ */
 export function validateGraph(graph: CanonicalGraph): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const nodes = new Map<GraphNodeId, CanonicalNode>();
@@ -85,6 +92,7 @@ export function validateGraph(graph: CanonicalGraph): ValidationIssue[] {
   return issues;
 }
 
+/** 断言图语义合法；存在 ID 重复、孤儿节点、环路或非法端口时抛出异常。 */
 export function assertValidGraph(graph: CanonicalGraph): void {
   const issues = validateGraph(graph);
   if (issues.length) {
@@ -93,6 +101,7 @@ export function assertValidGraph(graph: CanonicalGraph): void {
   }
 }
 
+/** 预编译的图索引结构，支持 O(1) 节点、父子关系与连线查找。 */
 export interface IndexedGraph {
   snapshot: StageSnapshot;
   graph: CanonicalGraph;
@@ -103,6 +112,7 @@ export interface IndexedGraph {
   edges: CanonicalEdge[];
 }
 
+/** 校验并构建图索引；子节点列表按 CanonicalNode.order 稳定升序排列。 */
 export function indexGraph(snapshot: StageSnapshot): IndexedGraph {
   const schemaIssues = validateSnapshot(snapshot);
   if (schemaIssues.length) {
@@ -138,6 +148,7 @@ export function indexGraph(snapshot: StageSnapshot): IndexedGraph {
   return indexed;
 }
 
+/** 获取触及指定节点或其任意后代节点的全部连线集合。 */
 export function edgesTouching(graph: IndexedGraph, nodeId: GraphNodeId): CanonicalEdge[] {
   const descendants = new Set<GraphNodeId>([nodeId]);
   const queue = [nodeId];
@@ -170,6 +181,7 @@ function applyOperation(graph: CanonicalGraph, operation: GraphPatchOperation): 
       nodes.set(operation.node.id, cloneNode(operation.node));
       break;
     case 'removeNode': {
+      // 级联递归移除所有后代节点以及挂接在其上的连线
       const removed = new Set<GraphNodeId>();
       const visit = (id: GraphNodeId): void => {
         if (removed.has(id)) return;
@@ -216,6 +228,7 @@ function applyOperation(graph: CanonicalGraph, operation: GraphPatchOperation): 
   };
 }
 
+/** 应用增量图变更；比对 baseRevision，原子产出 nextRevision 并断言最终图合法性。 */
 export function applyGraphPatch(graph: CanonicalGraph, patch: GraphPatch): CanonicalGraph {
   const currentRevision = graph.revision ?? '0';
   if (currentRevision !== patch.baseRevision) {

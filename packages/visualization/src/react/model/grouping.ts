@@ -1,6 +1,8 @@
+/** Interactive clustering, sibling separation and coordinate translation between local and world space. */
 import type { Node } from '@xyflow/react';
 import type { ChangeMark } from '../../core/schema/baseline.ts';
 
+/** 画布交互节点类型；承载展示、四向扩容边界与聚合分组账本。 */
 export type CanvasNode = Node<{
   title: string;
   summary?: string;
@@ -37,6 +39,7 @@ function siblingsOverlap(a: CanvasNode, b: CanvasNode): boolean {
     && a.position.y + first.height + gap > b.position.y + GEOMETRY_EPSILON;
 }
 
+/** 兄弟节点避让；当节点扩张或插入时，将发生重叠的同级节点沿 X/Y 正向或负向推开。 */
 export function separateSiblings(input: readonly CanvasNode[], fixedId: string, remember = false): CanvasNode[] {
   let nodes = [...input];
   const parentId = nodes.find((node) => node.id === fixedId)!.parentId;
@@ -72,6 +75,7 @@ export function separateSiblings(input: readonly CanvasNode[], fixedId: string, 
   return nodes;
 }
 
+/** 当扩张节点收缩或移除时，将曾发生避让的兄弟节点尝试恢复至其 reflowOrigin 记录的位置。 */
 export function restoreSiblings(input: readonly CanvasNode[], parentId: string | undefined, excluded: ReadonlySet<string>): CanvasNode[] {
   let nodes = [...input], restored = true;
   while (restored) {
@@ -109,12 +113,14 @@ function recordNaturalSizes(nodes: readonly CanvasNode[], affectedIds: readonly 
   });
 }
 
+/** 将节点的局部坐标递归转换为画布全局绝对坐标。 */
 export function worldPosition(node: CanvasNode, nodes: readonly CanvasNode[]): { x: number; y: number } {
   const parent = nodes.find((item) => item.id === node.parentId);
   const origin = parent ? worldPosition(parent, nodes) : { x: 0, y: 0 };
   return { x: origin.x + node.position.x, y: origin.y + node.position.y };
 }
 
+/** 提取当前选中的最高层级根节点（排除选中的内部后代）。 */
 export function selectionRoots(nodes: readonly CanvasNode[]): CanvasNode[] {
   const selected = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
   return nodes.filter((node) => {
@@ -128,6 +134,7 @@ export function selectionRoots(nodes: readonly CanvasNode[]): CanvasNode[] {
   });
 }
 
+/** 规范化框选状态；当某一祖先节点已被选中时，取消其所有后代节点的选中状态。 */
 export function normalizeMarqueeSelection(nodes: readonly CanvasNode[]): CanvasNode[] {
   const selectedAncestors = new Set<string>();
   for (const node of nodes) {
@@ -197,6 +204,10 @@ function encloseChildren(input: readonly CanvasNode[], parentIds: readonly strin
   return nodes;
 }
 
+/**
+ * 将选中的顶层节点聚合为新的 Cluster 分组。
+ * 计算成员的最近公共祖先 (LCA)，建立分组容器并在各节点记录 groupOrigins 原属父级账本。
+ */
 export function groupSelection(nodes: readonly CanvasNode[], id: string): CanvasNode[] {
   const roots = selectionRoots(nodes);
   if (roots.length < 2) return [...nodes];
@@ -231,6 +242,10 @@ export function groupSelection(nodes: readonly CanvasNode[], id: string): Canvas
   return parentFirst(recordNaturalSizes(grouped, [id, ...chains.flat()]));
 }
 
+/**
+ * 解散聚合分组。
+ * 读取 groupOrigins 账本将内部节点归还回各自原属父容器，移除空分组并重算尺寸。
+ */
 export function ungroup(nodes: readonly CanvasNode[], id: string): CanvasNode[] {
   const parent = nodes.find((node) => node.id === id);
   if (!parent) return [...nodes];
@@ -252,6 +267,7 @@ export function ungroup(nodes: readonly CanvasNode[], id: string): CanvasNode[] 
   return parentFirst(recordNaturalSizes(encloseChildren(restored, affected), affected));
 }
 
+/** 提取属于选中集合的所有叶子卡片节点 ID（穿透 cluster 分组）。 */
 export function leafMembers(nodes: readonly CanvasNode[], selectedIds: ReadonlySet<string>): Set<string> {
   const result = new Set<string>();
   for (const node of nodes) {

@@ -1,3 +1,4 @@
+/** Baseline selection popover with keyboard focus management and screen-reader announcements. */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import { Icon } from './icon.tsx';
@@ -8,6 +9,7 @@ export interface BaselinePickerProps {
   onSelect(id: string): void;
 }
 
+/** 基线选择弹出面板；支持键盘导航、Escape 关闭与焦点保持。 */
 export function BaselinePicker({ baselines, selected, onSelect }: BaselinePickerProps) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);

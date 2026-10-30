@@ -1,3 +1,4 @@
+/** Playground entry point mounting the public VisualizationCanvas with standalone sample baselines. */
 import { createRoot } from 'react-dom/client';
 import { VisualizationCanvas } from '../../src/react/index.ts';
 import { sampleBaselines } from '../../examples/baselines.ts';

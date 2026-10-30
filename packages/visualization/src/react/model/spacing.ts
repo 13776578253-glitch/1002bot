@@ -1,10 +1,20 @@
+/** Container sizing, growth ceilings and recursive ancestor refitting. */
 import { CARD_SIZE, restoreSiblings, separateSiblings, type CanvasNode } from './grouping.ts';
 
 export { MIN_EDGE_GAP } from './grouping.ts';
+
+/** 对齐吸附触发阈值（屏幕像素）；实际画布距离为 SNAP_SCREEN_DISTANCE / zoom。 */
 export const SNAP_SCREEN_DISTANCE = 6;
+
+/** 单轴最大允许扩容绝对余量（像素）。 */
 export const MAX_CONTAINER_EXTRA = 800;
+
+/** 单轴最大扩容比例；额外余量不超过自然基础尺寸的 100%。 */
 export const MAX_CONTAINER_RATIO = 1;
+
+/** 容器内边距；structure 顶部预留 72px 标题栏空间，cluster 预留 60px。 */
 export const containerInset = (node: CanvasNode) => ({ x: 24, top: node.type === 'structure' ? 72 : 60, bottom: 24 });
+
 const extra = (size: number) => Math.min(MAX_CONTAINER_EXTRA, size * MAX_CONTAINER_RATIO);
 
 function containerContentBounds(node: CanvasNode, nodes: readonly CanvasNode[]) {
@@ -18,11 +28,13 @@ function containerContentBounds(node: CanvasNode, nodes: readonly CanvasNode[]) 
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+/** 计算容器容纳其当前全部子节点所需的最小包围盒尺寸。 */
 export function containerContentSize(node: CanvasNode, nodes: readonly CanvasNode[]) {
   const { width, height } = containerContentBounds(node, nodes);
   return { width, height };
 }
 
+/** 计算容器在当前基准尺寸下的最大允许扩容尺寸（自然基础尺寸 + 额外允许余量）。 */
 export function containerGrowthCeiling(node: CanvasNode) {
   const width = node.data.contentWidth ?? node.width!;
   const height = node.data.contentHeight ?? node.height!;
@@ -31,6 +43,7 @@ export function containerGrowthCeiling(node: CanvasNode) {
   };
 }
 
+/** 计算容器容纳当前子节点的自然推荐尺寸。 */
 export function preferredContainerSize(node: CanvasNode, nodes: readonly CanvasNode[]) {
   const content = containerContentSize(node, nodes);
   return {
@@ -46,7 +59,10 @@ export function containerSizeLimits(node: CanvasNode, nodes: readonly CanvasNode
   return { minWidth: content.width, minHeight: content.height, maxWidth: Math.max(content.width, ceiling.width), maxHeight: Math.max(content.height, ceiling.height) };
 }
 
-/** Refit from the deepest parent outward while retaining the fixed expansion ceiling. */
+/**
+ * 子节点位移后自底向上（从最深层父级到最外层）重新贴合所有受影响容器尺寸。
+ * 使用 fitOffset 跟踪边界偏移，保持内部坐标系稳定并支持回拖反向收缩。
+ */
 export function fitMovedContainers(input: readonly CanvasNode[], movedIds: readonly string[]): CanvasNode[] {
   let nodes = [...input];
   const ancestors = new Set<string>();

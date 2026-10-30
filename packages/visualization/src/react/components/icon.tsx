@@ -1,3 +1,6 @@
+/** Inline SVG icons for canvas controls, node states and toolbar buttons. */
+
+/** 纯内联几何矢量图标组件。 */
 export function Icon({ name }: { name: string }) {
   const paths: Record<string, string> = {
     sun: 'M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1',

@@ -1,6 +1,8 @@
+/** Alignment guide geometry and obstacle occlusion clipping. */
 import type { Rect } from '../../core/layout/geometry.ts';
 import type { AlignmentGuide } from './constraints.ts';
 
+/** 裁剪对齐辅助线，剔除与卡片、容器标题栏及连线标签发生重叠的线段部分。 */
 export function clipAlignmentGuides(guides: readonly AlignmentGuide[], blockers: readonly Rect[], padding = 8): AlignmentGuide[] {
   return guides.flatMap((guide) => {
     const intervals = blockers.flatMap((blocker) => {

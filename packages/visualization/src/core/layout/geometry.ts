@@ -26,12 +26,12 @@ export interface Obstacle {
 
 export type PortSide = 'top' | 'right' | 'bottom' | 'left' | 'auto';
 
-/** Convert a world-space point into a parent-local coordinate. */
+/** 画布世界坐标转为直接父节点局部相对坐标。 */
 export function toLocalPoint(point: Point, parentOrigin: Point): Point {
   return { x: point.x - parentOrigin.x, y: point.y - parentOrigin.y };
 }
 
-/** Convert a parent-local point into world coordinates. */
+/** 直接父节点局部相对坐标转为画布世界坐标。 */
 export function toWorldPoint(point: Point, parentOrigin: Point): Point {
   return { x: point.x + parentOrigin.x, y: point.y + parentOrigin.y };
 }
@@ -60,7 +60,7 @@ export function rectIntersects(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-/** Resolve a stable edge anchor from a node rectangle and port side. */
+/** 按节点包围盒与连接侧计算吸附锚点；fraction 为沿该侧的比例位置（默认 0.5 居中）。 */
 export function portAnchor(rect: Rect, side: PortSide, fraction = 0.5): Point {
   const t = Math.max(0, Math.min(1, fraction));
   switch (side) {
@@ -74,6 +74,7 @@ export function portAnchor(rect: Rect, side: PortSide, fraction = 0.5): Point {
   }
 }
 
+/** 从矩形生成带有缓冲区 padding 的避障障碍物盒。 */
 export function obstacleFromRect(rect: Rect, padding = 0): Obstacle {
   return {
     left: rect.x - padding,
@@ -83,6 +84,7 @@ export function obstacleFromRect(rect: Rect, padding = 0): Obstacle {
   };
 }
 
+/** 合并共线水平或垂直线段，消除同向中间冗余折点。 */
 export function simplifyPoints(points: readonly Point[]): Point[] {
   if (points.length <= 2) return [...points];
   const simple: Point[] = [];
@@ -103,6 +105,7 @@ export function simplifyPoints(points: readonly Point[]): Point[] {
   return simple;
 }
 
+/** 将折线点集转为带平滑圆角的 SVG 路径字符串；拐角使用二次贝塞尔曲线 Q 过渡。 */
 export function svgPathFromPoints(points: readonly Point[], radius: number = 8): string {
   if (points.length === 0) return '';
   if (points.length === 1) return `M ${points[0]!.x} ${points[0]!.y}`;
@@ -143,11 +146,11 @@ export function svgPathFromPoints(points: readonly Point[], radius: number = 8):
   return d;
 }
 
+/** 计算沿折线实际物理长度 50% 处的几何中点，用于连线标签吸附。 */
 export function midpointOfPoints(points: readonly Point[]): Point {
   if (points.length === 0) return { x: 0, y: 0 };
   if (points.length === 1) return { ...points[0]! };
 
-  // Calculate total path length
   let totalLen = 0;
   const lens: number[] = [];
   for (let i = 0; i < points.length - 1; i++) {
@@ -177,7 +180,10 @@ export function midpointOfPoints(points: readonly Point[]): Point {
 }
 
 /**
- * Computes an orthogonal obstacle-avoiding route between two rects.
+ * 计算两矩形间的正交避障折线路径。
+ * 1. 优先尝试无障碍直接直角连接；
+ * 2. 存在障碍时，基于障碍轮廓生成网格线并执行带有拐弯惩罚的 A* 寻路；
+ * 3. 寻路失败时回退至顶部绕行路径。
  */
 export function routeOrthogonal(
   fromRect: Rect,
@@ -188,7 +194,6 @@ export function routeOrthogonal(
   const pad = options.padding ?? 14;
   const isRight = toRect.x + toRect.w / 2 >= fromRect.x + fromRect.w / 2;
 
-  // Ports attach to right/left sides
   const start: Point = isRight
     ? { x: fromRect.x + fromRect.w, y: fromRect.y + fromRect.h / 2 }
     : { x: fromRect.x, y: fromRect.y + fromRect.h / 2 };
@@ -197,7 +202,6 @@ export function routeOrthogonal(
     ? { x: toRect.x, y: toRect.y + toRect.h / 2 }
     : { x: toRect.x + toRect.w, y: toRect.y + toRect.h / 2 };
 
-  // Outward extension stubs
   const stubDistance = options.offset ?? 24;
   const startStub: Point = {
     x: start.x + (isRight ? stubDistance : -stubDistance),
@@ -208,7 +212,7 @@ export function routeOrthogonal(
     y: goal.y,
   };
 
-  // If stubs already connect cleanly on X without obstacles in between
+  // 检测直连候选线段是否避开所有障碍物
   if (isRight && startStub.x < goalStub.x) {
     const midX = Math.round((startStub.x + goalStub.x) / 2);
     const candidate = [
@@ -219,19 +223,16 @@ export function routeOrthogonal(
     ];
 
     const collides = obstacles.some((obs) => {
-      // Check horizontal segment start->midX at start.y
       const minX1 = Math.min(start.x, midX);
       const maxX1 = Math.max(start.x, midX);
       if (start.y > obs.top && start.y < obs.bottom && maxX1 > obs.left && minX1 < obs.right) {
         return true;
       }
-      // Check vertical segment midX from start.y to goal.y
       const minY2 = Math.min(start.y, goal.y);
       const maxY2 = Math.max(start.y, goal.y);
       if (midX > obs.left && midX < obs.right && maxY2 > obs.top && minY2 < obs.bottom) {
         return true;
       }
-      // Check horizontal segment midX to goal.x at goal.y
       const minX3 = Math.min(midX, goal.x);
       const maxX3 = Math.max(midX, goal.x);
       if (goal.y > obs.top && goal.y < obs.bottom && maxX3 > obs.left && minX3 < obs.right) {
@@ -245,7 +246,7 @@ export function routeOrthogonal(
     }
   }
 
-  // Gather grid lines from obstacles and endpoints
+  // 提取端点与障碍物轮廓构建搜索网格坐标集合
   const xs = new Set<number>([start.x, startStub.x, goal.x, goalStub.x]);
   const ys = new Set<number>([start.y, startStub.y, goal.y, goalStub.y]);
 
@@ -276,7 +277,6 @@ export function routeOrthogonal(
     ]);
   }
 
-  // A* grid search
   function isBlocked(ix: number, iy: number, jx: number, jy: number): boolean {
     const x1 = Math.min(sortedX[ix]!, sortedX[jx]!);
     const x2 = Math.max(sortedX[ix]!, sortedX[jx]!);
@@ -285,12 +285,10 @@ export function routeOrthogonal(
 
     for (const obs of obstacles) {
       if (ix === jx) {
-        // Vertical move along x1
         if (x1 > obs.left && x1 < obs.right && y2 > obs.top && y1 < obs.bottom) {
           return true;
         }
       } else {
-        // Horizontal move along y1
         if (y1 > obs.top && y1 < obs.bottom && x2 > obs.left && x1 < obs.right) {
           return true;
         }
@@ -299,12 +297,11 @@ export function routeOrthogonal(
     return false;
   }
 
-  // Priority queue item
   interface SearchNode {
     id: number;
     ix: number;
     iy: number;
-    dir: number; // 0: horiz, 1: vert, 2: init
+    dir: number;
     g: number;
     f: number;
   }
@@ -405,7 +402,7 @@ export function routeOrthogonal(
     }
     routePoints.reverse();
   } else {
-    // Fallback detour path
+    // 寻路阻断时的保底绕行路径
     const topY = Math.min(fromRect.y, toRect.y) - 30;
     routePoints.push(startStub, { x: startStub.x, y: topY }, { x: goalStub.x, y: topY }, goalStub);
   }

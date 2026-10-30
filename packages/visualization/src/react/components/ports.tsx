@@ -1,5 +1,7 @@
+/** Standard directional handles for top, bottom, left and right node edges. */
 import { Handle, Position } from '@xyflow/react';
 
+/** 节点连接桩；提供上下左右四侧的正交出入连接手柄。 */
 export function Ports() {
   return <>
     <Handle type="target" position={Position.Top} id="in" />

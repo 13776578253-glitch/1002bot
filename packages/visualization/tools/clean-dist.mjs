@@ -1,3 +1,4 @@
+/** Deletes the dist directory before fresh builds. */
 import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
