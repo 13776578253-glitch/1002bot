@@ -2,6 +2,8 @@
 import type { Node } from '@xyflow/react';
 import type { ChangeMark } from '../../core/schema/baseline.ts';
 
+export type LayoutMode = 'free' | 'fixed' | 'locked';
+
 /** 画布交互节点类型；承载展示、四向扩容边界与聚合分组账本。 */
 export type CanvasNode = Node<{
   title: string;
@@ -11,8 +13,10 @@ export type CanvasNode = Node<{
   expandable?: boolean;
   expanded?: boolean;
   childCount?: number;
+  layoutMode?: LayoutMode;
   onToggle?: () => void;
   onRename?: (title: string) => void;
+  onRenameCommit?: () => void;
   contentWidth?: number;
   contentHeight?: number;
   fitOffset?: { x: number; y: number };
@@ -27,10 +31,12 @@ const GROUP_PADDING = { x: 24, top: 60, bottom: 24 };
 const SIBLING_GAP = 24;
 const GEOMETRY_EPSILON = 0.000001;
 
+export const isLayoutProtected = (node: CanvasNode): boolean => node.data.layoutMode === 'fixed' || node.data.layoutMode === 'locked';
+
 const nodeSize = (node: CanvasNode) => ({ width: node.width ?? node.measured?.width ?? CARD_SIZE.width, height: node.height ?? node.measured?.height ?? CARD_SIZE.height });
 const siblingGap = (a: CanvasNode, b: CanvasNode) => a.type === 'card' && b.type === 'card' ? MIN_EDGE_GAP : SIBLING_GAP;
 
-function siblingsOverlap(a: CanvasNode, b: CanvasNode): boolean {
+export function siblingsOverlap(a: CanvasNode, b: CanvasNode): boolean {
   const first = nodeSize(a), second = nodeSize(b);
   const gap = siblingGap(a, b);
   return a.position.x < b.position.x + second.width + gap - GEOMETRY_EPSILON
@@ -43,7 +49,7 @@ function siblingsOverlap(a: CanvasNode, b: CanvasNode): boolean {
 export function separateSiblings(input: readonly CanvasNode[], fixedId: string, remember = false): CanvasNode[] {
   let nodes = [...input];
   const parentId = nodes.find((node) => node.id === fixedId)!.parentId;
-  const settled = new Set([fixedId]), pending = [fixedId];
+  const settled = new Set([fixedId, ...nodes.filter((node) => node.parentId === parentId && isLayoutProtected(node)).map((node) => node.id)]), pending = [fixedId];
   while (pending.length) {
     const anchorId = pending.shift()!;
     const anchor = nodes.find((node) => node.id === anchorId)!;
@@ -81,7 +87,7 @@ export function restoreSiblings(input: readonly CanvasNode[], parentId: string |
   while (restored) {
     restored = false;
     for (const node of nodes) {
-      if (node.parentId !== parentId || !node.data.reflowOrigin || excluded.has(node.id)) continue;
+      if (node.parentId !== parentId || !node.data.reflowOrigin || excluded.has(node.id) || isLayoutProtected(node)) continue;
       const candidate = { ...node, position: node.data.reflowOrigin };
       if (nodes.some((other) => other.id !== node.id && other.parentId === parentId && siblingsOverlap(candidate, other))) continue;
       const { reflowOrigin: _origin, ...data } = candidate.data;
@@ -118,6 +124,47 @@ export function worldPosition(node: CanvasNode, nodes: readonly CanvasNode[]): {
   const parent = nodes.find((item) => item.id === node.parentId);
   const origin = parent ? worldPosition(parent, nodes) : { x: 0, y: 0 };
   return { x: origin.x + node.position.x, y: origin.y + node.position.y };
+}
+
+/** Automatic edits preserve protected world anchors; manual ancestor moves carry their descendants. */
+export function layoutProtectionConflict(before: readonly CanvasNode[], after: readonly CanvasNode[], movedRoots: ReadonlySet<string> = new Set()): boolean {
+  const protectedNodes = before.filter(isLayoutProtected);
+  if (!protectedNodes.length) return false;
+  const previous = new Map(before.map((node) => [node.id, node]));
+  const next = new Map(after.map((node) => [node.id, node]));
+  const oldWorlds = new Map<string, { x: number; y: number }>(), newWorlds = new Map<string, { x: number; y: number }>();
+  const origin = (node: CanvasNode, byId: ReadonlyMap<string, CanvasNode>, cache: Map<string, { x: number; y: number }>): { x: number; y: number } => {
+    const cached = cache.get(node.id);
+    if (cached) return cached;
+    const parent = node.parentId ? origin(byId.get(node.parentId)!, byId, cache) : { x: 0, y: 0 };
+    const point = { x: parent.x + node.position.x, y: parent.y + node.position.y };
+    cache.set(node.id, point);
+    return point;
+  };
+  for (const original of protectedNodes) {
+    const current = next.get(original.id);
+    if (movedRoots.has(original.id) && original.data.layoutMode !== 'locked') continue;
+    if (!current) return true;
+    const oldWorld = origin(original, previous, oldWorlds), newWorld = origin(current, next, newWorlds);
+    let owner = original.parentId, dx = 0, dy = 0;
+    while (owner) {
+      if (movedRoots.has(owner) && next.has(owner)) {
+        const oldOwner = origin(previous.get(owner)!, previous, oldWorlds), newOwner = origin(next.get(owner)!, next, newWorlds);
+        dx = newOwner.x - oldOwner.x; dy = newOwner.y - oldOwner.y;
+        break;
+      }
+      owner = previous.get(owner)?.parentId;
+    }
+    if (Math.abs(newWorld.x - oldWorld.x - dx) > GEOMETRY_EPSILON || Math.abs(newWorld.y - oldWorld.y - dy) > GEOMETRY_EPSILON) return true;
+  }
+  for (const anchor of after.filter(isLayoutProtected)) {
+    for (const peer of after) {
+      if (anchor.id === peer.id || anchor.parentId !== peer.parentId || !siblingsOverlap(anchor, peer)) continue;
+      const oldAnchor = previous.get(anchor.id), oldPeer = previous.get(peer.id);
+      if (!oldAnchor || !oldPeer || oldAnchor.parentId !== oldPeer.parentId || !siblingsOverlap(oldAnchor, oldPeer)) return true;
+    }
+  }
+  return false;
 }
 
 /** 提取当前选中的最高层级根节点（排除选中的内部后代）。 */
@@ -210,7 +257,7 @@ function encloseChildren(input: readonly CanvasNode[], parentIds: readonly strin
  */
 export function groupSelection(nodes: readonly CanvasNode[], id: string): CanvasNode[] {
   const roots = selectionRoots(nodes);
-  if (roots.length < 2) return [...nodes];
+  if (roots.length < 2 || roots.some((node) => node.data.layoutMode === 'locked')) return nodes as CanvasNode[];
   const entries = roots.map((node) => ({ node, position: worldPosition(node, nodes) }));
   const x = Math.min(...entries.map((entry) => entry.position.x)) - GROUP_PADDING.x;
   const y = Math.min(...entries.map((entry) => entry.position.y)) - GROUP_PADDING.top;
@@ -239,7 +286,8 @@ export function groupSelection(nodes: readonly CanvasNode[], id: string): Canvas
   grouped = encloseChildren(grouped, oldParents);
   grouped = separateSiblings(grouped, id);
   grouped = encloseChildren(grouped, parentId ? [parentId] : [], true);
-  return parentFirst(recordNaturalSizes(grouped, [id, ...chains.flat()]));
+  const next = parentFirst(recordNaturalSizes(grouped, [id, ...chains.flat()]));
+  return layoutProtectionConflict(nodes, next) ? nodes as CanvasNode[] : next;
 }
 
 /**
@@ -248,7 +296,7 @@ export function groupSelection(nodes: readonly CanvasNode[], id: string): Canvas
  */
 export function ungroup(nodes: readonly CanvasNode[], id: string): CanvasNode[] {
   const parent = nodes.find((node) => node.id === id);
-  if (!parent) return [...nodes];
+  if (!parent || parent.data.layoutMode === 'locked' || nodes.some((node) => node.parentId === id && node.data.layoutMode === 'locked')) return nodes as CanvasNode[];
   const result = nodes.filter((node) => node.id !== id).map((node): CanvasNode => {
     if (node.parentId !== id) return { ...node, selected: false };
     const world = worldPosition(node, nodes);
@@ -264,7 +312,8 @@ export function ungroup(nodes: readonly CanvasNode[], id: string): CanvasNode[] 
   });
   const restored = removeEmptyClusters(result);
   const affected = [...ancestors(parent, nodes), ...restored.filter((node) => node.selected).flatMap((node) => ancestors(node, restored))];
-  return parentFirst(recordNaturalSizes(encloseChildren(restored, affected), affected));
+  const next = parentFirst(recordNaturalSizes(encloseChildren(restored, affected), affected));
+  return layoutProtectionConflict(nodes, next, new Set([id])) ? nodes as CanvasNode[] : next;
 }
 
 /** 提取属于选中集合的所有叶子卡片节点 ID（穿透 cluster 分组）。 */

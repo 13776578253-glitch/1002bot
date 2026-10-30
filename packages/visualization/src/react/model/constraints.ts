@@ -1,19 +1,32 @@
 /** Drag constraints, alignment snapping and collision avoidance for canvas nodes. */
 import type { Point, Rect } from '../../core/layout/geometry.ts';
 import { rectIntersects } from '../../core/layout/geometry.ts';
-import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, layoutProtectionConflict, worldPosition, type CanvasNode } from './grouping.ts';
 import { containerGrowthCeiling, fitMovedContainers, MIN_EDGE_GAP, SNAP_SCREEN_DISTANCE } from './spacing.ts';
 
 export interface AlignmentGuide { axis: 'x' | 'y'; value: number; start: number; end: number; }
 export interface VisibleLink { source: string; target: string; }
 
-const rect = (node: CanvasNode, nodes: readonly CanvasNode[]): Rect => ({ ...worldPosition(node, nodes), w: node.width ?? CARD_SIZE.width, h: node.height ?? CARD_SIZE.height });
-
-const related = (node: CanvasNode, id: string, nodes: readonly CanvasNode[]) => {
-  let parent = node.parentId;
-  while (parent) { if (parent === id) return true; parent = nodes.find((item) => item.id === parent)?.parentId; }
-  return false;
-};
+function geometryLookup() {
+  const arrays = new WeakMap<readonly CanvasNode[], Map<string, CanvasNode>>();
+  const origins = new WeakMap<readonly CanvasNode[], Map<string, Point>>();
+  return (node: CanvasNode, nodes: readonly CanvasNode[]): Rect => {
+    let byId = arrays.get(nodes), positions = origins.get(nodes);
+    if (!byId) { byId = new Map(nodes.map((item) => [item.id, item])); arrays.set(nodes, byId); }
+    if (!positions) { positions = new Map(); origins.set(nodes, positions); }
+    const parentWorld = (id: string): Point => {
+      const cached = positions!.get(id);
+      if (cached) return cached;
+      const current = byId!.get(id)!;
+      const parent = current.parentId ? parentWorld(current.parentId) : { x: 0, y: 0 };
+      const point = { x: parent.x + current.position.x, y: parent.y + current.position.y };
+      positions!.set(id, point);
+      return point;
+    };
+    const parent = node.parentId ? parentWorld(node.parentId) : { x: 0, y: 0 };
+    return { x: parent.x + node.position.x, y: parent.y + node.position.y, w: node.width ?? CARD_SIZE.width, h: node.height ?? CARD_SIZE.height };
+  };
+}
 
 /**
  * 限制拖动位移：
@@ -29,6 +42,23 @@ export function constrainNodeMoves(
   visibleIds: ReadonlySet<string>,
   links: readonly VisibleLink[],
 ): { nodes: CanvasNode[]; guides: AlignmentGuide[] } {
+  const previous = new Map(before.map((node) => [node.id, node]));
+  const parents = new Map(proposed.map((node) => [node.id, node.parentId]));
+  const rect = geometryLookup();
+  const related = (node: CanvasNode, id: string, _nodes: readonly CanvasNode[]) => {
+    let parent = node.parentId;
+    while (parent) { if (parent === id) return true; parent = parents.get(parent); }
+    return false;
+  };
+  const adjacent = new Map<string, Set<string>>();
+  for (const edge of links) {
+    if (!adjacent.has(edge.source)) adjacent.set(edge.source, new Set());
+    if (!adjacent.has(edge.target)) adjacent.set(edge.target, new Set());
+    adjacent.get(edge.source)!.add(edge.target); adjacent.get(edge.target)!.add(edge.source);
+  }
+  const connected = (a: string, b: string) => adjacent.get(a)?.has(b) ?? false;
+  movedIds = movedIds.filter((id) => previous.get(id)!.data.layoutMode !== 'locked');
+  proposed = proposed.map((node) => previous.get(node.id)?.data.layoutMode === 'locked' && !movedIds.some((id) => related(node, id, proposed)) && (node.position.x !== previous.get(node.id)!.position.x || node.position.y !== previous.get(node.id)!.position.y) ? { ...node, position: previous.get(node.id)!.position } : node);
   const moved = new Set(movedIds);
   const roots = proposed.filter((node) => moved.has(node.id) && !movedIds.some((id) => related(node, id, proposed))).map((node) => { if (!node.data.reflowOrigin) return node; const { reflowOrigin: _origin, ...data } = node.data; return { ...node, data }; });
   const primary = roots[0];
@@ -65,7 +95,7 @@ export function constrainNodeMoves(
     for (let pass = 0; pass < 3; pass++) {
       let adjusted = false;
       for (const peer of peers) {
-        const linked = links.some((edge) => edge.source === node.id && edge.target === peer.id || edge.target === node.id && edge.source === peer.id);
+        const linked = connected(node.id, peer.id);
         if (!linked && peer.parentId !== node.parentId) continue;
         const gap = linked && node.type === 'card' && peer.type === 'card' ? MIN_EDGE_GAP : 20;
         const other = rect(peer, working), current = rect(nextNode, working);
@@ -89,7 +119,7 @@ export function constrainNodeMoves(
     }
 
     if (peers.some((peer) => {
-      const linked = links.some((edge) => edge.source === node.id && edge.target === peer.id || edge.target === node.id && edge.source === peer.id);
+      const linked = connected(node.id, peer.id);
       if (!linked && peer.parentId !== node.parentId) return false;
       const gap = linked && node.type === 'card' && peer.type === 'card' ? MIN_EDGE_GAP : 20;
       const other = rect(peer, working);
@@ -109,7 +139,7 @@ export function constrainNodeMoves(
   const final = rect(working.find((node) => node.id === primary.id)!, working);
   const guides = [xGuide && Math.abs(final.x - anchor.x - dx) < 0.1 ? xGuide : undefined, yGuide && Math.abs(final.y - anchor.y - dy) < 0.1 ? yGuide : undefined].filter((guide): guide is AlignmentGuide => guide !== undefined);
 
-  const valid = (fitted: readonly CanvasNode[], expectedNodes: readonly CanvasNode[]) => fitted.every((node) => {
+  const valid = (fitted: readonly CanvasNode[], expectedNodes: readonly CanvasNode[]) => !layoutProtectionConflict(before, fitted, new Set(roots.map((node) => node.id))) && fitted.every((node) => {
     if (node.type === 'card') return true;
     const ceiling = containerGrowthCeiling(node);
     return node.width! <= ceiling.width && node.height! <= ceiling.height;
@@ -118,7 +148,7 @@ export function constrainNodeMoves(
     const expected = worldPosition(expectedNodes.find((item) => item.id === node.id)!, expectedNodes), actual = worldPosition(current, fitted);
     return Math.abs(expected.x - actual.x) < 0.01 && Math.abs(expected.y - actual.y) < 0.01 && !peers.some((peer) => {
       const otherNode = fitted.find((item) => item.id === peer.id)!;
-      const linked = links.some((edge) => edge.source === node.id && edge.target === peer.id || edge.target === node.id && edge.source === peer.id);
+      const linked = connected(node.id, peer.id);
       if (!linked && current.parentId !== otherNode.parentId) return false;
       const gap = linked && current.type === 'card' && peer.type === 'card' ? MIN_EDGE_GAP : 20;
       const other = rect(otherNode, fitted);

@@ -1,6 +1,6 @@
 /** Hierarchical card tree, container expansion/collapse and cross-baseline expansion synchronization. */
 import { projectGraph, type Projection } from '../../core/projection/index.ts';
-import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, isLayoutProtected, layoutProtectionConflict, worldPosition, type CanvasNode } from './grouping.ts';
 import { preferredContainerSize } from './spacing.ts';
 import type { CanonicalNode, StageSnapshot } from '../../core/schema/types.ts';
 import { indexGraph } from '../../core/graph/index.ts';
@@ -70,7 +70,7 @@ function resize(nodes: CanvasNode[], id: string, width: number, height: number, 
   nodes[index] = { ...node, width, height, measured: { width, height }, style: { ...node.style, width, height }, ...(baseline ? { data: { ...node.data, contentWidth: baseline.width, contentHeight: baseline.height, expansionSizes: { ...node.data.expansionSizes, [key]: baseline } } } : {}) };
   for (let i = 0; i < nodes.length; i++) {
     const sibling = nodes[i]!;
-    if (sibling.id === id || sibling.parentId !== node.parentId) continue;
+    if (sibling.id === id || sibling.parentId !== node.parentId || isLayoutProtected(sibling)) continue;
     const w = sibling.width ?? CARD_SIZE.width, h = sibling.height ?? CARD_SIZE.height;
     let x = sibling.position.x, y = sibling.position.y;
     if (dx && x >= node.position.x + oldWidth && y + h > node.position.y && y < node.position.y + oldHeight) x += dx;
@@ -86,11 +86,11 @@ function resize(nodes: CanvasNode[], id: string, width: number, height: number, 
  * 3. 沿 X/Y 轴推开受波及的同级兄弟节点；
  * 4. 重新计算投影并更新内部节点的选中与可见性。
  */
-export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
-  let nodes = input.map((node) => ({ ...node }));
+function hierarchyCandidate(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
+  let nodes = [...input];
   const index = nodes.findIndex((node) => node.id === id);
   const node = nodes[index];
-  if (!node?.data.expandable) return nodes;
+  if (!node?.data.expandable) return input as CanvasNode[];
   const expanded = !node.data.expanded;
   const { dragHandle: _handle, ...base } = node;
   nodes[index] = {
@@ -111,8 +111,29 @@ export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage:
     parentId = parent.parentId;
   }
   const projection = hierarchyProjection(nodes, stage);
-  nodes = nodes.map((item) => nodeIsVisible(item, nodes, projection) ? item : { ...item, selected: false });
+  nodes = nodes.map((item) => nodeIsVisible(item, nodes, projection) || !item.selected ? item : { ...item, selected: false });
   return nodes;
+}
+
+/** Try the retained layout first, then a local column of free children before reporting a fixed-anchor conflict. */
+export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
+  const original = input.find((node) => node.id === id)!;
+  const candidate = hierarchyCandidate(input, id, stage);
+  if (candidate === input || !layoutProtectionConflict(input, candidate)) return candidate;
+  if (original.data.expanded) return input as CanvasNode[];
+  let top = 72;
+  const column = input.map((node) => {
+    if (node.parentId !== id) return node;
+    if (isLayoutProtected(node)) {
+      top = Math.max(top, node.position.y + (node.height ?? CARD_SIZE.height) + 64);
+      return node;
+    }
+    const next = { ...node, position: { x: 24, y: top } };
+    top += (node.height ?? CARD_SIZE.height) + 64;
+    return next;
+  });
+  const local = hierarchyCandidate(column, id, stage);
+  return layoutProtectionConflict(input, local) ? input as CanvasNode[] : local;
 }
 
 /**

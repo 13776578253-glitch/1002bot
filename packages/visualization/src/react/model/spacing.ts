@@ -75,9 +75,10 @@ export function fitMovedContainers(input: readonly CanvasNode[], movedIds: reado
   for (const id of [...ancestors].sort((a, b) => depth(b) - depth(a))) {
     const node = nodes.find((item) => item.id === id)!;
     const { x, y, width, height } = containerContentBounds(node, nodes);
-    nodes = nodes.map((item) => {
+    const changed = x || y || width !== node.width || height !== node.height || node.data.contentWidth === undefined || node.data.contentHeight === undefined;
+    if (changed) nodes = nodes.map((item) => {
       if (item.id === id) return { ...item, position: { x: item.position.x + x, y: item.position.y + y }, width, height, measured: { width, height }, style: { ...item.style, width, height }, data: { ...item.data, contentWidth: item.data.contentWidth ?? item.width!, contentHeight: item.data.contentHeight ?? item.height!, fitOffset: { x: (item.data.fitOffset?.x ?? 0) + x, y: (item.data.fitOffset?.y ?? 0) + y }, ...(item.data.reflowOrigin ? { reflowOrigin: { x: item.data.reflowOrigin.x + x, y: item.data.reflowOrigin.y + y } } : {}) } };
-      return item.parentId === id ? { ...item, position: { x: item.position.x - x, y: item.position.y - y }, ...(item.data.reflowOrigin ? { data: { ...item.data, reflowOrigin: { x: item.data.reflowOrigin.x - x, y: item.data.reflowOrigin.y - y } } } : {}) } : item;
+      return (x || y) && item.parentId === id ? { ...item, position: { x: item.position.x - x, y: item.position.y - y }, ...(item.data.reflowOrigin ? { data: { ...item.data, reflowOrigin: { x: item.data.reflowOrigin.x - x, y: item.data.reflowOrigin.y - y } } } : {}) } : item;
     });
     nodes = restoreSiblings(nodes, node.parentId, excluded);
     if (x || y || width > node.width! || height > node.height!) {
