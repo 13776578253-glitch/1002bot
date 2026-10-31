@@ -15,7 +15,7 @@ function changeMarks(
     first ? { kind: 'baseline', label: '基线' } : previous.has(id) ? { kind: 'inherited', label: '沿用' } : { kind: 'added', label: '新增' },
   ]));
   for (const replacement of replacements) {
-    marks[replacement.id] = { kind: 'replaced', label: '替换', note: replacement.note };
+    marks[replacement.id] = { kind: 'replaced', label: '替换', note: replacement.note, previousId: replacement.previousId };
   }
   return marks;
 }
@@ -45,6 +45,7 @@ export function adaptProgressReports(dataset: ReportDataset): VisualizationBasel
     }));
     return {
       id: stage.id,
+      ...(order > 0 ? { previousStageId: dataset.stages[order - 1]!.id } : {}),
       stage: {
         id: stage.id, label: stage.label, title: stage.title, subtitle: stage.subtitle,
         date: stage.date, doc: stage.source, status: stage.status, track: 'main', order,

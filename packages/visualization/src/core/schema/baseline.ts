@@ -9,12 +9,16 @@ export interface ChangeMark {
   kind: ChangeKind;
   label: string;
   note?: string;
+  /** 替换标记对应的上一实体 ID；增量布局据此继承旧位置。 */
+  previousId?: string;
 }
 
 /** 完整架构版本基线合同；包含阶段快照、显示变更标记及可选的初始位置映射。 */
 export interface VisualizationBaseline {
   id: string;
   stage: StageSnapshot;
+  /** 上一阶段 ID；缺省时按基线数组顺序取前一项。 */
+  previousStageId?: string;
   /** 节点初始坐标；根节点为画布绝对坐标，子节点为直接父节点局部坐标。缺省时自动使用网格布局。 */
   positions?: Readonly<Record<string, { x: number; y: number }>>;
   nodeChanges: Readonly<Record<string, ChangeMark>>;

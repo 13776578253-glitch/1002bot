@@ -15,6 +15,11 @@ export interface DiagramObstacle {
   card: boolean;
 }
 
+export interface ReservedRoute {
+  edgeId: string;
+  points: Point[];
+}
+
 /** Geometry is shared by all invalidated edges in one interaction update. */
 export interface DiagramGeometry {
   bounds: Map<string, Rect>;
@@ -22,9 +27,17 @@ export interface DiagramGeometry {
   frames: Rect[];
   obstacles: Map<string, DiagramObstacle>;
   obstacleIndex: SpatialIndex<DiagramObstacle>;
+  reserved: { edgeId: string; rect: Rect }[];
 }
 
-export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: Projection): DiagramGeometry {
+function reservedRects(reserved: readonly ReservedRoute[]): { edgeId: string; rect: Rect }[] {
+  return reserved.flatMap((route) => route.points.flatMap((point, index) => {
+    if (index === 0) return [];
+    return [{ edgeId: route.edgeId, rect: expandBounds(segmentBounds(route.points[index - 1]!, point), 3) }];
+  }));
+}
+
+export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: Projection, reserved: readonly ReservedRoute[] = []): DiagramGeometry {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const bounds = new Map<string, Rect>();
   const rect = (node: CanvasNode): Rect => {
@@ -49,7 +62,7 @@ export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: 
     blockers.push(obstacle);
     if (!card) frames.push(full);
   }
-  return { bounds, blockers, frames, obstacles, obstacleIndex };
+  return { bounds, blockers, frames, obstacles, obstacleIndex, reserved: reservedRects(reserved) };
 }
 
 export function segmentBounds(from: Point, to: Point): Rect {
@@ -61,12 +74,15 @@ export function segmentCrossesRect(from: Point, to: Point, rect: Rect): boolean 
   return from.x > rect.x && from.x < rect.x + rect.w && Math.max(from.y, to.y) > rect.y && Math.min(from.y, to.y) < rect.y + rect.h;
 }
 
-export function pathIsClear(points: readonly Point[], geometry: DiagramGeometry, sourceId: string, targetId: string): boolean {
+export function pathIsClear(points: readonly Point[], geometry: DiagramGeometry, sourceId: string, targetId: string, ignoreEdgeId?: string): boolean {
   for (let index = 1; index < points.length; index++) {
     const from = points[index - 1]!, to = points[index]!;
     for (const obstacle of geometry.obstacleIndex.query(segmentBounds(from, to))) {
       const bounds = obstacle.id === sourceId || obstacle.id === targetId ? obstacle.bounds : obstacle.padded;
       if (segmentCrossesRect(from, to, bounds)) return false;
+    }
+    for (const reserved of geometry.reserved) {
+      if (reserved.edgeId !== ignoreEdgeId && segmentCrossesRect(from, to, reserved.rect)) return false;
     }
   }
   return true;
@@ -80,7 +96,7 @@ export function routeDiagramEdge(nodes: readonly CanvasNode[], projection: Proje
   return routeDiagramGeometry(geometry, sourceId, targetId);
 }
 
-export function routeDiagramGeometry(geometry: DiagramGeometry, sourceId: string, targetId: string) {
+export function routeDiagramGeometry(geometry: DiagramGeometry, sourceId: string, targetId: string, edgeId?: string) {
   const source = geometry.bounds.get(sourceId)!, target = geometry.bounds.get(targetId)!;
   const dx = target.x + target.w / 2 - source.x - source.w / 2;
   const dy = target.y + target.h / 2 - source.y - source.h / 2;
@@ -97,7 +113,8 @@ export function routeDiagramGeometry(geometry: DiagramGeometry, sourceId: string
   selected.set(sourceId, geometry.obstacles.get(sourceId)!);
   selected.set(targetId, geometry.obstacles.get(targetId)!);
   const obstacleBounds = (entry: DiagramObstacle) => entry.id === sourceId || entry.id === targetId ? entry.bounds : entry.padded;
-  const obstacleList = () => [...selected.values()].map((entry) => obstacleFromRect(obstacleBounds(entry)));
+  const reservedObstacles = geometry.reserved.filter((entry) => entry.edgeId !== edgeId).map((entry) => obstacleFromRect(entry.rect, 2));
+  const obstacleList = () => [...selected.values()].map((entry) => obstacleFromRect(obstacleBounds(entry))).concat(reservedObstacles);
   let obstacles = obstacleList();
 
   // 向外延伸垂直或水平引脚 stub，防止折角紧贴卡片边框

@@ -24,6 +24,7 @@
 :where(.canvas-app) .structure-toggle:hover { color:var(--accent); background:var(--hover); }
 :where(.canvas-app) .structure-toggle svg { width:14px; height:14px; }
 :where(.canvas-app) .cluster { width:100%; height:100%; border:1.5px solid var(--group-line); border-radius:20px; background:var(--group-bg); }
+:where(.canvas-app) :is(.flow-card,.structure-frame,.cluster)[data-frozen="true"] { outline:1px solid color-mix(in srgb,var(--accent) 55%,transparent); outline-offset:2px; }
 :where(.canvas-app) .cluster.is-selected { border-color:var(--accent); }
 :where(.canvas-app) .cluster-drag-handle { display:flex; align-items:center; gap:12px; height:54px; padding:12px 20px; cursor:grab; }
 :where(.canvas-app) .cluster-drag-handle input { border:0; outline:0; min-width:0; width:100%; background:transparent; font-size:16px; font-weight:600; color:var(--muted); border-radius:3px; }

@@ -61,6 +61,28 @@ test('moving one endpoint recomputes its edge while retaining an unrelated path 
   assert.ok(pathIsClear(after.get('far')!.points, createDiagramGeometry(moved, projection), 'c', 'd'));
 });
 
+test('changing a locked path invalidates only intersected cached paths', () => {
+  const input = nodes(), projection = project(input, edges), cache = new DiagramRouteCache();
+  const before = cache.update(input, projection, edges);
+  const obstacle = [{ edgeId: 'locked', points: [{ x: 300, y: -100 }, { x: 300, y: 100 }] }];
+  const after = cache.update(input, projection, edges, obstacle);
+  assert.equal(after.get('far'), before.get('far'));
+  assert.equal(cache.lastStats.routedEdges, 1);
+  assert.ok(pathIsClear(after.get('near')!.points, createDiagramGeometry(input, projection, obstacle), 'a', 'b'));
+  const far = after.get('far');
+  cache.update(input, projection, edges, [{ edgeId: 'locked', points: [{ x: 320, y: -100 }, { x: 320, y: 100 }] }]);
+  assert.equal(cache.lastStats.totalEdges, 2);
+  assert.equal(cache.update(input, projection, edges, [{ edgeId: 'locked', points: [{ x: 320, y: -100 }, { x: 320, y: 100 }] }]).get('far'), far);
+});
+
+test('an edge excludes its own reservation when recalculating', () => {
+  const input = nodes(), projection = project(input, edges), first = new DiagramRouteCache().update(input, projection, edges);
+  const own = first.get('near')!;
+  const cache = new DiagramRouteCache();
+  const result = cache.update(input, projection, edges, [{ edgeId: 'near', points: own.points }]);
+  assert.deepEqual(result.get('near')!.points, own.points);
+});
+
 test('a clear capsule follows its straight segment across repeated endpoint moves without new placement', () => {
   let input = nodes();
   const projection = project(input, edges), cache = new DiagramRouteCache();

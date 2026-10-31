@@ -42,8 +42,11 @@ test('report stages inherit stable identities, apply explicit removals and retai
   assert.equal(JSON.stringify(source), serialized);
   assert.deepEqual(first!.nodeChanges['engine/A'], { kind: 'baseline', label: '基线' });
   assert.deepEqual(second!.nodeChanges['engine/A'], { kind: 'inherited', label: '沿用' });
-  assert.deepEqual(second!.nodeChanges['archive/new'], { kind: 'replaced', label: '替换', note: 'Durable archive replaces the old store' });
+  assert.deepEqual(second!.nodeChanges['archive/new'], { kind: 'replaced', label: '替换', note: 'Durable archive replaces the old store', previousId: 'archive/old' });
   assert.equal(second!.edgeChanges['link/write-new']?.kind, 'replaced');
+  assert.equal(second!.edgeChanges['link/write-new']?.previousId, 'link/write-old');
+  assert.equal(second!.previousStageId, 'alpha');
+  assert.equal(third!.previousStageId, 'beta');
   assert.equal(third!.edgeChanges['link/write-new']?.kind, 'inherited');
   assert.ok(!second!.stage.graph.nodes.some((node) => node.id === 'archive/old'));
   assert.ok(!third!.stage.graph.edges.some((edge) => edge.id === 'link/write-old'));

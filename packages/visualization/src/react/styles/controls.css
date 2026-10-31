@@ -36,6 +36,9 @@
 :where(.canvas-app) .layout-modes { display:flex; gap:3px; }
 :where(.canvas-app) .layout-modes button { background:transparent; color:var(--muted); padding:4px 7px; }
 :where(.canvas-app) .layout-modes button[aria-pressed="true"] { background:var(--accent-bg); color:var(--accent); }
+:where(.canvas-app) .route-state { display:flex; gap:3px; padding:2px 0 8px; }
+:where(.canvas-app) .route-state button { background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:5px; padding:3px 8px; font-size:12px; }
+:where(.canvas-app) .route-state button[aria-pressed="true"] { background:var(--accent-bg); color:var(--accent); border-color:var(--accent); }
 :where(.canvas-app) .layout-mark { display:inline-flex; flex:none; align-items:center; color:var(--muted); }
 :where(.canvas-app) .layout-mark svg { width:14px; height:14px; }
 :where(.canvas-app) [data-layout-mode="locked"] { cursor:default; }

@@ -4,7 +4,7 @@ import type { CanonicalNode, StageSnapshot } from '../../src/core/schema/types.t
 import type { VisualizationBaseline } from '../../src/core/schema/baseline.ts';
 import { createHierarchyNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
 import { CARD_SIZE, groupSelection, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { captureNodeViews, restoreNodeViews, ViewHistory, type CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
+import { captureContent, captureNodeViews, restoreNodeViews, ViewHistory, type CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
 import { createLocalStorageViewStorage } from '../../src/react/persistence/local-storage.ts';
 
 const entity = (id: string, parentId: string | null, order: number): CanonicalNode => ({ id, parentId, kind: parentId === null ? 'root' : 'component', label: id, summary: `${id} source summary`, order, ports: [] });
@@ -19,7 +19,7 @@ const working = (): CanvasNode[] => {
     onToggle() {}, onRename() {}, onRenameCommit() {},
   } }));
 };
-const workspace = (nodes = working()): CanvasWorkspaceView => ({ version: 1, baselineId: stage.id, baselines: { [stage.id]: { revision: stage.graph.revision!, nodes: captureNodeViews(nodes), viewport: { x: 81, y: -46, zoom: 0.75 } } } });
+const workspace = (nodes = working()): CanvasWorkspaceView => ({ version: 2, baselineId: stage.id, baselines: { [stage.id]: { revision: stage.graph.revision!, nodes: captureNodeViews(nodes), edgeRoutes: [], frozenGroups: [], viewport: { x: 81, y: -46, zoom: 0.75 } } } });
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -117,19 +117,19 @@ test('a saved expanded branch becoming a source leaf restores a normal movable c
 test('one committed geometry action undoes and redoes the whole group and its descendants', () => {
   const original = working();
   const next = original.map((node) => node.id === 'module' || node.id === 'user-group' ? { ...node, position: { x: node.position.x + 160, y: node.position.y + 90 }, width: node.width! + 80 } : node);
-  const before = captureNodeViews(original), after = captureNodeViews(next);
+  const before = captureContent(original), after = captureContent(next);
   const history = new ViewHistory();
   assert.equal(history.record(before, after), true);
   assert.deepEqual(history.undo(after), before);
   assert.equal(history.canUndo, false);
   assert.deepEqual(history.redo(before), after);
   assert.equal(history.canRedo, false);
-  assert.equal(history.record(after, captureNodeViews(next.map((node) => ({ ...node, selected: !node.selected })))), false);
+  assert.equal(history.record(after, captureContent(next.map((node) => ({ ...node, selected: !node.selected })))), false);
 });
 
 test('history keeps the newest 100 actions and new changes discard the redo branch', () => {
   const nodes = fresh(), history = new ViewHistory();
-  const view = (offset: number) => captureNodeViews(nodes.map((node) => ({ ...node, position: { x: node.position.x + offset, y: node.position.y } })));
+  const view = (offset: number) => captureContent(nodes.map((node) => ({ ...node, position: { x: node.position.x + offset, y: node.position.y } })));
   for (let index = 0; index < 105; index++) history.record(view(index), view(index + 1));
   let current = view(105), count = 0;
   while (history.canUndo) { current = history.undo(current); count++; }
@@ -138,6 +138,31 @@ test('history keeps the newest 100 actions and new changes discard the redo bran
   assert.equal(history.canRedo, true);
   history.record(current, view(200));
   assert.equal(history.canRedo, false);
+});
+
+test('v1 workspaces migrate into v2 drafts without inventing user confirmation', async () => {
+  const memory = new MemoryStorage();
+  memory.values.set('workspace', JSON.stringify({ version: 1, baselineId: stage.id, baselines: { [stage.id]: { revision: 'one', nodes: captureNodeViews(fresh()), viewport: { x: 1, y: 2, zoom: 1 } } } }));
+  const loaded = (await createLocalStorageViewStorage(memory).load('workspace'))!;
+  assert.equal(loaded.version, 2);
+  assert.equal(loaded.baselines.main!.confirmedAt, undefined);
+  assert.equal(loaded.baselines.main!.confirmed, undefined);
+  assert.deepEqual(loaded.baselines.main!.edgeRoutes, []);
+  assert.deepEqual(loaded.baselines.main!.frozenGroups, []);
+});
+
+test('v2 confirmed snapshots, edge routes and frozen ledgers survive a storage round trip', async () => {
+  const storage = createLocalStorageViewStorage(new MemoryStorage());
+  const routes = [{ canonicalEdgeId: 'edge:first-second', state: 'locked' as const, source: { nodeId: 'first' }, target: { nodeId: 'second' }, points: [{ x: 10, y: 20 }, { x: 120, y: 20 }], space: { kind: 'world' as const }, endpointFingerprint: 'first>second' }];
+  const frozen = [{ id: 'freeze:group', rootId: 'user-group', memberIds: ['first', 'second'], worldBounds: { x: 0, y: 0, w: 400, h: 300 }, boundaryPorts: [], createdAt: '2026-01-01' }];
+  const content = captureContent(working(), routes, frozen);
+  const view: CanvasWorkspaceView = { version: 2, baselineId: stage.id, baselines: { [stage.id]: { revision: 'one', ...content, confirmedAt: '2026-01-01', confirmed: content, viewport: { x: 1, y: 2, zoom: 1 } } } };
+  await storage.save('workspace', view);
+  const loaded = (await storage.load('workspace'))!;
+  assert.deepEqual(loaded.baselines.main!.edgeRoutes, routes);
+  assert.deepEqual(loaded.baselines.main!.frozenGroups, frozen);
+  assert.deepEqual(loaded.baselines.main!.confirmed, content);
+  assert.equal(loaded.baselines.main!.confirmedAt, '2026-01-01');
 });
 
 test('invalid persisted records and storage failures are exposed without replacing the existing record', async () => {

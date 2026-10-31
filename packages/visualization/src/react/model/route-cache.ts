@@ -3,7 +3,7 @@ import type { Projection } from '../../core/projection/index.ts';
 import type { Point, Rect } from '../../core/layout/geometry.ts';
 import type { CanvasNode } from './grouping.ts';
 import { placeEdgeLabel, type EdgeLabelPlacement } from './labels.ts';
-import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, segmentBounds, segmentCrossesRect, type DiagramGeometry } from './routing.ts';
+import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, segmentBounds, segmentCrossesRect, type DiagramGeometry, type ReservedRoute } from './routing.ts';
 import { SpatialIndex, expandBounds } from './spatial-index.ts';
 
 export interface RouteInput {
@@ -37,9 +37,9 @@ const labelRect = (label: EdgeLabelPlacement): Rect => ({ x: label.x - label.wid
 const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w - 0.000001 && a.x + a.w > b.x + 0.000001 && a.y < b.y + b.h - 0.000001 && a.y + a.h > b.y + 0.000001;
 const inside = (a: Rect, b: Rect) => b.x >= a.x - 0.000001 && b.y >= a.y - 0.000001 && b.x + b.w <= a.x + a.w + 0.000001 && b.y + b.h <= a.y + a.h + 0.000001;
 
-function labelIsClear(label: EdgeLabelPlacement, geometry: DiagramGeometry, occupied: readonly Rect[], end: Point): boolean {
+function labelIsClear(label: EdgeLabelPlacement, geometry: DiagramGeometry, occupied: readonly Rect[], end: Point, edgeId?: string): boolean {
   const rect = labelRect(label);
-  return ![...geometry.blockers, ...occupied, { x: end.x - 8, y: end.y - 8, w: 16, h: 16 }].some((other) => intersects(rect, expandBounds(other, 8)))
+  return ![...geometry.blockers, ...geometry.reserved.filter((entry) => entry.edgeId !== edgeId).map((entry) => entry.rect), ...occupied, { x: end.x - 8, y: end.y - 8, w: 16, h: 16 }].some((other) => intersects(rect, expandBounds(other, 8)))
     && geometry.frames.every((frame) => inside(expandBounds(frame, -8), rect) || !intersects(expandBounds(frame, 8), rect));
 }
 
@@ -80,6 +80,7 @@ function transportLabel(previous: CachedRoute, points: readonly Point[]): EdgeLa
 /** Each update preserves untouched route objects; selection and viewport have no geometric dependencies. */
 export class DiagramRouteCache {
   private geometry: DiagramGeometry | undefined;
+  private reservedKey = '';
   private inputs = new Map<string, RouteInput>();
   private routes = new Map<string, CachedRoute>();
   private parts = new SpatialIndex<IndexedPart>();
@@ -107,9 +108,12 @@ export class DiagramRouteCache {
     this.partKeys.set(id, keys);
   }
 
-  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[]): Map<string, CachedRoute> {
+  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = []): Map<string, CachedRoute> {
     const start = performance.now();
-    const geometry = createDiagramGeometry(nodes, projection);
+    const geometry = createDiagramGeometry(nodes, projection, reserved);
+    const reservedKey = JSON.stringify(reserved.map((route) => [route.edgeId, route.points.map((point) => [point.x, point.y])]));
+    const reservedChanged = reservedKey !== this.reservedKey;
+    this.reservedKey = reservedKey;
     const inputs = new Map(edges.map((edge) => [edge.id, edge]));
     const routeDirty = new Set<string>(), labelDirty = new Set<string>();
     const changed = new Set<string>();
@@ -122,6 +126,18 @@ export class DiagramRouteCache {
     for (const id of this.geometry?.obstacles.keys() ?? []) if (!geometry.obstacles.has(id)) changed.add(id);
 
     let topologyChanged = inputs.size !== this.inputs.size;
+    if (reservedChanged) {
+      const key = (item: { edgeId: string; rect: Rect }) => JSON.stringify([item.edgeId, item.rect.x, item.rect.y, item.rect.w, item.rect.h]);
+      const old = this.geometry?.reserved ?? [];
+      const oldKeys = new Set(old.map(key)), nextKeys = new Set(geometry.reserved.map(key));
+      for (const item of [...old.filter((entry) => !nextKeys.has(key(entry))), ...geometry.reserved.filter((entry) => !oldKeys.has(key(entry)))]) {
+        for (const part of this.parts.query(expandBounds(item.rect, 8))) {
+          if (!inputs.has(part.edgeId) || part.edgeId === item.edgeId) continue;
+          if (part.kind === 'label') labelDirty.add(part.edgeId);
+          else if (segmentCrossesRect(part.from, part.to, item.rect)) routeDirty.add(part.edgeId);
+        }
+      }
+    }
     for (const edge of edges) {
       const old = this.inputs.get(edge.id);
       if (!old || old.source !== edge.source || old.target !== edge.target) {
@@ -157,7 +173,7 @@ export class DiagramRouteCache {
         const bounds = state.bounds.get(id)!;
         for (const part of this.parts.query(expandBounds(bounds, 8))) if (part.kind === 'label' && inputs.has(part.edgeId)) {
           const route = this.routes.get(part.edgeId)!;
-          if (!labelIsClear(route.label, geometry, [], route.points.at(-1)!)) labelDirty.add(part.edgeId);
+          if (!labelIsClear(route.label, geometry, [], route.points.at(-1)!, part.edgeId)) labelDirty.add(part.edgeId);
         }
       }
     }
@@ -180,14 +196,14 @@ export class DiagramRouteCache {
         && source.x - a.x === target.x - b.x && source.y - a.y === target.y - b.y) {
         const dx = source.x - a.x, dy = source.y - a.y;
         const points = previous.points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
-        if (pathIsClear(points, geometry, edge.source, edge.target)) {
+        if (pathIsClear(points, geometry, edge.source, edge.target, edge.id)) {
           nextRoutes.set(edge.id, { ...previous, points, label: { ...previous.label, x: previous.label.x + dx, y: previous.label.y + dy }, text: edge.text });
           translated.add(edge.id);
           if (dx || dy) stats.translatedEdges++;
           continue;
         }
       }
-      const route = routeDiagramGeometry(geometry, edge.source, edge.target);
+      const route = routeDiagramGeometry(geometry, edge.source, edge.target, edge.id);
       nextRoutes.set(edge.id, { ...route, label: previous?.label ?? { x: 0, y: 0, width: 0, height: 0 }, text: edge.text });
       stats.routedEdges++;
     }
@@ -201,10 +217,10 @@ export class DiagramRouteCache {
       const route = nextRoutes.get(edge.id)!;
       const previous = this.routes.get(edge.id);
       const candidate = translated.has(edge.id) ? route.label : previous ? transportLabel(previous, route.points) : undefined;
-      if (candidate && edge.text === this.inputs.get(edge.id)?.text && labelIsClear(candidate, geometry, occupied, route.points.at(-1)!)) {
+      if (candidate && edge.text === this.inputs.get(edge.id)?.text && labelIsClear(candidate, geometry, occupied, route.points.at(-1)!, edge.id)) {
         if (candidate !== route.label) nextRoutes.set(edge.id, { ...route, label: candidate });
       } else {
-        const label = placeEdgeLabel(route.points, edge.text, geometry.blockers, geometry.frames, occupied);
+        const label = placeEdgeLabel(route.points, edge.text, [...geometry.blockers, ...geometry.reserved.filter((item) => item.edgeId !== edge.id).map((item) => item.rect)], geometry.frames, occupied);
         nextRoutes.set(edge.id, { ...route, label, text: edge.text });
         stats.placedLabels++;
       }

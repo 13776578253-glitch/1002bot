@@ -8,3 +8,5 @@ export {
   validateGraph,
 } from './validate.ts';
 export type { IndexedGraph } from './validate.ts';
+export { diffStages } from './diff.ts';
+export type { StageDiff } from './diff.ts';

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadWorkspace, saveWorkspace } from '../../src/react/persistence/storage-session.ts';
 import type { CanvasViewStorage, CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
 
-const view = (baselineId: string): CanvasWorkspaceView => ({ version: 1, baselineId, baselines: {} });
+const view = (baselineId: string): CanvasWorkspaceView => ({ version: 2, baselineId, baselines: {} });
 
 test('a replacement canvas waits for all outstanding writes before restoring its workspace', async () => {
   let release!: () => void, started!: () => void;

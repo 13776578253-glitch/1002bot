@@ -2,6 +2,7 @@
 import { memo, useId, useMemo } from 'react';
 import type { StageSnapshot } from '../../core/schema/types.ts';
 import { relationNames, type DisplayEdge } from '../model/display-edges.ts';
+import type { EdgeRouteState } from '../model/workspace.ts';
 import { ChangeBadge } from './change-badge.tsx';
 import { Icon } from './icon.tsx';
 
@@ -11,9 +12,13 @@ export interface ConnectionPanelProps {
   onClose(): void;
   onLocate(edgeId: string): void;
   message?: string;
+  routeState?: EdgeRouteState;
+  onRouteState?(state: EdgeRouteState): void;
 }
 
-export const ConnectionPanel = memo(function ConnectionPanel({ edge, stage, onClose, onLocate, message }: ConnectionPanelProps) {
+const routeNames: Record<EdgeRouteState, string> = { auto: '自动', pinned: '固定', locked: '锁定' };
+
+export const ConnectionPanel = memo(function ConnectionPanel({ edge, stage, onClose, onLocate, message, routeState, onRouteState }: ConnectionPanelProps) {
   const heading = useId();
   const paths = useMemo(() => {
     const nodes = new Map(stage.graph.nodes.map((node) => [node.id, node]));
@@ -30,6 +35,9 @@ export const ConnectionPanel = memo(function ConnectionPanel({ edge, stage, onCl
   return <aside className="connection-panel" aria-labelledby={heading}>
     <div className="connection-panel-header"><h2 id={heading}>原始连接</h2><button className="icon-button" aria-label="关闭连接列表" onClick={onClose}><Icon name="close" /></button></div>
     <div className="connection-panel-summary">{edge.text}</div>
+    {onRouteState && !edge.aggregated && <div className="route-state" role="group" aria-label="路径状态">
+      {(['auto', 'pinned', 'locked'] as const).map((state) => <button key={state} aria-pressed={(routeState ?? 'auto') === state} title={`路径状态：${routeNames[state]}`} onClick={() => onRouteState(state)}>{routeNames[state]}</button>)}
+    </div>}
     {message && <p className="connection-message" role="status">{message}</p>}
     <ol className="connection-list">{edge.members.map((member) => {
       const label = member.label ?? relationNames[member.relation];

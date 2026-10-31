@@ -1,0 +1,182 @@
+[
+  {
+    "source": "docs/agent-context/current-task/2026-10-03-p0决策问题合集.md",
+    "archive": "2026-10-03-p0决策问题合集.md",
+    "sha256": "A7051A1C04AED93A12D1DD15BA01C80C4D66E0FEFF31F9D5DCFB8E68715F8C8B"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-04-m1-p1-baseline.md",
+    "archive": "2026-10-04-m1-p1-baseline.md",
+    "sha256": "D3AED970F160D5A64380EF2215735E263B3B053F091C394E376105F68C00F4E1"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-04-m1-p2-acceptance-cleanup.md",
+    "archive": "2026-10-04-m1-p2-acceptance-cleanup.md",
+    "sha256": "BC7A9DDD427EA998A45BD56EC75498AEF6AA9E9F52ADFD8EDA8DB7D4C3508C60"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-04-m1交接整理.md",
+    "archive": "2026-10-04-m1交接整理.md",
+    "sha256": "9A5F24394EB55E335B448CA34E45E8EFD71DF918FA7A7B722C17E3E20C92E88A"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-05-阶段汇报规范与文档对齐.md",
+    "archive": "2026-10-05-阶段汇报规范与文档对齐.md",
+    "sha256": "456B8B822CE85D15CB162A4CE7DD39A8BDEA13EF88F55F07DE5B94DDD6740942"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-05-注释规范与Cortico对照.md",
+    "archive": "2026-10-05-注释规范与Cortico对照.md",
+    "sha256": "F91909EEE7B4F617549EF032B96F0CB7FE161AA9C71FD46A61FCA38DB7825D4E"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-05-m1复核与下一阶段规划.md",
+    "archive": "2026-10-05-m1复核与下一阶段规划.md",
+    "sha256": "5C3244A596D9E30B3E3E51B855C62980DE1E4EBEB20B130CA0480B2CA4C7AA15"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-05-m2闭环方案设计.md",
+    "archive": "2026-10-05-m2闭环方案设计.md",
+    "sha256": "5B8B633B99445876DFD574F1E2779C7D0C37263DDC290B9BCA09C92DB67C976B"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-05-m2独立审查.md",
+    "archive": "2026-10-05-m2独立审查.md",
+    "sha256": "2684446CC4B80E587BE71937B544551E1E7F3841821C7E19F63B1137E15A4C99"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-05-m2进度文档拆分与结构校正.md",
+    "archive": "2026-10-05-m2进度文档拆分与结构校正.md",
+    "sha256": "284E85BDCED30834EF24A7AC80B8CD0CF19D8D8554676A4EE19667139A2B73D8"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-05-m2终端闭环实现.md",
+    "archive": "2026-10-05-m2终端闭环实现.md",
+    "sha256": "BE61E9614B1453BA89EBA1E4EEBF26552E4BFA505D61BE0DD8C03DFBB9DBBEEE"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-首批验收与工作线拆分.md",
+    "archive": "2026-10-06-首批验收与工作线拆分.md",
+    "sha256": "5236986BF8A1A1C106099F324CB38CCE6F6124C4B2D2F6F54F87C0DB7FAEE585"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-agent-context目录迁移.md",
+    "archive": "2026-10-06-agent-context目录迁移.md",
+    "sha256": "A0A3ABAE4917648A28BFE3E3A56214C39A601EBA5B1EE87259E8CBE77801E3A4"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-console全屏TUI规划.md",
+    "archive": "2026-10-06-console全屏TUI规划.md",
+    "sha256": "13D6700649E950FFDAB2375030745F2A733C848D85DDB80D313255EF8627849A"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-consoleTUI首批开发.md",
+    "archive": "2026-10-06-consoleTUI首批开发.md",
+    "sha256": "784477D516A6B96C85F8A4C2574F17C7D97898E3AFB7E80B374544FCE522D4D4"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-git仓库初始化.md",
+    "archive": "2026-10-06-git仓库初始化.md",
+    "sha256": "2DCDB727B8394D9C22497A5DF9A9431AA8442E04BD3528554CF86FF265002747"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-M2目标偏差与文档归类.md",
+    "archive": "2026-10-06-M2目标偏差与文档归类.md",
+    "sha256": "522EDB99FE2379FF69AEE1659FA32409A008C0BDCD4CF626D7E3E91A915078A3"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-m2修复复核.md",
+    "archive": "2026-10-06-m2修复复核.md",
+    "sha256": "3661CA6794E739011304F0DAE8A095324FF97DFADDFBB97E7DB1B2B610FC161F"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-06-m3统一触发调度.md",
+    "archive": "2026-10-06-m3统一触发调度.md",
+    "sha256": "33B481531A5CD6EDA6DF402B81A7EBD10E2329368B56F1985AEEB37FD796837C"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-08-阶段报告主线编号统一.md",
+    "archive": "2026-10-08-阶段报告主线编号统一.md",
+    "sha256": "495FC92DD60A38C0F54235BA7024FD30632FE47E224B33C799F804DE5F2884D1"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-08-m4主线基座规划.md",
+    "archive": "2026-10-08-m4主线基座规划.md",
+    "sha256": "B8C247F426E08B2B772237B96B0E09B84CDCE32E123C580AEFEBFD1E21B61FD6"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-11-qq-world.md",
+    "archive": "2026-10-11-qq-world.md",
+    "sha256": "6CE4E661DB63B828457D923FE444CA986902E00FC047049FF1F0348A47A5A2EA"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-19-visualization-adapter.md",
+    "archive": "2026-10-19-visualization-adapter.md",
+    "sha256": "76BD8A7BED0820E67C29E9A6A64653FEAAB89323D7FFA0337B7CDBE7D967E68B"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-19-visualization-theme-cards.md",
+    "archive": "2026-10-19-visualization-theme-cards.md",
+    "sha256": "10ED6D289E142E84D7901A7B4222A305FD62A6FB8421E32D6FC12547F35481DB"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-20-visualization-aggregate-layout.md",
+    "archive": "2026-10-20-visualization-aggregate-layout.md",
+    "sha256": "D0CC6FDF0242DE43FCACE18A07A4006B0DDC70CE67912E2EA647E0A461084F23"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-20-visualization-canvas-runtime.md",
+    "archive": "2026-10-20-visualization-canvas-runtime.md",
+    "sha256": "C6761C5ED7EC26A89A7989D054863452742DE8EF418357017551830FAD5A3A7E"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-21-visualization-wave0.md",
+    "archive": "2026-10-21-visualization-wave0.md",
+    "sha256": "5F1E58F43B484B657B6C7B77C6A3C77F324EA11C32E32C85E45BBFACC8FCC5ED"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-22-visualization-reconstruction.md",
+    "archive": "2026-10-22-visualization-reconstruction.md",
+    "sha256": "AEC3F286B86C6CFC6ADA6CEFF8935B79222DB79A457D48E0072FAEE2B345BA46"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-23-visualization-flat-baseline.md",
+    "archive": "2026-10-23-visualization-flat-baseline.md",
+    "sha256": "C38116F46AF8F7865F1AF3E7D96255578D5264EB86E89E86BA0F96B8B61E63AC"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-29-visualization-ui-proposal.md",
+    "archive": "2026-10-29-visualization-ui-proposal.md",
+    "sha256": "C87D91FEAC7EA8EA9F8034DC2D5E544C38D8B031D93DBECA3AE5075CD46F0503"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-30-visualization-comments.md",
+    "archive": "2026-10-30-visualization-comments.md",
+    "sha256": "6EAA6FE2163B2D73432128925AD44A3549252E515900711869AE3F9547C7E8EE"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-30-visualization-new-baseline.md",
+    "archive": "2026-10-30-visualization-new-baseline.md",
+    "sha256": "AD210AC101DDFFB7CAEBA0DF1E4036C7048BDA32083FCE7D84984D82E2EF7EF0"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-30-visualization-report-data.md",
+    "archive": "2026-10-30-visualization-report-data.md",
+    "sha256": "6D7ADCA785E5E2A00CE793237F9AB65640AA08A56CB875C0EAA9608A5FA2554B"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-30-visualization-stable-workspace.md",
+    "archive": "2026-10-30-visualization-stable-workspace.md",
+    "sha256": "BCFB760277939F0899603D496B5B543C413E1CA6B51899ABF0322827BF27AE7D"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-31-visualization-incremental-stage-layout.md",
+    "archive": "2026-10-31-visualization-incremental-stage-layout.md",
+    "sha256": "7CD7B81FF0ADDBB83EFF9AC6F5A77BD099F6819829907A494E313CA66B0E83AC"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-10-31-visualization-takeover-review.md",
+    "archive": "2026-10-31-visualization-takeover-review.md",
+    "sha256": "09A84745BB5EB7D9F0C0FC717562494EE2AAE3226344653CE9D5CC76273143B3"
+  }
+]

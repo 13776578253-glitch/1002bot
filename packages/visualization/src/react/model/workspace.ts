@@ -1,12 +1,80 @@
 /** Serializable working views and transaction history; source entities remain owned by each baseline. */
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
-import type { CanvasNode } from './grouping.ts';
+import type { Point } from '../../core/layout/geometry.ts';
+import type { CanvasNode, LayoutMode } from './grouping.ts';
+import type { EdgeLabelPlacement } from './labels.ts';
+import type { UserGraphOverlay } from './overlay.ts';
 
 export interface CanvasViewport { x: number; y: number; zoom: number }
+
+export type EdgeRouteState = 'auto' | 'pinned' | 'locked';
+
+export interface EdgeRouteEndpointView {
+  nodeId: string;
+  portId?: string;
+  handle?: string;
+}
+
+/** A route retained by canonical edge identity; display aggregation never owns its own frozen path. */
+export interface EdgeRouteSnapshot {
+  canonicalEdgeId: string;
+  state: EdgeRouteState;
+  source: EdgeRouteEndpointView;
+  target: EdgeRouteEndpointView;
+  points: Point[];
+  space: { kind: 'world' } | { kind: 'owner'; ownerId: string };
+  endpointFingerprint: string;
+  label?: EdgeLabelPlacement;
+}
+
+export type FrozenBoundarySide = 'top' | 'right' | 'bottom' | 'left';
+
+export interface FrozenBoundaryPort {
+  edgeId: string;
+  nodeId: string;
+  side: FrozenBoundarySide;
+  handle?: string;
+}
+
+/** Single-layer frozen ledger; members never overlap another frozen group. */
+export interface FrozenGroupSnapshot {
+  id: string;
+  rootId: string;
+  memberIds: string[];
+  worldBounds: { x: number; y: number; w: number; h: number };
+  boundaryPorts: FrozenBoundaryPort[];
+  createdAt: string;
+  previousModes?: Record<string, LayoutMode>;
+  previousRoutes?: EdgeRouteSnapshot[];
+}
+
+export interface StagePlacementRecord {
+  nodeId: string;
+  mode: 'provided' | 'gap' | 'expanded' | 'relocated';
+}
+
+export interface StageTransitionRecord {
+  fromStageId?: string;
+  toStageId: string;
+  sourceRevision: string;
+  targetRevision: string;
+  startedAt: string;
+  durationMs: number;
+  placements: StagePlacementRecord[];
+  expanded: string[];
+}
+
+export interface CanvasBaselineContent {
+  nodes: CanvasNodeView[];
+  edgeRoutes: EdgeRouteSnapshot[];
+  frozenGroups: FrozenGroupSnapshot[];
+  overlay?: UserGraphOverlay;
+}
 
 type ViewData = Pick<CanvasNode['data'], 'expanded' | 'contentWidth' | 'contentHeight' | 'fitOffset' | 'reflowOrigin' | 'expansionSizes' | 'groupOrigins'> & {
   layoutMode?: 'free' | 'fixed' | 'locked';
   title?: string;
+  frozen?: boolean;
 };
 
 export interface CanvasNodeView {
@@ -19,14 +87,16 @@ export interface CanvasNodeView {
   data: ViewData;
 }
 
-export interface CanvasBaselineView {
+export interface CanvasBaselineView extends CanvasBaselineContent {
   revision: string;
-  nodes: CanvasNodeView[];
+  confirmedAt?: string;
+  confirmed?: CanvasBaselineContent;
   viewport?: CanvasViewport;
+  transition?: StageTransitionRecord;
 }
 
 export interface CanvasWorkspaceView {
-  version: 1;
+  version: 2;
   baselineId: string;
   baselines: Record<string, CanvasBaselineView>;
 }
@@ -38,7 +108,7 @@ export interface CanvasViewStorage {
 
 export function captureNodeViews(nodes: readonly CanvasNode[]): CanvasNodeView[] {
   return nodes.map((node) => {
-    const { expanded, contentWidth, contentHeight, fitOffset, reflowOrigin, expansionSizes, groupOrigins } = node.data;
+    const { expanded, contentWidth, contentHeight, fitOffset, reflowOrigin, expansionSizes, groupOrigins, frozen } = node.data;
     return structuredClone({
       id: node.id, type: node.type!, ...(node.parentId ? { parentId: node.parentId } : {}),
       position: node.position, width: node.width!, height: node.height!,
@@ -48,10 +118,33 @@ export function captureNodeViews(nodes: readonly CanvasNode[]): CanvasNodeView[]
         ...(contentWidth !== undefined ? { contentWidth } : {}), ...(contentHeight !== undefined ? { contentHeight } : {}),
         ...(fitOffset ? { fitOffset } : {}), ...(reflowOrigin ? { reflowOrigin } : {}),
         ...(expansionSizes ? { expansionSizes } : {}), ...(groupOrigins ? { groupOrigins } : {}),
+        ...(frozen ? { frozen } : {}),
         layoutMode: node.data.layoutMode ?? 'free',
       },
     });
   });
+}
+
+export function captureContent(
+  nodes: readonly CanvasNode[],
+  edgeRoutes: readonly EdgeRouteSnapshot[] = [],
+  frozenGroups: readonly FrozenGroupSnapshot[] = [],
+  overlay?: UserGraphOverlay,
+): CanvasBaselineContent {
+  return {
+    nodes: captureNodeViews(nodes),
+    edgeRoutes: structuredClone([...edgeRoutes]),
+    frozenGroups: structuredClone([...frozenGroups]),
+    ...(overlay ? { overlay: structuredClone(overlay) } : {}),
+  };
+}
+
+export function cloneContent(content: CanvasBaselineContent): CanvasBaselineContent {
+  return structuredClone(content);
+}
+
+export function emptyContent(nodes: CanvasNodeView[] = []): CanvasBaselineContent {
+  return { nodes, edgeRoutes: [], frozenGroups: [] };
 }
 
 export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonly CanvasNode[], saved: readonly CanvasNodeView[]): CanvasNode[] {
@@ -115,17 +208,17 @@ export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonl
 
 /** One entry per committed gesture; selection and viewport never enter this history. */
 export class ViewHistory {
-  private past: CanvasNodeView[][] = [];
-  private future: CanvasNodeView[][] = [];
+  private past: CanvasBaselineContent[] = [];
+  private future: CanvasBaselineContent[] = [];
   get canUndo(): boolean { return this.past.length > 0; }
   get canRedo(): boolean { return this.future.length > 0; }
-  record(before: CanvasNodeView[], after: CanvasNodeView[]): boolean {
+  record(before: CanvasBaselineContent, after: CanvasBaselineContent): boolean {
     if (JSON.stringify(before) === JSON.stringify(after)) return false;
     this.past.push(before);
     if (this.past.length > 100) this.past.shift();
     this.future = [];
     return true;
   }
-  undo(current: CanvasNodeView[]): CanvasNodeView[] { this.future.push(current); return this.past.pop()!; }
-  redo(current: CanvasNodeView[]): CanvasNodeView[] { this.past.push(current); return this.future.pop()!; }
+  undo(current: CanvasBaselineContent): CanvasBaselineContent { this.future.push(current); return this.past.pop()!; }
+  redo(current: CanvasBaselineContent): CanvasBaselineContent { this.past.push(current); return this.future.pop()!; }
 }

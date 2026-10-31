@@ -2,8 +2,14 @@
 import { projectGraph, type Projection } from '../../core/projection/index.ts';
 import { CARD_SIZE, isLayoutProtected, layoutProtectionConflict, worldPosition, type CanvasNode } from './grouping.ts';
 import { preferredContainerSize } from './spacing.ts';
+import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { CanonicalNode, StageSnapshot } from '../../core/schema/types.ts';
 import { indexGraph } from '../../core/graph/index.ts';
+
+/** Initial canvas nodes for a baseline, carrying its change marks. */
+export function baselineNodes(baseline: VisualizationBaseline): CanvasNode[] {
+  return createHierarchyNodes(baseline.stage, baseline.positions).map((node) => ({ ...node, data: { ...node.data, change: baseline.nodeChanges[node.id]! } }));
+}
 
 /**
  * 将阶段快照转换为初始画布节点集合。
@@ -147,7 +153,7 @@ export function syncHierarchyExpansion(target: readonly CanvasNode[], source: re
     while (parentId) { count += 1; parentId = target.find((item) => item.id === parentId)?.parentId; }
     return count;
   };
-  const changed = target.filter((node) => node.data.expandable && sourceState.has(node.id) && !!node.data.expanded !== sourceState.get(node.id));
+  const changed = target.filter((node) => node.data.expandable && !node.data.frozen && sourceState.has(node.id) && !!node.data.expanded !== sourceState.get(node.id));
   const closing = changed.filter((node) => !sourceState.get(node.id)).sort((a, b) => depth(b) - depth(a));
   const opening = changed.filter((node) => sourceState.get(node.id)).sort((a, b) => depth(a) - depth(b));
   return [...closing, ...opening].reduce((nodes, node) => toggleHierarchy(nodes, node.id, stage), [...target]);

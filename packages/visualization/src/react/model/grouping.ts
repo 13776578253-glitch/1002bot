@@ -14,6 +14,7 @@ export type CanvasNode = Node<{
   expanded?: boolean;
   childCount?: number;
   layoutMode?: LayoutMode;
+  frozen?: boolean;
   onToggle?: () => void;
   onRename?: (title: string) => void;
   onRenameCommit?: () => void;

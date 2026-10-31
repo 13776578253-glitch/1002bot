@@ -18,6 +18,7 @@ export function Icon({ name }: { name: string }) {
     move: 'M12 3v18M3 12h18m-12-6 3-3 3 3m-6 12 3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3',
     undo: 'M9 4 4 9l5 5M4 9h10a6 6 0 0 1 0 12',
     redo: 'm15 4 5 5-5 5m5-5H10a6 6 0 0 0 0 12',
+    check: 'm4 12 5 5L20 6',
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} />{name === 'sun' && <circle cx="12" cy="12" r="4" />}</svg>;
 }
