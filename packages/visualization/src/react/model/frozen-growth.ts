@@ -8,7 +8,8 @@ export function rebaseFrozenGrowth(before: readonly CanvasNode[], after: readonl
     const oldRoot = before.find((node) => node.id === group.rootId)!;
     const root = after.find((node) => node.id === group.rootId)!;
     const a = worldPosition(oldRoot, before), b = worldPosition(root, after);
-    const delta = { x: b.x - a.x, y: b.y - a.y };
+    const resized=root.width!==oldRoot.width||root.height!==oldRoot.height;
+    const delta = resized ? {x:b.x-a.x,y:b.y-a.y} : { x: (root.data.fitOffset?.x??0)-(oldRoot.data.fitOffset?.x??0), y: (root.data.fitOffset?.y??0)-(oldRoot.data.fitOffset?.y??0) };
     if (delta.x || delta.y) offsets.set(group.rootId, delta);
     const dimensionsChanged = [group.rootId, ...group.memberIds].some((id) => {
       const old = before.find((node) => node.id === id), current = after.find((node) => node.id === id);
@@ -27,6 +28,7 @@ export function rebaseFrozenGrowth(before: readonly CanvasNode[], after: readonl
       protectedFrame: { ...oldProtected, x: oldProtected.x - delta.x, y: oldProtected.y - delta.y },
     };
   });
+  if(!offsets.size&&nextGroups.every((group,index)=>group===groups[index]))return {routes:routes as EdgeRouteSnapshot[],groups:groups as FrozenGroupSnapshot[]};
   const nextRoutes = routes.map((route) => {
     const delta = route.space.kind === 'owner' ? offsets.get(route.space.ownerId) : undefined;
     const boundaries = route.frozenBoundaries?.map((boundary) => {

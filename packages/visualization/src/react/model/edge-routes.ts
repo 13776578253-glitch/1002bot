@@ -8,6 +8,7 @@ import { createDiagramGeometry, pathIsClear, segmentCrossesRect, type DiagramGeo
 import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
 import { nodeIsVisible } from './hierarchy.ts';
 import type { EdgeRouteSnapshot, EdgeRouteState, FrozenGroupSnapshot } from './workspace.ts';
+import { boundaryWorldPoints, resolveFrozenBoundaryRoute } from './blackbox-routes.ts';
 
 export function endpointFingerprint(edge: CanonicalEdge): string {
   return `${edge.id}:${edge.source.nodeId}:${edge.source.portId ?? ''}>${edge.target.nodeId}:${edge.target.portId ?? ''}`;
@@ -86,20 +87,41 @@ export function routeStateFor(routes: readonly EdgeRouteSnapshot[], canonicalEdg
 /** Locked routes remain hard obstacles; pinned routes are intentionally soft. */
 export function reservedLockedRoutes(routes: readonly EdgeRouteSnapshot[], nodes: readonly CanvasNode[]): { edgeId: string; points: Point[] }[] {
   return routes.flatMap((route) => {
-    if (route.state !== 'locked') return [];
+    const boundaries=(route.frozenBoundaries??[]).map(part=>({edgeId:route.canonicalEdgeId,points:boundaryWorldPoints(part,nodes)}));
+    if (route.state !== 'locked') return boundaries;
     const points = worldRoutePoints(route, nodes);
-    return points ? [{ edgeId: route.canonicalEdgeId, points }] : [];
+    return points ? [{ edgeId: route.canonicalEdgeId, points },...boundaries] : boundaries;
   });
 }
 
 /** Report moves that detach a locked route or introduce a node over its path. */
-export function validateStoredRoutes(before: readonly CanvasNode[], after: readonly CanvasNode[], routes: readonly EdgeRouteSnapshot[], projection: Projection): string | undefined {
+export function validateStoredRoutes(before: readonly CanvasNode[], after: readonly CanvasNode[], routes: readonly EdgeRouteSnapshot[], projection: Projection, afterRoutes: readonly EdgeRouteSnapshot[]=routes): string | undefined {
   const oldNodes = new Map(before.map((node) => [node.id, node]));
   const newNodes = new Map(after.map((node) => [node.id, node]));
   const geometry = createDiagramGeometry(after, projection);
   for (const route of routes) {
+    const updated=afterRoutes.find(item=>item.canonicalEdgeId===route.canonicalEdgeId)??route;
+    for(const part of route.frozenBoundaries??[]){
+      const nextPart=updated.frozenBoundaries?.find(item=>item.ownerId===part.ownerId&&item.endpoint===part.endpoint)??part;
+      const a=boundaryWorldPoints(part,before),b=boundaryWorldPoints(nextPart,after);
+      const endpoint=part.endpoint==='source'?route.source.nodeId:route.target.nodeId;
+      const old=oldNodes.get(endpoint),next=newNodes.get(endpoint);
+      if(!old||!next)return '冻结分段的端点不存在';
+      const x=worldPosition(old,before),y=worldPosition(next,after);
+      if(Math.abs(y.x-x.x-b[0]!.x+a[0]!.x)>0.001||Math.abs(y.y-x.y-b[0]!.y+a[0]!.y)>0.001)return '冻结分段的内部端点不能独立移动';
+      for(const node of after){
+        if(node.id===endpoint||node.id===part.ownerId||!nodeIsVisible(node,after,projection))continue;
+        let parent=node.parentId,inside=false;
+        while(parent){if(parent===part.ownerId){inside=true;break;}parent=newNodes.get(parent)?.parentId;}
+        if(inside&&node.data.frozen)continue;
+        const point=worldPosition(node,after),rect={...point,w:node.width!,h:node.type==='card'?node.height!:68};
+        if(b.slice(1).some((p,i)=>segmentCrossesRect(b[i]!,p,rect))){
+          const prior=oldNodes.get(node.id);if(!prior||JSON.stringify(worldPosition(prior,before))!==JSON.stringify(point))return '节点不能遮挡冻结连接的内部段';
+        }
+      }
+    }
     if (route.state !== 'locked') continue;
-    const oldPoints = worldRoutePoints(route, before), nextPoints = worldRoutePoints(route, after);
+    const oldPoints = worldRoutePoints(route, before), nextPoints = worldRoutePoints(updated, after);
     if (!oldPoints || !nextPoints) return '锁定路径的所有者不存在';
     const dx = nextPoints[0]!.x - oldPoints[0]!.x, dy = nextPoints[0]!.y - oldPoints[0]!.y;
     for (const id of [route.source.nodeId, route.target.nodeId]) {
@@ -109,7 +131,7 @@ export function validateStoredRoutes(before: readonly CanvasNode[], after: reado
       if (Math.abs(b.x - a.x - dx) > 0.001 || Math.abs(b.y - a.y - dy) > 0.001) return '锁定路径的端点无法单独移动';
     }
     if (projection.nodeById.has(route.source.nodeId) && projection.nodeById.has(route.target.nodeId)
-      && route.source.handle && route.target.handle && !storedRouteAttached(route, after, geometry)) return '展开或尺寸变化会使端点脱离锁定路径';
+      && route.source.handle && route.target.handle && !storedRouteAttached(updated, after, geometry)) return '展开或尺寸变化会使端点脱离锁定路径';
     const ancestors = new Set<string>();
     for (const id of [route.source.nodeId, route.target.nodeId]) {
       let parent = newNodes.get(id)?.parentId;
@@ -148,6 +170,7 @@ export function applyStoredRoutes(
   stored: readonly EdgeRouteSnapshot[],
   nodes: readonly CanvasNode[],
   projection: Projection,
+  groups: readonly FrozenGroupSnapshot[] = [],
 ): Map<string, CachedRoute> {
   if (!stored.length) return routes as Map<string, CachedRoute>;
   const byId = new Map(stored.map((route) => [route.canonicalEdgeId, route]));
@@ -161,12 +184,17 @@ export function applyStoredRoutes(
     if (!retained) continue;
     if (retained.endpointFingerprint !== endpointFingerprint(member.edge)) continue;
     if (retained.source.nodeId !== member.source.nodeId || retained.target.nodeId !== member.target.nodeId) continue;
+    const current = routes.get(edge.id);
+    if (!current) continue;
+    if(retained.frozenBoundaries?.length&&groups.length){
+      const resolved=resolveFrozenBoundaryRoute(edge.id,retained,nodes,geometry,edge.source,edge.target,current,groups);
+      if(resolved.ok)next.set(edge.id,resolved.route);
+      continue;
+    }
     const points = worldRoutePoints(retained, nodes);
     if (!points) continue;
     if (!storedRouteAttached(retained, nodes, geometry)) continue;
     if (retained.state === 'pinned' && !pathIsClear(points, geometry, edge.source, edge.target, retained.canonicalEdgeId)) continue;
-    const current = routes.get(edge.id);
-    if (!current) continue;
     const owner = retained.space.kind === 'owner' ? nodes.find((node) => node.id === (retained.space as { kind: 'owner'; ownerId: string }).ownerId) : undefined;
     const origin = owner ? worldPosition(owner, nodes) : undefined;
     next.set(edge.id, {

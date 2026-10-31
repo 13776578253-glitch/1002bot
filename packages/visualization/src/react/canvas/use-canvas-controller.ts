@@ -14,6 +14,8 @@ import { planStageTransition, type StageViewState } from '../model/stage-transit
 import { prepareStageNavigation } from '../model/stage-navigation.ts';
 import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
 import type { StageTransitionSuccess } from '../model/stage-transition.ts';
+import { captureFrozenSubgraph, validateFrozenConnections, releaseFrozenSubgraph } from '../model/blackbox-routes.ts';
+import { rebaseFrozenGrowth } from '../model/frozen-growth.ts';
 import type { StageConflict } from '../model/stage-types.ts';
 import type { CanvasWorkspaceView, EdgeRouteState, FrozenGroupSnapshot } from '../model/workspace.ts';
 import { useWorkspaceSession } from './use-workspace-session.ts';
@@ -52,6 +54,8 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const next = transform(current);
     const conflict = validateStoredRoutes(current, next, session.routesRef.current, hierarchyProjection(next, baseline.stage));
     if (conflict) { setMessage(conflict); return current; }
+    const connections=validateFrozenConnections(current,next,baseline.stage,session.routesRef.current,session.frozenRef.current,routesRef.current);
+    if(connections.length){setMessage(connections[0]!.message);return current;}
     return next;
   }), [baseline, session.commit]);
   const recordConstraint = useRef<(duration: number) => void>(() => {});
@@ -71,8 +75,11 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       const result = constrainNodeMoves(current, next, moved, flow.getZoom(), visible, links);
       recordConstraint.current(performance.now() - started);
       next = result.nodes;
-      const routeConflict = validateStoredRoutes(current, next, session.routesRef.current, projectionRef.current);
-      if (routeConflict) { next = current; setMessage(routeConflict); }
+      const grown=rebaseFrozenGrowth(current,next,session.routesRef.current,session.frozenRef.current);
+      const routeConflict = validateStoredRoutes(current, next, session.routesRef.current, projectionRef.current,grown.routes);
+      const connections=routeConflict?[]:validateFrozenConnections(current,next,baseline.stage,grown.routes,grown.groups,routesRef.current);
+      if (routeConflict||connections.length) { next = current; setMessage(routeConflict??connections[0]!.message); }
+      else {if(grown.routes!==session.routesRef.current)session.setRoutes(grown.routes);if(grown.groups!==session.frozenRef.current)session.setFrozenGroups(grown.groups);}
       setAlignment(changes.some((change) => change.type === 'position' && change.dragging) ? result.guides : []);
     }
     setNodes(next);
@@ -85,7 +92,9 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const frozenNode = current.find((node) => node.id === id);
     if (frozenNode?.data.frozen) {
       if (!frozenNode.data.expandable) return;
-      commit(() => toggleFrozenExpansion(current, id, !frozenNode.data.expanded));
+      const next=toggleFrozenExpansion(current, id, !frozenNode.data.expanded,session.frozenRef.current);
+      if(next===current){setMessage('冻结框展开范围与已有节点冲突，原布局已保留');return;}
+      commit(() => next);
       setMessage('');
       setSelectedEdge(undefined);
       return;
@@ -146,20 +155,15 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       stage: baseline.stage, frozenGroups: session.frozenGroups,
     });
     if (!result.ok) { setMessage(result.conflict.message); return; }
-    const projection = hierarchyProjection(result.nodes, baseline.stage);
-    const edges = aggregateProjectedEdges(projection, baseline.edgeChanges);
-    const inputs = edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text }));
-    const fresh = new DiagramRouteCache().update(result.nodes, projection, inputs);
-    const combined = new Map(fresh);
-    for (const [id, route] of routesRef.current) combined.set(id, route);
     const groups = [...session.frozenGroups, result.group];
     const inside = new Set([result.group.rootId, ...result.group.memberIds]);
     result.group.previousRoutes = structuredClone(session.edgeRoutes.filter((route) => inside.has(route.source.nodeId) || inside.has(route.target.nodeId)));
-    const captured = captureRoutesForGroup(edges, combined, result.group, result.nodes, groups);
-    const merged = captured.reduce((list, route) => upsertRoute(list, route), session.edgeRoutes);
+    const captured = captureFrozenSubgraph({nodes:result.nodes,stage:baseline.stage,group:result.group,groups,displayEdges,displayRoutes:routesRef.current,storedRoutes:session.edgeRoutes});
+    if(!captured.ok){setMessage(captured.conflicts[0]!.message);return;}
+    const merged = captured.routes.reduce((list, route) => upsertRoute(list, route), session.edgeRoutes);
     session.commitContent((current) => ({
-      ...current, nodes: result.nodes,
-      frozenGroups: [...current.frozenGroups, result.group],
+      ...current, nodes: captured.nodes,
+      frozenGroups: [...current.frozenGroups, captured.group],
       edgeRoutes: merged,
     }));
     setMessage(`已冻结 ${1 + result.group.memberIds.length} 个节点`);
@@ -171,17 +175,9 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const roots = selectionRoots(nodesRef.current);
     const group = roots.map((node) => frozenGroupFor(session.frozenGroups, node.id)).find((item): item is FrozenGroupSnapshot => !!item);
     if (!group) { setMessage('请选择冻结组根节点或成员'); return; }
-    const memberIds = new Set([group.rootId, ...group.memberIds]);
-    const nextNodes = unfreezeGroup(nodesRef.current, group);
-    const nextRoutes = session.edgeRoutes.filter((route) => {
-      if (route.space.kind === 'owner' && route.space.ownerId === group.rootId) return false;
-      const sourceIn = memberIds.has(route.source.nodeId), targetIn = memberIds.has(route.target.nodeId);
-      return !((route.state === 'locked' || route.state === 'pinned') && (sourceIn || targetIn));
-    });
+    const released=releaseFrozenSubgraph(nodesRef.current,session.edgeRoutes,session.frozenGroups,group);
     session.commitContent((current) => ({
-      ...current, nodes: nextNodes,
-      frozenGroups: current.frozenGroups.filter((item) => item.id !== group.id),
-      edgeRoutes: (group.previousRoutes ?? []).reduce((list, route) => upsertRoute(list, route), nextRoutes),
+      ...current,...released,
     }));
     setMessage('已解冻，可编辑内部节点和路径');
     clearTransientState();
@@ -194,6 +190,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const canonicalId = edge.members[0]?.canonicalEdgeId;
     if (!canonicalId) return;
     const canonical = edge.members[0]!.edge;
+    if(session.routesRef.current.find(route=>route.canonicalEdgeId===canonicalId)?.frozenBoundaries?.length){setMessage('请先解冻子图，再修改其边界连接');return;}
     if (session.frozenGroups.some((group) => {
       const ids = new Set([group.rootId, ...group.memberIds]);
       return ids.has(canonical.source.nodeId) && ids.has(canonical.target.nodeId);
@@ -286,7 +283,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     for (const parent of ancestors) {
       const owner = next.find((node) => node.id === parent)!;
       if (owner.data.expanded) continue;
-      const opened = owner.data.frozen ? toggleFrozenExpansion(next, parent, true) : toggleHierarchy(next, parent, baseline.stage);
+      const opened = owner.data.frozen ? toggleFrozenExpansion(next, parent, true,session.frozenRef.current) : toggleHierarchy(next, parent, baseline.stage);
       if (opened === next) { setMessage('定位所需空间不足：请先移动或解除相关节点的固定'); return; }
       next = opened;
     }
@@ -325,6 +322,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     ...(preview ? { readOnly: true } : {}),
     storedRoutes: preview?.state.edgeRoutes ?? session.edgeRoutes,
     storedDisplayRoutes: preview?.state.displayRoutes ?? session.displayRoutes,
+    frozenGroups:preview?.state.frozenGroups??session.frozenGroups,
     toggleNode, chooseEdge, renameNode, commitRename: finish,
   });
   routesRef.current = scene.routes;
