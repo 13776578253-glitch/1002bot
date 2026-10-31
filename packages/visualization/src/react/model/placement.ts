@@ -1,16 +1,11 @@
-/** Deterministic gap filling for newly introduced stage nodes. */
+/** Incremental stage geometry: open required ancestors and place additions without moving inherited content. */
 import type { Projection } from '../../core/projection/index.ts';
 import type { StageSnapshot } from '../../core/schema/types.ts';
-import { rectIntersects, type Point, type Rect } from '../../core/layout/geometry.ts';
-import {
-  CARD_SIZE,
-  MIN_EDGE_GAP,
-  layoutProtectionConflict,
-  separateSiblings,
-  worldPosition,
-  type CanvasNode,
-} from './grouping.ts';
-import { containerGrowthCeiling, containerInset, fitMovedContainers } from './spacing.ts';
+import type { Point, Rect } from '../../core/layout/geometry.ts';
+import { CARD_SIZE, MIN_EDGE_GAP, worldPosition, type CanvasNode } from './grouping.ts';
+import { hierarchyProjection, nodeIsVisible } from './hierarchy.ts';
+import { toggleFrozenExpansion } from './frozen.ts';
+import { containerInset, MAX_CONTAINER_EXTRA } from './spacing.ts';
 import type { EdgeRouteSnapshot, FrozenGroupSnapshot, StagePlacementRecord } from './workspace.ts';
 import type { StageConflict } from './stage-types.ts';
 
@@ -19,11 +14,11 @@ export interface PlacementInput {
   stage: StageSnapshot;
   projection: Projection;
   addedNodeIds: readonly string[];
-  preferredPositions?: Readonly<Record<string, { x: number; y: number }>>;
+  preferredPositions?: Readonly<Record<string, Point>>;
   frozenGroups?: readonly FrozenGroupSnapshot[];
   routes?: readonly EdgeRouteSnapshot[];
+  reservedPaths?: readonly { points: Point[]; source: string; target: string }[];
 }
-
 export interface PlacementResult {
   nodes: CanvasNode[];
   placements: StagePlacementRecord[];
@@ -31,291 +26,205 @@ export interface PlacementResult {
   conflicts: StageConflict[];
 }
 
-interface Candidate {
-  position: Point;
-  score: number;
-  mode: StagePlacementRecord['mode'];
-}
-
-const EPSILON = 0.001;
-const GRID_STEP = 32;
-const MAX_CANDIDATES = 360;
-
+const GAP = 24, STEP = 64, MAX_GRID = 1024, EPS = 0.000001;
+const byId = (nodes: readonly CanvasNode[], id: string) => nodes.find((node) => node.id === id)!;
 const size = (node: CanvasNode) => ({ w: node.width ?? CARD_SIZE.width, h: node.height ?? CARD_SIZE.height });
+const box = (node: CanvasNode, nodes: readonly CanvasNode[]): Rect => ({ ...worldPosition(node, nodes), ...size(node) });
+const overlaps = (a: Rect, b: Rect, gap = 0) => a.x < b.x + b.w + gap - EPS && a.x + a.w + gap > b.x + EPS && a.y < b.y + b.h + gap - EPS && a.y + a.h + gap > b.y + EPS;
+const replace = (nodes: readonly CanvasNode[], replacement: CanvasNode): CanvasNode[] => nodes.map((node) => node.id === replacement.id ? replacement : node);
 
-function worldRect(node: CanvasNode, nodes: readonly CanvasNode[]): Rect {
-  const origin = worldPosition(node, nodes), extent = size(node);
-  return { x: origin.x, y: origin.y, w: extent.w, h: extent.h };
+function ancestorIds(nodes: readonly CanvasNode[], id: string): string[] {
+  const result: string[] = [];
+  let parent = byId(nodes, id).parentId;
+  while (parent) { result.unshift(parent); parent = byId(nodes, parent).parentId; }
+  return result;
 }
 
-function nodeById(nodes: readonly CanvasNode[], id: string): CanvasNode | undefined {
-  return nodes.find((node) => node.id === id);
+function intersectsSegment(rect: Rect, a: Point, b: Point): boolean {
+  if (a.y === b.y) return a.y > rect.y && a.y < rect.y + rect.h && Math.max(a.x, b.x) > rect.x && Math.min(a.x, b.x) < rect.x + rect.w;
+  return a.x > rect.x && a.x < rect.x + rect.w && Math.max(a.y, b.y) > rect.y && Math.min(a.y, b.y) < rect.y + rect.h;
 }
 
-function parentOf(nodes: readonly CanvasNode[], id: string): string | undefined {
-  return nodeById(nodes, id)?.parentId;
+function routeBlocked(rect: Rect, routes: readonly EdgeRouteSnapshot[], reserved: NonNullable<PlacementInput['reservedPaths']>, nodes: readonly CanvasNode[], nodeId: string): boolean {
+  if (reserved.some((route) => route.source !== nodeId && route.target !== nodeId && route.points.slice(1).some((point, index) => intersectsSegment(rect, route.points[index]!, point)))) return true;
+  return routes.some((route) => {
+    if (route.state === 'auto' || route.source.nodeId === nodeId || route.target.nodeId === nodeId) return false;
+    const owner = route.space.kind === 'owner' ? nodes.find((node) => node.id === (route.space as { kind: 'owner'; ownerId: string }).ownerId) : undefined;
+    if (route.space.kind === 'owner' && !owner) return false;
+    const origin = owner ? worldPosition(owner, nodes) : { x: 0, y: 0 };
+    const points = route.points.map((point) => ({ x: point.x + origin.x, y: point.y + origin.y }));
+    return points.slice(1).some((point, index) => intersectsSegment(rect, points[index]!, point));
+  });
 }
 
-function isDescendant(nodes: readonly CanvasNode[], candidateId: string, ancestorId: string): boolean {
-  let parent = parentOf(nodes, candidateId);
-  while (parent) {
-    if (parent === ancestorId) return true;
-    parent = parentOf(nodes, parent);
+/** Grow a frame around settled children, compensating child coordinates when its origin shifts. */
+function fitFrame(input: readonly CanvasNode[], id: string, pending: ReadonlySet<string>, opening: boolean, bias: Point = { x: 0, y: 0 }): CanvasNode[] | undefined {
+  const parent = byId(input, id);
+  const inset = { x: 24, top: parent.type === 'cluster' ? 60 : 72, bottom: 24 };
+  const children = input.filter((node) => node.parentId === id && !pending.has(node.id));
+  const totalChildren = input.filter((node) => node.parentId === id).length;
+  const width = parent.width ?? CARD_SIZE.width, height = parent.height ?? CARD_SIZE.height;
+  let minX = Math.min(0, ...children.map((child) => child.position.x - inset.x));
+  let minY = Math.min(0, ...children.map((child) => child.position.y - inset.top));
+  const maxX = Math.max(opening ? 48 + CARD_SIZE.width : width, ...children.map((child) => child.position.x + size(child).w + inset.x));
+  const maxY = Math.max(opening ? inset.top + CARD_SIZE.height + inset.bottom : height, ...children.map((child) => child.position.y + size(child).h + inset.bottom));
+  const nextWidth = maxX - minX, nextHeight = maxY - minY;
+  if (opening) {
+    if (bias.x < 0) { const lower = Math.max(width - nextWidth, ...children.map((child) => child.position.x + size(child).w + inset.x - nextWidth)); minX += (minX - lower) * bias.x; }
+    if (bias.y < 0) { const lower = Math.max(height - nextHeight, ...children.map((child) => child.position.y + size(child).h + inset.bottom - nextHeight)); minY += (minY - lower) * bias.y; }
   }
-  return false;
-}
-
-function depthOf(nodes: readonly CanvasNode[], node: CanvasNode): number {
-  let depth = 0, parent = node.parentId;
-  while (parent) { depth += 1; parent = parentOf(nodes, parent); }
-  return depth;
-}
-
-function groupContaining(groups: readonly FrozenGroupSnapshot[], id: string | undefined): FrozenGroupSnapshot | undefined {
-  if (!id) return undefined;
-  return groups.find((group) => group.rootId === id || group.memberIds.includes(id));
-}
-
-function routePoints(route: EdgeRouteSnapshot, nodes: readonly CanvasNode[]): Point[] | undefined {
-  if (route.space.kind === 'world') return route.points;
-  const owner = nodeById(nodes, route.space.ownerId);
-  if (!owner) return undefined;
-  const origin = worldPosition(owner, nodes);
-  return route.points.map((point) => ({ x: point.x + origin.x, y: point.y + origin.y }));
-}
-
-function segmentCrosses(rect: Rect, from: Point, to: Point): boolean {
-  if (from.y === to.y) return from.y > rect.y && from.y < rect.y + rect.h && Math.max(from.x, to.x) > rect.x && Math.min(from.x, to.x) < rect.x + rect.w;
-  return from.x > rect.x && from.x < rect.x + rect.w && Math.max(from.y, to.y) > rect.y && Math.min(from.y, to.y) < rect.y + rect.h;
-}
-
-function routeCollides(rect: Rect, routes: readonly EdgeRouteSnapshot[], nodes: readonly CanvasNode[], addedId: string): boolean {
-  for (const route of routes) {
-    if (route.state === 'auto' || route.source.nodeId === addedId || route.target.nodeId === addedId) continue;
-    const points = routePoints(route, nodes);
-    if (!points) continue;
-    for (let index = 1; index < points.length; index += 1) {
-      if (segmentCrosses(rect, points[index - 1]!, points[index]!)) return true;
-    }
+  if (!opening) {
+    const ceiling = { width: (parent.data.contentWidth ?? width) + MAX_CONTAINER_EXTRA, height: (parent.data.contentHeight ?? height) + MAX_CONTAINER_EXTRA };
+    if (nextWidth > ceiling.width + EPS || nextHeight > ceiling.height + EPS) return undefined;
   }
-  return false;
+  const fitOffset = { x: (parent.data.fitOffset?.x ?? 0) + minX, y: (parent.data.fitOffset?.y ?? 0) + minY };
+  const next = input.map((node) => {
+    if (node.id === id) return {
+      ...node, position: { x: node.position.x + minX, y: node.position.y + minY }, width: nextWidth, height: nextHeight,
+      measured: { width: nextWidth, height: nextHeight }, style: { ...node.style, width: nextWidth, height: nextHeight },
+      data: { ...node.data, fitOffset, contentWidth: opening ? nextWidth : node.data.contentWidth ?? width, contentHeight: opening ? nextHeight : node.data.contentHeight ?? height },
+    };
+    if (node.parentId !== id || (!minX && !minY)) return node;
+    return { ...node, position: { x: node.position.x - minX, y: node.position.y - minY }, ...(node.data.reflowOrigin ? { data: { ...node.data, reflowOrigin: { x: node.data.reflowOrigin.x - minX, y: node.data.reflowOrigin.y - minY } } } : {}) };
+  });
+  return next;
 }
 
-function insideParent(rect: Rect, parent: CanvasNode, parentWorld: Point): boolean {
-  const inset = containerInset(parent), extent = size(parent);
-  return rect.x >= parentWorld.x + inset.x - EPSILON
-    && rect.y >= parentWorld.y + inset.top - EPSILON
-    && rect.x + rect.w <= parentWorld.x + extent.w - inset.x + EPSILON
-    && rect.y + rect.h <= parentWorld.y + extent.h - inset.bottom + EPSILON;
-}
-
-function collides(rect: Rect, gap: number, blockers: readonly Rect[]): boolean {
-  return blockers.some((blocker) => rectIntersects(
-    { x: rect.x - gap, y: rect.y - gap, w: rect.w + gap * 2, h: rect.h + gap * 2 },
-    blocker,
-  ));
-}
-
-function positionsFor(nodeId: string, nodes: readonly CanvasNode[], stage: StageSnapshot): { point: Point; score: number }[] {
-  const node = nodeById(nodes, nodeId);
-  if (!node) return [];
-  const related = new Map<string, number>();
-  for (const edge of [...stage.graph.edges].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))) {
-    if (edge.source.nodeId === nodeId && edge.target.nodeId !== nodeId) related.set(edge.target.nodeId, related.get(edge.target.nodeId) ?? edge.order);
-    if (edge.target.nodeId === nodeId && edge.source.nodeId !== nodeId) related.set(edge.source.nodeId, related.get(edge.source.nodeId) ?? edge.order);
-  }
-  const targets = [...related.keys()].flatMap((id) => nodeById(nodes, id) ?? []).filter((item) => item.id !== nodeId);
-  const output: { point: Point; score: number }[] = [];
-  for (const target of targets) {
-    const rect = worldRect(target, nodes), extent = size(node);
-    const offsets = [
-      { x: rect.x + rect.w + MIN_EDGE_GAP, y: rect.y },
-      { x: rect.x - extent.w - MIN_EDGE_GAP, y: rect.y },
-      { x: rect.x, y: rect.y + rect.h + MIN_EDGE_GAP },
-      { x: rect.x, y: rect.y - extent.h - MIN_EDGE_GAP },
-      { x: rect.x + (rect.w - extent.w) / 2, y: rect.y + rect.h + MIN_EDGE_GAP },
-      { x: rect.x + (rect.w - extent.w) / 2, y: rect.y - extent.h - MIN_EDGE_GAP },
-    ];
-    for (const point of offsets) output.push({ point, score: Math.hypot(point.x - rect.x, point.y - rect.y) });
-  }
-  return output;
-}
-
-function gridPositions(nodeId: string, nodes: readonly CanvasNode[]): { point: Point; score: number }[] {
-  const node = nodeById(nodes, nodeId);
-  if (!node) return [];
-  const parent = node.parentId ? nodeById(nodes, node.parentId) : undefined;
-  const output: { point: Point; score: number }[] = [];
-  if (parent) {
-    const inset = containerInset(parent), extent = size(parent), own = size(node);
-    const origin = worldPosition(parent, nodes);
-    const x0 = inset.x, x1 = extent.w - inset.x - own.w;
-    const y0 = inset.top, y1 = extent.h - inset.bottom - own.h;
-    if (x1 < x0 || y1 < y0) return output;
-    for (let x = x0; x <= x1 && output.length < MAX_CANDIDATES; x += GRID_STEP) {
-      for (let y = y0; y <= y1 && output.length < MAX_CANDIDATES; y += GRID_STEP) {
-        output.push({ point: { x: origin.x + x, y: origin.y + y }, score: Math.hypot(x - x0, y - y0) });
-      }
-    }
-    return output;
-  }
-  const visible = nodes.filter((item) => item.id !== nodeId);
-  const minX = visible.length ? Math.min(...visible.map((item) => worldRect(item, nodes).x)) : 0;
-  const minY = visible.length ? Math.min(...visible.map((item) => worldRect(item, nodes).y)) : 0;
-  const maxX = visible.length ? Math.max(...visible.map((item) => { const rect = worldRect(item, nodes); return rect.x + rect.w; })) : CARD_SIZE.width;
-  const maxY = visible.length ? Math.max(...visible.map((item) => { const rect = worldRect(item, nodes); return rect.y + rect.h; })) : CARD_SIZE.height;
-  const x0 = minX - CARD_SIZE.width * 3, x1 = maxX + CARD_SIZE.width * 3;
-  const y0 = minY - CARD_SIZE.height * 3, y1 = maxY + CARD_SIZE.height * 3;
-  for (let x = x0; x <= x1 && output.length < MAX_CANDIDATES; x += GRID_STEP * 2) {
-    for (let y = y0; y <= y1 && output.length < MAX_CANDIDATES; y += GRID_STEP * 2) {
-      output.push({ point: { x, y }, score: Math.hypot(x - minX, y - minY) });
-    }
-  }
-  return output;
-}
-
-function localPoint(point: Point, parent: CanvasNode | undefined, nodes: readonly CanvasNode[]): Point {
-  if (!parent) return point;
-  const origin = worldPosition(parent, nodes);
-  return { x: point.x - origin.x, y: point.y - origin.y };
-}
-
-function candidateNodes(node: CanvasNode, point: Point, parent: CanvasNode | undefined, nodes: readonly CanvasNode[]): Point {
-  return localPoint(point, parent, nodes);
-}
-
-function replace(nodes: readonly CanvasNode[], node: CanvasNode): CanvasNode[] {
-  return nodes.map((item) => item.id === node.id ? node : item);
-}
-
-function affectedContainers(nodes: readonly CanvasNode[], addedIds: readonly string[]): Set<string> {
-  const affected = new Set<string>();
-  for (const id of addedIds) {
-    let parent = parentOf(nodes, id);
-    while (parent) { affected.add(parent); parent = parentOf(nodes, parent); }
-  }
-  return affected;
-}
-
-function ceilingsHold(nodes: readonly CanvasNode[], affected: ReadonlySet<string>): boolean {
-  for (const id of affected) {
-    const node = nodeById(nodes, id);
-    if (!node || node.type === 'card') continue;
-    const ceiling = containerGrowthCeiling(node);
-    if ((node.width ?? 0) > ceiling.width + EPSILON || (node.height ?? 0) > ceiling.height + EPSILON) return false;
+/** Only newly created overlaps are rejected; existing source geometry is preserved. */
+function collisionFree(before: readonly CanvasNode[], after: readonly CanvasNode[], stage: StageSnapshot, pending: ReadonlySet<string>): boolean {
+  const previous = new Map(before.map((node) => [node.id, node]));
+  const oldProjection = hierarchyProjection(before, stage), nextProjection = hierarchyProjection(after, stage);
+  const visible = after.filter((node) => !pending.has(node.id) && nodeIsVisible(node, after, nextProjection));
+  for (let i = 0; i < visible.length; i++) for (let j = i + 1; j < visible.length; j++) {
+    const a = visible[i]!, b = visible[j]!;
+    if (a.parentId !== b.parentId) continue;
+    const gap = a.type === 'card' && b.type === 'card' ? MIN_EDGE_GAP : GAP;
+    if (!overlaps(box(a, after), box(b, after), gap)) continue;
+    const oldA = previous.get(a.id), oldB = previous.get(b.id);
+    if (!oldA || !oldB || !nodeIsVisible(oldA, before, oldProjection) || !nodeIsVisible(oldB, before, oldProjection)
+      || !overlaps(box(oldA, before), box(oldB, before), gap)) return false;
   }
   return true;
 }
 
-/**
- * Place added nodes into legal gaps or grow their containers within the retained ceiling.
- *
- * Candidates are deterministic: related-node neighbours, then a bounded local grid,
- * then a limited right/bottom expansion. Protected nodes never enter the moved set.
- */
+function fitChain(nodes: readonly CanvasNode[], ids: readonly string[], stage: StageSnapshot, pending: ReadonlySet<string>, opened: ReadonlySet<string>, bias: Point = { x: 0, y: 0 }): CanvasNode[] | undefined {
+  let next = [...nodes];
+  for (const id of [...ids].reverse()) {
+    const fitted = fitFrame(next, id, pending, opened.has(id), bias);
+    if (!fitted || !collisionFree(next, fitted, stage, pending)) return undefined;
+    next = fitted;
+  }
+  return next;
+}
+
+function candidates(node: CanvasNode, nodes: readonly CanvasNode[], stage: StageSnapshot, pending: ReadonlySet<string>, preferred?: Point): Point[] {
+  const parent = node.parentId ? byId(nodes, node.parentId) : undefined;
+  const parentWorld = parent ? worldPosition(parent, nodes) : { x: 0, y: 0 };
+  const own = size(node), positions: Point[] = [];
+  if (preferred) positions.push({ x: parentWorld.x + preferred.x, y: parentWorld.y + preferred.y });
+  for (const edge of stage.graph.edges) {
+    const other = edge.source.nodeId === node.id ? edge.target.nodeId : edge.target.nodeId === node.id ? edge.source.nodeId : undefined;
+    if (!other || pending.has(other)) continue;
+    const relative = nodes.find((item) => item.id === other);
+    if (!relative || relative.parentId !== node.parentId) continue;
+    const r = box(relative, nodes);
+    positions.push({ x: r.x + r.w + MIN_EDGE_GAP, y: r.y }, { x: r.x, y: r.y + r.h + MIN_EDGE_GAP },
+      { x: r.x - own.w - MIN_EDGE_GAP, y: r.y }, { x: r.x, y: r.y - own.h - MIN_EDGE_GAP });
+  }
+  for (const sibling of nodes.filter((item) => item.id !== node.id && item.parentId === node.parentId && !pending.has(item.id))) {
+    const r = box(sibling, nodes), gap = sibling.type === 'card' && node.type === 'card' ? MIN_EDGE_GAP : GAP;
+    positions.push({ x: r.x + r.w + gap, y: r.y }, { x: r.x, y: r.y + r.h + gap },
+      { x: r.x - own.w - gap, y: r.y }, { x: r.x, y: r.y - own.h - gap });
+  }
+  if (parent) {
+    const inset = containerInset(parent), extent = size(parent);
+    for (let y = inset.top; y + own.h <= extent.h - inset.bottom && positions.length < MAX_GRID; y += STEP) {
+      for (let x = inset.x; x + own.w <= extent.w - inset.x && positions.length < MAX_GRID; x += STEP) positions.push({ x: parentWorld.x + x, y: parentWorld.y + y });
+    }
+    const offsets = [
+      { x: extent.w + GAP, y: inset.top }, { x: inset.x, y: extent.h + GAP },
+      { x: -own.w - GAP, y: inset.top }, { x: inset.x, y: -own.h - GAP },
+    ];
+    for (let i = 0; i < 12; i++) for (const offset of offsets) positions.push({ x: parentWorld.x + offset.x + (offset.y === inset.top ? 0 : i * STEP), y: parentWorld.y + offset.y + (offset.y === inset.top ? i * STEP : 0) });
+  } else {
+    const settled = nodes.filter((item) => !item.parentId && !pending.has(item.id));
+    const center = settled.length ? box(settled[0]!, nodes) : { x: 0, y: 0, w: 0, h: 0 };
+    for (let radius = 1; radius <= 24; radius++) for (let i = -radius; i <= radius; i++) {
+      for (const [x, y] of [[-radius, i], [radius, i], [i, -radius], [i, radius]]) positions.push({ x: center.x + x! * (own.w + MIN_EDGE_GAP), y: center.y + y! * (own.h + MIN_EDGE_GAP) });
+    }
+  }
+  return positions;
+}
+
 export function placeAddedNodes(input: PlacementInput): PlacementResult {
-  const working: CanvasNode[] = input.nodes.map((node) => ({ ...node, position: { ...node.position } }));
-  const original = working.map((node) => ({ ...node, position: { ...node.position } }));
-  const frozenGroups = input.frozenGroups ?? [];
+  let working = [...input.nodes];
+  const pending = new Set(input.addedNodeIds), opened = new Set<string>();
   const routes = input.routes ?? [];
-  const visible = new Set(input.projection.nodes.map((node) => node.id));
-  const frozenMembers = new Set(frozenGroups.flatMap((group) => [group.rootId, ...group.memberIds]));
   const order = new Map(input.stage.graph.nodes.map((node) => [node.id, node.order]));
-  const added = input.addedNodeIds
-    .flatMap((id) => nodeById(working, id) ?? [])
-    .sort((a, b) => depthOf(working, a) - depthOf(working, b) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0) || a.id.localeCompare(b.id));
-  const placements: StagePlacementRecord[] = [];
-  const conflicts: StageConflict[] = [];
+  const opensExisting = (id: string) => ancestorIds(working, id).some((parent) => !pending.has(parent) && !byId(working, parent).data.expanded);
+  const ids = [...input.addedNodeIds].sort((a, b) => Number(opensExisting(b)) - Number(opensExisting(a)) || ancestorIds(working, a).length - ancestorIds(working, b).length || (order.get(a) ?? 0) - (order.get(b) ?? 0) || a.localeCompare(b));
+  const placements: StagePlacementRecord[] = [], conflicts: StageConflict[] = [];
 
-  for (const node of added) {
-    const current = nodeById(working, node.id);
-    if (!current) continue;
-    const parent = current.parentId ? nodeById(working, current.parentId) : undefined;
-    const frozen = groupContaining(frozenGroups, parent?.id);
-    if (frozen) {
-      conflicts.push({ kind: 'frozen-violation', entityIds: [current.id], containerId: frozen.rootId, message: '新增节点位于冻结子图内，需先解冻或调整归属', actions: ['unfreeze', 'cancel'] });
-      continue;
-    }
-
-    const blockers: Rect[] = working.flatMap((item) => {
-      if (item.id === current.id) return [];
-      if (isDescendant(working, current.id, item.id)) return [];
-      if (isDescendant(working, item.id, current.id)) return [];
-      if (item.parentId === current.parentId) return [worldRect(item, working)];
-      if (visible.has(item.id) || frozenMembers.has(item.id)) return [worldRect(item, working)];
-      return [];
-    });
-    for (const group of frozenGroups) blockers.push({ ...group.worldBounds });
-    const parentWorld = parent ? worldPosition(parent, working) : undefined;
-    const preferred = input.preferredPositions?.[current.id];
-    const valid = (candidate: CanvasNode, gap: number, allowOutside: boolean, state: readonly CanvasNode[] = working): boolean => {
-      const rect = worldRect(candidate, state);
-      const currentParent = parent && nodeById(state, parent.id);
-      if (currentParent && !allowOutside && !insideParent(rect, currentParent, worldPosition(currentParent, state))) return false;
-      return !collides(rect, gap, blockers) && !routeCollides(rect, routes, working, current.id);
-    };
-
-    if (preferred) {
-      const candidate = { ...current, position: preferred };
-      if (valid(candidate, 0, false)) {
-        working.splice(working.findIndex((item) => item.id === current.id), 1, candidate);
-        placements.push({ nodeId: current.id, mode: 'provided' });
-        continue;
+  for (const id of ids) {
+    const ancestors = ancestorIds(working, id);
+    let failed = false;
+    for (const ancestor of ancestors) {
+      const node = byId(working, ancestor);
+      if (!node.data.expandable || node.data.expanded) continue;
+      const next = node.data.frozen
+        ? toggleFrozenExpansion(working, ancestor, true, input.frozenGroups)
+        : replace(working, { ...node, type: 'structure', dragHandle: '.structure-header', data: { ...node.data, expanded: true } });
+      let fitted: CanvasNode[] | undefined;
+      for (const bias of [{ x: 0, y: 0 }, { x: -0.5, y: 0 }, { x: -1, y: 0 }, { x: 0, y: -1 }, { x: -0.5, y: -1 }, { x: -1, y: -1 }]) {
+        fitted = fitChain(next, [...ancestorIds(next, ancestor), ancestor], input.stage, pending, node.data.frozen ? new Set() : new Set([ancestor]), bias);
+        if (fitted && collisionFree(working, fitted, input.stage, pending)) break;
+        fitted = undefined;
       }
+      if (!fitted || !collisionFree(working, fitted, input.stage, pending)) {
+        conflicts.push({ kind: 'no-space', entityIds: [id], containerId: ancestor, message: '必要容器无法展开而保持已确认布局', actions: ['expand', 'cancel'] });
+        failed = true; break;
+      }
+      working = fitted; opened.add(ancestor);
     }
+    if (failed) continue;
 
-    const candidates: Candidate[] = [];
-    for (const candidate of [...positionsFor(current.id, working, input.stage), ...gridPositions(current.id, working)]) {
-      candidates.push({ position: candidateNodes(current, candidate.point, parent, working), score: candidate.score, mode: 'gap' });
-    }
+    const original = byId(working, id);
+    const children = ids.filter((child) => byId(working, child).parentId === id);
+    const columns = Math.min(3, children.length), rows = Math.ceil(children.length / 3);
+    const width = 48 + columns * CARD_SIZE.width + Math.max(0, columns - 1) * MIN_EDGE_GAP;
+    const height = 72 + rows * CARD_SIZE.height + Math.max(0, rows - 1) * MIN_EDGE_GAP + 24;
+    const current = children.length && original.data.expandable && !original.data.expanded
+      ? { ...original, type: 'structure', dragHandle: '.structure-header', width, height, measured: { width, height }, style: { ...original.style, width, height }, data: { ...original.data, expanded: true, contentWidth: width, contentHeight: height } }
+      : original;
+    const parent = current.parentId ? byId(working, current.parentId) : undefined;
+    const parentWorld = parent ? worldPosition(parent, working) : { x: 0, y: 0 };
+    const choices = candidates(current, working, input.stage, pending, input.preferredPositions?.[id]);
     if (parent) {
-      const inset = containerInset(parent), extent = size(parent);
-      candidates.push({ position: { x: extent.w - inset.x + 24, y: inset.top }, score: 1e6, mode: 'expanded' });
-      candidates.push({ position: { x: inset.x, y: extent.h - inset.bottom + 24 }, score: 1e6, mode: 'expanded' });
-    } else {
-      const boxes = working.map((item) => worldRect(item, working));
-      const maxX = boxes.length ? Math.max(...boxes.map((rect) => rect.x + rect.w)) : 0;
-      const minY = boxes.length ? Math.min(...boxes.map((rect) => rect.y)) : 0;
-      candidates.push({ position: { x: maxX + MIN_EDGE_GAP, y: minY }, score: 1e6, mode: 'expanded' });
+      const frame = box(parent, working), inset = containerInset(parent), own = size(current);
+      const inside = (point: Point) => point.x >= frame.x + inset.x && point.y >= frame.y + inset.top && point.x + own.w <= frame.x + frame.w - inset.x && point.y + own.h <= frame.y + frame.h - inset.bottom;
+      choices.sort((a, b) => Number(!inside(a)) - Number(!inside(b)));
     }
-    candidates.sort((a, b) => a.score - b.score || a.position.y - b.position.y || a.position.x - b.position.x);
-
-    let placed = false;
-    for (const choice of candidates) {
-      const candidate = { ...current, position: choice.position };
-      if (!valid(candidate, choice.mode === 'expanded' ? 0 : 24, choice.mode === 'expanded')) continue;
-      if (choice.mode === 'expanded') {
-        let trial = replace(working, candidate);
-        trial = fitMovedContainers(trial, [current.id]);
-        trial = separateSiblings(trial, current.id, true);
-        const fitted = nodeById(trial, current.id)!;
-        const affected = affectedContainers(trial, [current.id]);
-        if (layoutProtectionConflict(original, trial) || !ceilingsHold(trial, affected) || !valid(fitted, 0, false, trial)) continue;
-        working.splice(0, working.length, ...trial);
-      } else {
-        working.splice(working.findIndex((item) => item.id === current.id), 1, candidate);
-      }
-      placements.push({ nodeId: current.id, mode: choice.mode });
-      placed = true;
+    let accepted: CanvasNode[] | undefined, acceptedMode: StagePlacementRecord['mode'] = 'gap';
+    for (const [index, point] of choices.entries()) {
+      const candidate = { ...current, position: { x: point.x - parentWorld.x, y: point.y - parentWorld.y } };
+      const candidateBox = { ...point, ...size(candidate) };
+      const projection = hierarchyProjection(working, input.stage);
+      const siblings = working.filter((item) => item.id !== id && item.parentId === current.parentId && !pending.has(item.id) && nodeIsVisible(item, working, projection));
+      if (siblings.some((sibling) => overlaps(candidateBox, box(sibling, working), candidate.type === 'card' && sibling.type === 'card' ? MIN_EDGE_GAP : GAP)) || routeBlocked(candidateBox, routes, input.reservedPaths ?? [], working, id)) continue;
+      const trialPending = new Set(pending); trialPending.delete(id);
+      const trial = replace(working, candidate);
+      const fitted = fitChain(trial, ancestors, input.stage, trialPending, new Set());
+      if (!fitted || !collisionFree(working, fitted, input.stage, trialPending)) continue;
+      accepted = fitted;
+      acceptedMode = input.preferredPositions?.[id] && index === 0 ? 'provided' : parent && (point.x < parentWorld.x || point.y < parentWorld.y || point.x + size(current).w > parentWorld.x + size(parent).w || point.y + size(current).h > parentWorld.y + size(parent).h) ? 'expanded' : 'gap';
       break;
     }
-    if (!placed) {
-      conflicts.push({
-        kind: 'no-space', entityIds: [current.id], ...(parent ? { containerId: parent.id } : {}),
-        message: '新增节点没有可用空隙，容器扩容也已达到上限', actions: ['expand', 'move-free-nodes', 'cancel'],
-      });
+    if (!accepted) {
+      conflicts.push({ kind: 'no-space', entityIds: [id], ...(parent ? { containerId: parent.id } : {}), message: '新增节点无法放入可用空隙或有限扩容区域', actions: ['expand', 'cancel'] });
+      continue;
     }
+    working = accepted; pending.delete(id); placements.push({ nodeId: id, mode: acceptedMode });
+    if (current !== original) opened.add(id);
   }
-
-  if (!conflicts.length) {
-    const fitted = fitMovedContainers(working, added.map((node) => node.id));
-    const affected = affectedContainers(fitted, added.map((node) => node.id));
-    if (layoutProtectionConflict(original, fitted) || !ceilingsHold(fitted, affected)) {
-      conflicts.push({ kind: 'growth-ceiling', entityIds: added.map((node) => node.id), message: '阶段布局超出了受保护容器或扩容上限', actions: ['expand', 'move-free-nodes', 'cancel'] });
-    } else {
-      working.splice(0, working.length, ...fitted);
-    }
-  }
-
-  return { nodes: working, placements, expanded: [], conflicts };
+  return { nodes: working, placements, expanded: [...opened], conflicts };
 }

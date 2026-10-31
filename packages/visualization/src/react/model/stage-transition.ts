@@ -1,9 +1,10 @@
 /** Atomic stage transition: inherit confirmed layout, place differences, then commit or fail. */
 import { diffStages } from '../../core/graph/diff.ts';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
-import { CARD_SIZE, layoutProtectionConflict, worldPosition, type CanvasNode } from './grouping.ts';
-import { baselineNodes, hierarchyProjection, toggleHierarchy } from './hierarchy.ts';
+import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
+import { baselineNodes, hierarchyProjection } from './hierarchy.ts';
 import { restoreFrozenGroups } from './frozen.ts';
+import { rebaseFrozenGrowth } from './frozen-growth.ts';
 import { worldRoutePoints, endpointFingerprint } from './edge-routes.ts';
 import { createDiagramGeometry, pathIsClear, segmentCrossesRect } from './routing.ts';
 import { DiagramRouteCache } from './route-cache.ts';
@@ -20,12 +21,15 @@ import {
   type StageTransitionRecord,
 } from './workspace.ts';
 import type { UserGraphOverlay } from './overlay.ts';
+import { captureDisplayRoutes, retainedDisplayRoutes } from './display-route-snapshots.ts';
+import type { DisplayRouteSnapshot } from './workspace.ts';
 
 export interface StageViewState {
   nodes: CanvasNode[];
   edgeRoutes: EdgeRouteSnapshot[];
   frozenGroups: FrozenGroupSnapshot[];
   overlay?: UserGraphOverlay;
+  displayRoutes?: DisplayRouteSnapshot[];
 }
 
 export interface StageTransitionInput {
@@ -117,14 +121,15 @@ function routeConflicts(nodes: readonly CanvasNode[], visible: ReadonlySet<strin
 }
 
 function protectedConflicts(before: readonly CanvasNode[], after: readonly CanvasNode[], groups: readonly FrozenGroupSnapshot[], inherited: ReadonlySet<string>): StageConflict[] {
-  if (layoutProtectionConflict(before, after)) {
-    return [{ kind: 'merge-conflict', entityIds: [], message: '增量布局改变了固定或锁定对象的既有位置', actions: ['unfreeze', 'cancel'] }];
-  }
   for (const oldNode of before) {
     if (!inherited.has(oldNode.id)) continue;
     const nextNode = after.find((node) => node.id === oldNode.id);
     if (!nextNode) continue;
     const oldWorld = worldPosition(oldNode, before), nextWorld = worldPosition(nextNode, after);
+    if (oldNode.data.expandable) {
+      oldWorld.x -= oldNode.data.fitOffset?.x ?? 0; oldWorld.y -= oldNode.data.fitOffset?.y ?? 0;
+      nextWorld.x -= nextNode.data.fitOffset?.x ?? 0; nextWorld.y -= nextNode.data.fitOffset?.y ?? 0;
+    }
     if (Math.abs(oldWorld.x - nextWorld.x) > 0.001 || Math.abs(oldWorld.y - nextWorld.y) > 0.001) {
       return [{ kind: 'merge-conflict', entityIds: [oldNode.id], message: '增量布局改变了已确认节点的位置', actions: ['move-free-nodes', 'cancel'] }];
     }
@@ -134,6 +139,10 @@ function protectedConflicts(before: readonly CanvasNode[], after: readonly Canva
       const oldNode = before.find((node) => node.id === id), nextNode = after.find((node) => node.id === id);
       if (!oldNode || !nextNode) continue;
       const oldWorld = worldPosition(oldNode, before), nextWorld = worldPosition(nextNode, after);
+      if (oldNode.data.expandable) {
+        oldWorld.x -= oldNode.data.fitOffset?.x ?? 0; oldWorld.y -= oldNode.data.fitOffset?.y ?? 0;
+        nextWorld.x -= nextNode.data.fitOffset?.x ?? 0; nextWorld.y -= nextNode.data.fitOffset?.y ?? 0;
+      }
       if (Math.abs(oldWorld.x - nextWorld.x) > 0.001 || Math.abs(oldWorld.y - nextWorld.y) > 0.001) {
         return [{ kind: 'frozen-violation', entityIds: [id], containerId: group.id, message: '阶段切换改变了冻结子图的内部位置', actions: ['unfreeze', 'cancel'] }];
       }
@@ -170,6 +179,12 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
   const base = captureContent(reconciled.nodes, baseRoutes, baseFrozen);
 
   const inherited = new Set(mapped.views.map((view) => view.id));
+  for (const id of mapped.mappedIds) {
+    const view = mapped.views.find((item) => item.id === id)!;
+    const node = target.stage.graph.nodes.find((item) => item.id === id)!;
+    const parent = node.parentId === target.stage.graph.rootId ? undefined : node.parentId;
+    if (view.parentId !== parent) inherited.delete(id);
+  }
   const diff = input.targetSaved
     ? undefined
     : diffStages(input.source.stage, target.stage, { nodeChanges: target.nodeChanges, edgeChanges: target.edgeChanges });
@@ -181,30 +196,11 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     .map((node) => node.id);
 
   let working = reconciled.nodes;
-  const expanded: string[] = [];
   const conflicts: StageConflict[] = [...frozenConflicts, ...reconciled.conflicts];
   for (const route of baseRoutes) {
     const edge = target.stage.graph.edges.find((item) => item.id === route.canonicalEdgeId)!;
     if (route.state === 'locked' && endpointFingerprint(edge) !== route.endpointFingerprint) conflicts.push({ kind: 'locked-route', entityIds: [route.canonicalEdgeId], message: '来源更改了锁定路径的端点或端口，请先解除路径锁定', actions: ['unfreeze', 'cancel'] });
   }
-  for (const id of addedNodeIds) {
-    for (const parentId of ancestry(working, id)) {
-      const parent = working.find((node) => node.id === parentId);
-      if (!parent?.data.expandable || parent.data.expanded) continue;
-      if (parent.data.frozen) {
-        conflicts.push({ kind: 'frozen-violation', entityIds: [id], containerId: parentId, message: '新增节点需要只读冻结容器展开，首版请先解冻或调整归属', actions: ['unfreeze', 'cancel'] });
-        continue;
-      }
-      const next = toggleHierarchy(working, parentId, target.stage);
-      if (next === working) {
-        conflicts.push({ kind: 'no-space', entityIds: [id], containerId: parentId, message: '必要祖先无法展开：固定或锁定对象占用了所需空间', actions: ['expand', 'move-free-nodes', 'cancel'] });
-      } else {
-        working = next;
-        if (!expanded.includes(parentId)) expanded.push(parentId);
-      }
-    }
-  }
-
   const projection = hierarchyProjection(working, target.stage);
   const placement = placeAddedNodes({
     nodes: working,
@@ -214,24 +210,31 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     ...(target.positions ? { preferredPositions: target.positions } : {}),
     frozenGroups: baseFrozen,
     routes: baseRoutes,
+    reservedPaths: (origin.displayRoutes ?? []).filter((route) => route.memberIds.every((id) => target.stage.graph.edges.some((edge) => edge.id === id))),
   });
   working = placement.nodes;
   conflicts.push(...placement.conflicts);
 
 
+  const eligibleFrozen = baseFrozen.filter((group) => [group.rootId, ...group.memberIds].every((id) => reconciled.nodes.some((node) => node.id === id) && working.some((node) => node.id === id)));
+  const grown = rebaseFrozenGrowth(reconciled.nodes, working, baseRoutes, eligibleFrozen);
+  const activeRoutes = grown.routes;
+  const activeFrozen = baseFrozen.map((group) => grown.groups.find((item) => item.id === group.id) ?? group);
   const protectedIssues = protectedConflicts(reconciled.nodes, working, baseFrozen, inherited);
   conflicts.push(...protectedIssues);
   const finalProjection = hierarchyProjection(working, target.stage);
-  conflicts.push(...routeConflicts(working, new Set(finalProjection.nodes.map((node) => node.id)), baseRoutes));
+  conflicts.push(...routeConflicts(working, new Set(finalProjection.nodes.map((node) => node.id)), activeRoutes));
+  let displayRoutes: DisplayRouteSnapshot[] = [];
   if (!conflicts.length) {
     const visibleEdges = aggregateProjectedEdges(finalProjection, target.edgeChanges);
-    const reserved = baseRoutes.flatMap((route) => {
+    const reserved = activeRoutes.flatMap((route) => {
       if (route.state !== 'locked') return [];
       const points = worldRoutePoints(route, working);
       return points ? [{ edgeId: route.canonicalEdgeId, points }] : [];
     });
     const inputs = visibleEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text }));
-    const routes = new DiagramRouteCache().update(working, finalProjection, inputs, reserved);
+    const retained = retainedDisplayRoutes(working, finalProjection, visibleEdges, origin.displayRoutes, reserved);
+    const routes = new DiagramRouteCache().update(working, finalProjection, inputs, reserved, retained);
     const geometry = createDiagramGeometry(working, finalProjection, reserved);
     for (const edge of inputs) {
       const route = routes.get(edge.id);
@@ -239,11 +242,12 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
         conflicts.push({ kind: 'locked-route', entityIds: [edge.id], message: '连接无法避开当前节点或锁定路径', actions: ['unfreeze', 'cancel'] });
       }
     }
+    displayRoutes = captureDisplayRoutes(working, finalProjection, visibleEdges, routes);
   }
-  const state: StageViewState = { nodes: working, edgeRoutes: baseRoutes, frozenGroups: baseFrozen };
+  const state: StageViewState = { nodes: working, edgeRoutes: activeRoutes, frozenGroups: activeFrozen, displayRoutes };
   if (conflicts.length) return { ok: false, base, candidate: state, conflicts };
 
-  const content = captureContent(working, baseRoutes, baseFrozen);
+  const content = captureContent(working, activeRoutes, activeFrozen, undefined, displayRoutes);
   const record: StageTransitionRecord = {
     fromStageId: input.source.id,
     toStageId: target.id,
@@ -252,7 +256,7 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     startedAt,
     durationMs: performance.now() - started,
     placements: placement.placements,
-    expanded,
+    expanded: placement.expanded,
   };
   return { ok: true, base, content, state, record };
 }

@@ -4,6 +4,8 @@ import type { Point } from '../../core/layout/geometry.ts';
 import type { CanvasNode, LayoutMode } from './grouping.ts';
 import type { EdgeLabelPlacement } from './labels.ts';
 import type { UserGraphOverlay } from './overlay.ts';
+import type { StageInheritanceBase } from './snapshot-inheritance.ts';
+import type { StageSnapshot } from '../../core/schema/types.ts';
 
 export interface CanvasViewport { x: number; y: number; zoom: number }
 
@@ -25,6 +27,29 @@ export interface EdgeRouteSnapshot {
   space: { kind: 'world' } | { kind: 'owner'; ownerId: string };
   endpointFingerprint: string;
   label?: EdgeLabelPlacement;
+  frozenBoundaries?: FrozenBoundarySegment[];
+}
+
+export interface FrozenBoundarySegment {
+  ownerId: string;
+  endpoint: 'source' | 'target';
+  points: Point[];
+  side: FrozenBoundarySide;
+}
+
+/** Projection paths are view geometry; their member identities remain canonical. */
+export interface DisplayRouteSnapshot {
+  id: string;
+  source: string;
+  target: string;
+  memberIds: string[];
+  sourceHandle: string;
+  targetHandle: string;
+  points: Point[];
+  label: EdgeLabelPlacement;
+  text: string;
+  sourceBounds: { x: number; y: number; w: number; h: number };
+  targetBounds: { x: number; y: number; w: number; h: number };
 }
 
 export type FrozenBoundarySide = 'top' | 'right' | 'bottom' | 'left';
@@ -46,6 +71,8 @@ export interface FrozenGroupSnapshot {
   createdAt: string;
   previousModes?: Record<string, LayoutMode>;
   previousRoutes?: EdgeRouteSnapshot[];
+  frozenFrames?: Record<string, { width: number; height: number }>;
+  protectedFrame?: { x: number; y: number; width: number; height: number };
 }
 
 export interface StagePlacementRecord {
@@ -69,6 +96,7 @@ export interface CanvasBaselineContent {
   edgeRoutes: EdgeRouteSnapshot[];
   frozenGroups: FrozenGroupSnapshot[];
   overlay?: UserGraphOverlay;
+  displayRoutes?: DisplayRouteSnapshot[];
 }
 
 type ViewData = Pick<CanvasNode['data'], 'expanded' | 'contentWidth' | 'contentHeight' | 'fitOffset' | 'reflowOrigin' | 'expansionSizes' | 'groupOrigins'> & {
@@ -93,6 +121,8 @@ export interface CanvasBaselineView extends CanvasBaselineContent {
   confirmed?: CanvasBaselineContent;
   viewport?: CanvasViewport;
   transition?: StageTransitionRecord;
+  inheritance?: StageInheritanceBase;
+  sourceStage?: StageSnapshot;
 }
 
 export interface CanvasWorkspaceView {
@@ -130,12 +160,14 @@ export function captureContent(
   edgeRoutes: readonly EdgeRouteSnapshot[] = [],
   frozenGroups: readonly FrozenGroupSnapshot[] = [],
   overlay?: UserGraphOverlay,
+  displayRoutes?: readonly DisplayRouteSnapshot[],
 ): CanvasBaselineContent {
   return {
     nodes: captureNodeViews(nodes),
     edgeRoutes: structuredClone([...edgeRoutes]),
     frozenGroups: structuredClone([...frozenGroups]),
     ...(overlay ? { overlay: structuredClone(overlay) } : {}),
+    ...(displayRoutes ? { displayRoutes: structuredClone([...displayRoutes]) } : {}),
   };
 }
 

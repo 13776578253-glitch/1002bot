@@ -97,12 +97,25 @@ export function routeDiagramEdge(nodes: readonly CanvasNode[], projection: Proje
 }
 
 export function routeDiagramGeometry(geometry: DiagramGeometry, sourceId: string, targetId: string, edgeId?: string) {
+  const preferred = routeWithHandles(geometry, sourceId, targetId, edgeId);
+  if (pathIsClear(preferred.points, geometry, sourceId, targetId, edgeId)) return preferred;
+  for (const sourceHandle of ['return-out', 'left-out', 'out', 'top-out']) {
+    for (const targetHandle of ['left-in', 'return', 'in', 'bottom-in']) {
+      if (sourceHandle === preferred.sourceHandle && targetHandle === preferred.targetHandle) continue;
+      const candidate = routeWithHandles(geometry, sourceId, targetId, edgeId, { sourceHandle, targetHandle });
+      if (pathIsClear(candidate.points, geometry, sourceId, targetId, edgeId)) return candidate;
+    }
+  }
+  return preferred;
+}
+
+function routeWithHandles(geometry: DiagramGeometry, sourceId: string, targetId: string, edgeId?: string, chosen?: { sourceHandle: string; targetHandle: string }) {
   const source = geometry.bounds.get(sourceId)!, target = geometry.bounds.get(targetId)!;
   const dx = target.x + target.w / 2 - source.x - source.w / 2;
   const dy = target.y + target.h / 2 - source.y - source.h / 2;
-  const handles = Math.abs(dx) > Math.abs(dy) * 1.15
+  const handles = chosen ?? (Math.abs(dx) > Math.abs(dy) * 1.15
     ? dx > 0 ? { sourceHandle: 'return-out', targetHandle: 'left-in' } : { sourceHandle: 'left-out', targetHandle: 'return' }
-    : dy >= 0 ? { sourceHandle: 'out', targetHandle: 'in' } : { sourceHandle: 'top-out', targetHandle: 'bottom-in' };
+    : dy >= 0 ? { sourceHandle: 'out', targetHandle: 'in' } : { sourceHandle: 'top-out', targetHandle: 'bottom-in' });
   const sourceSides: Record<string, PortSide> = { out: 'bottom', 'top-out': 'top', 'return-out': 'right', 'left-out': 'left' };
   const targetSides: Record<string, PortSide> = { in: 'top', 'bottom-in': 'bottom', return: 'right', 'left-in': 'left' };
   const sourceSide = sourceSides[handles.sourceHandle]!, targetSide = targetSides[handles.targetHandle]!;

@@ -1,6 +1,6 @@
 /** Single-layer frozen subgraphs; members and their internal routes stay geometrically stable. */
 import type { StageSnapshot } from '../../core/schema/types.ts';
-import { CARD_SIZE, groupSelection, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, groupSelection, layoutProtectionConflict, worldPosition, type CanvasNode } from './grouping.ts';
 import { toggleHierarchy } from './hierarchy.ts';
 import type { FrozenBoundaryPort, FrozenGroupSnapshot } from './workspace.ts';
 import type { StageConflict } from './stage-types.ts';
@@ -84,9 +84,15 @@ export function freezeSelection(input: FreezeInput): FreezeResult {
   let root = working.find((node) => node.id === rootId);
   if (!root) return { ok: false, conflict: { kind: 'frozen-violation', entityIds: [rootId], message: '冻结根节点不存在', actions: ['cancel'] } };
   if (root.data.expandable && !root.data.expanded && input.stage) {
-    const expanded = toggleHierarchy(working, rootId, input.stage);
-    if (expanded === working) return { ok: false, conflict: { kind: 'frozen-violation', entityIds: [rootId], message: '冻结前无法展开目标容器', actions: ['cancel'] } };
-    working = expanded;
+    const modes = new Map(working.map((node) => [node.id, node.data.layoutMode]));
+    const guarded = working.map((node) => ({ ...node, data: { ...node.data, layoutMode: node.data.layoutMode === 'locked' ? 'locked' as const : 'fixed' as const } }));
+    const expanded = toggleHierarchy(guarded, rootId, input.stage);
+    if (expanded === guarded) return { ok: false, conflict: { kind: 'frozen-violation', entityIds: [rootId], message: '冻结前无法展开目标容器而保持已有节点位置', actions: ['cancel'] } };
+    working = expanded.map((node) => {
+      const mode = modes.get(node.id);
+      const { layoutMode: _mode, ...data } = node.data;
+      return { ...node, data: { ...data, ...(mode ? { layoutMode: mode } : {}) } };
+    });
     root = working.find((node) => node.id === rootId)!;
   }
   const memberIds = descendants(working, rootId);
@@ -123,17 +129,21 @@ export function unfreezeGroup(nodes: readonly CanvasNode[], group: FrozenGroupSn
 }
 
 /** Read-only expansion keeps the container frame and all descendant geometry unchanged. */
-export function toggleFrozenExpansion(nodes: readonly CanvasNode[], rootId: string, expanded: boolean): CanvasNode[] {
-  return nodes.map((node) => {
+export function toggleFrozenExpansion(nodes: readonly CanvasNode[], rootId: string, expanded: boolean, groups: readonly FrozenGroupSnapshot[] = []): CanvasNode[] {
+  const next = nodes.map((node) => {
     if (node.id !== rootId || node.type === 'cluster' || !node.data.expandable) return node;
     const { dragHandle: _handle, ...base } = node;
+    const frame = groups.find((group) => group.rootId === rootId || group.memberIds.includes(rootId))?.frozenFrames?.[rootId];
+    const nextSize = frame ? (expanded ? frame : CARD_SIZE) : { width: node.width!, height: node.height! };
     return {
       ...base,
       type: expanded ? 'structure' : 'card',
+      ...nextSize, measured: { ...nextSize }, style: { ...node.style, ...nextSize },
       ...(expanded ? { dragHandle: '.structure-header' } : {}),
       data: { ...node.data, expanded },
     };
   });
+  return layoutProtectionConflict(nodes, next) ? nodes as CanvasNode[] : next;
 }
 
 /** Reconcile persisted ledgers with restored nodes; missing members drop the whole group. */

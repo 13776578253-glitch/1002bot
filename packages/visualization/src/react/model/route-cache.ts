@@ -108,7 +108,7 @@ export class DiagramRouteCache {
     this.partKeys.set(id, keys);
   }
 
-  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = []): Map<string, CachedRoute> {
+  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = [], retained: ReadonlyMap<string, CachedRoute> = new Map()): Map<string, CachedRoute> {
     const start = performance.now();
     const geometry = createDiagramGeometry(nodes, projection, reserved);
     const reservedKey = JSON.stringify(reserved.map((route) => [route.edgeId, route.points.map((point) => [point.x, point.y])]));
@@ -184,6 +184,12 @@ export class DiagramRouteCache {
     const translated = new Set<string>();
     for (const edge of edges) {
       const previous = this.routes.get(edge.id);
+      const saved = retained.get(edge.id);
+      if (saved && (!previous || routeDirty.has(edge.id))) {
+        nextRoutes.set(edge.id, saved);
+        if (saved.text === edge.text) labelDirty.delete(edge.id);
+        continue;
+      }
       if (!routeDirty.has(edge.id)) {
         nextRoutes.set(edge.id, previous!);
         continue;

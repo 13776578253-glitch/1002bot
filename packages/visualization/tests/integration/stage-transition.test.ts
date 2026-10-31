@@ -78,7 +78,7 @@ test('first visit inherits confirmed layout, expands only necessary ancestors an
   assert.equal(result.base.nodes.length, second.stage.graph.nodes.length - 1);
 });
 
-test('a frozen parent rejects new children without mutating the source content', () => {
+test('a frozen parent admits new free children without moving frozen members', () => {
   const source = captureContent(expandedSource());
   const frozen: FrozenGroupSnapshot = {
     id: 'freeze:module', rootId: 'module', memberIds: ['first'],
@@ -86,11 +86,14 @@ test('a frozen parent rejects new children without mutating the source content',
   };
   const before = JSON.stringify(source);
   const result = planStageTransition({ source: first, target: second, sourceContent: { ...source, frozenGroups: [frozen] } });
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.ok(result.conflicts.some((conflict) => conflict.kind === 'frozen-violation'));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.state.nodes.find((node) => node.id === 'first')!.data.layoutMode, 'locked');
+  assert.equal(result.state.nodes.find((node) => node.id === 'second')!.data.layoutMode ?? 'free', 'free');
+  assert.deepEqual(result.state.frozenGroups[0]!.memberIds, ['first']);
+  assert.deepEqual(worldPosition(result.state.nodes.find((node) => node.id === 'first')!, result.state.nodes), worldPosition(expandedSource().find((node) => node.id === 'first')!, expandedSource()));
   assert.equal(JSON.stringify(source), before);
-  assert.ok(result.candidate.nodes.some((node) => node.id === 'second'));
+  assert.ok(result.state.nodes.some((node) => node.id === 'second'));
 });
 
 test('a source removal of a frozen member blocks the transition', () => {
@@ -107,12 +110,12 @@ test('a source removal of a frozen member blocks the transition', () => {
   assert.equal(JSON.stringify(source), before);
 });
 
-test('expansion blocks a transition if it moves an existing free node', () => {
+test('expansion preserves an existing free node while placing additions', () => {
   const tight = { ...positions, outside: { x: 900, y: 200 } };
   const source = captureContent(createHierarchyNodes(first.stage, tight));
   const result = planStageTransition({ source: first, target: second, sourceContent: source });
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.ok(result.conflicts.some((item) => item.kind === 'merge-conflict' && item.entityIds.includes('outside')));
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.state.nodes.find((node) => node.id === 'outside')!.position, tight.outside);
 });
 
 test('replacement provenance inherits the previous layout instead of placing a new node', () => {
