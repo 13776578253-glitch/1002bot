@@ -16,7 +16,10 @@ import {
   type EdgeRouteSnapshot,
   type FrozenGroupSnapshot,
   type StageTransitionRecord,
+  type DisplayRouteSnapshot,
 } from '../model/workspace.ts';
+import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
+import type { StageSnapshot } from '../../core/schema/types.ts';
 import { saveWorkspace } from '../persistence/storage-session.ts';
 
 export interface CanvasSessionState {
@@ -24,6 +27,7 @@ export interface CanvasSessionState {
   edgeRoutes: EdgeRouteSnapshot[];
   frozenGroups: FrozenGroupSnapshot[];
   overlay?: UserGraphOverlay;
+  displayRoutes?: DisplayRouteSnapshot[];
 }
 
 export { baselineNodes };
@@ -44,6 +48,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
       edgeRoutes: structuredClone(saved.edgeRoutes),
       frozenGroups: structuredClone(frozen.groups),
       ...(saved.overlay ? { overlay: structuredClone(saved.overlay) } : {}),
+      ...(saved.displayRoutes ? { displayRoutes: structuredClone(saved.displayRoutes) } : {}),
     };
   }, [baselines, restored]);
 
@@ -58,6 +63,10 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const frozenRef = useRef(frozenGroups);
   const [overlay, publishOverlay] = useState<UserGraphOverlay | undefined>(initialContent.overlay);
   const overlayRef = useRef(overlay);
+  const [displayRoutes, publishDisplayRoutes] = useState<DisplayRouteSnapshot[]>(initialContent.displayRoutes ?? []);
+  const displayRoutesRef = useRef(displayRoutes);
+  const inheritances = useRef(new Map<string, StageInheritanceBase>(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.inheritance ? [[id, view.inheritance] as const] : [])));
+  const sourceStages = useRef(new Map<string, StageSnapshot>(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.sourceStage ? [[id, view.sourceStage] as const] : [])));
   const confirmedContents = useRef(new Map<string, CanvasBaselineContent>(
     Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmed ? [[id, structuredClone(view.confirmed)] as const] : []),
   ));
@@ -86,8 +95,9 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const setRoutes = useCallback((next: EdgeRouteSnapshot[]) => { routesRef.current = next; publishRoutes(next); }, []);
   const setFrozenGroups = useCallback((next: FrozenGroupSnapshot[]) => { frozenRef.current = next; publishFrozen(next); }, []);
   const setOverlay = useCallback((next: UserGraphOverlay | undefined) => { overlayRef.current = next; publishOverlay(next); }, []);
+  const setDisplayRoutes = useCallback((next: DisplayRouteSnapshot[]) => { displayRoutesRef.current = next; publishDisplayRoutes(next); }, []);
 
-  const captureCurrent = useCallback(() => captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current), []);
+  const captureCurrent = useCallback(() => captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current), []);
 
   const storedContent = useCallback((id: string): CanvasBaselineContent | undefined => {
     const saved = restored?.baselines[id];
@@ -97,12 +107,13 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
       edgeRoutes: saved.edgeRoutes,
       frozenGroups: saved.frozenGroups,
       ...(saved.overlay ? { overlay: saved.overlay } : {}),
+      ...(saved.displayRoutes ? { displayRoutes: saved.displayRoutes } : {}),
     };
   }, [restored]);
 
   const save = useCallback(() => {
-    if (!persistence) return;
     contents.current.set(idRef.current, captureCurrent());
+    if (!persistence) return;
     const views: CanvasWorkspaceView['baselines'] = {};
     for (const baseline of baselines) {
       const restoredBaseline = restored?.baselines[baseline.id];
@@ -120,6 +131,9 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
         edgeRoutes: base?.edgeRoutes ?? [],
         frozenGroups: base?.frozenGroups ?? [],
         ...(storedOverlay ? { overlay: storedOverlay } : {}),
+        ...(base?.displayRoutes ? { displayRoutes: base.displayRoutes } : {}),
+        ...(inheritances.current.get(baseline.id) ? { inheritance: inheritances.current.get(baseline.id)! } : {}),
+        ...(sourceStages.current.get(baseline.id) ? { sourceStage: sourceStages.current.get(baseline.id)! } : {}),
         ...(confirmed ? { confirmed } : {}),
         ...(confirmedStamp ? { confirmedAt: confirmedStamp } : {}),
         ...(transition ? { transition } : {}),
@@ -146,7 +160,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     const next = transform(current);
     if (next === current) return false;
     setNodes(next);
-    const after = captureContent(next, routesRef.current, frozenRef.current, overlayRef.current);
+    const after = captureContent(next, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current);
     const changed = history().record(before, after);
     if (changed) { refreshHistory((version) => version + 1); save(); }
     return changed;
@@ -157,6 +171,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     const current: CanvasSessionState = {
       nodes: nodesRef.current, edgeRoutes: routesRef.current, frozenGroups: frozenRef.current,
       ...(overlayRef.current ? { overlay: overlayRef.current } : {}),
+      displayRoutes: displayRoutesRef.current,
     };
     const next = transform(current);
     if (!next || next === current) return false;
@@ -164,7 +179,8 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     setRoutes(next.edgeRoutes);
     setFrozenGroups(next.frozenGroups);
     setOverlay(next.overlay);
-    const after = captureContent(next.nodes, next.edgeRoutes, next.frozenGroups, next.overlay);
+    setDisplayRoutes(next.displayRoutes ?? displayRoutesRef.current);
+    const after = captureCurrent();
     const changed = history().record(before, after);
     if (changed) { refreshHistory((version) => version + 1); save(); }
     return changed;
@@ -177,6 +193,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     setRoutes(structuredClone(content.edgeRoutes));
     setFrozenGroups(structuredClone(frozen.groups));
     setOverlay(content.overlay ? structuredClone(content.overlay) : undefined);
+    setDisplayRoutes(structuredClone(content.displayRoutes ?? []));
   }, [baselines, setFrozenGroups, setNodes, setOverlay, setRoutes]);
 
   const travel = useCallback((direction: 'undo' | 'redo') => {
@@ -200,11 +217,12 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     setRoutes(structuredClone(target.edgeRoutes));
     setFrozenGroups(structuredClone(target.frozenGroups));
     setOverlay(target.overlay ? structuredClone(target.overlay) : undefined);
-    contents.current.set(id, captureContent(nextNodes, target.edgeRoutes, target.frozenGroups, target.overlay));
+    setDisplayRoutes(structuredClone(target.displayRoutes ?? []));
+    contents.current.set(id, captureCurrent());
     save();
   }, [captureCurrent, makeContent, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
 
-  const applyStageTransition = useCallback((targetId: string, next: CanvasSessionState, before: CanvasBaselineContent, record: StageTransitionRecord) => {
+  const applyStageTransition = useCallback((targetId: string, next: CanvasSessionState, before: CanvasBaselineContent, record: StageTransitionRecord, inheritance?: StageInheritanceBase) => {
     pending.current = undefined;
     contents.current.set(idRef.current, captureCurrent());
     idRef.current = targetId;
@@ -213,31 +231,36 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     setRoutes(structuredClone(next.edgeRoutes));
     setFrozenGroups(structuredClone(next.frozenGroups));
     setOverlay(next.overlay ? structuredClone(next.overlay) : undefined);
-    const after = captureContent(next.nodes, next.edgeRoutes, next.frozenGroups, next.overlay);
+    setDisplayRoutes(structuredClone(next.displayRoutes ?? []));
+    const after = captureCurrent();
     contents.current.set(targetId, after);
     transitions.current.set(targetId, record);
     revisions.current.set(targetId, record.targetRevision);
+    if (inheritance) inheritances.current.set(targetId, inheritance);
+    sourceStages.current.set(targetId, structuredClone(baselines.find((item) => item.id === targetId)!.stage));
     const stack = histories.current.get(targetId) ?? new ViewHistory();
     histories.current.set(targetId, stack);
     if (stack.record(before, after)) refreshHistory((version) => version + 1);
     save();
   }, [captureCurrent, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
 
-  const confirm = useCallback(() => {
+  const confirm = useCallback((renderedRoutes?: DisplayRouteSnapshot[]) => {
+    if (renderedRoutes) setDisplayRoutes(renderedRoutes);
     confirmedContents.current.set(idRef.current, captureCurrent());
     confirmedAt.current.set(idRef.current, new Date().toISOString());
     const baseline = baselines.find((item) => item.id === idRef.current)!;
     revisions.current.set(idRef.current, baseline.stage.graph.revision ?? baseline.stage.id);
+    sourceStages.current.set(idRef.current, structuredClone(baseline.stage));
     save();
   }, [baselines, captureCurrent, save]);
 
   const getConfirmedContent = useCallback((id: string): CanvasBaselineContent | undefined => confirmedContents.current.get(id) ?? restored?.baselines[id]?.confirmed, [restored]);
 
-  const getSavedContent = useCallback((id: string): { content: CanvasBaselineContent; revision?: string } | undefined => {
+  const getSavedContent = useCallback((id: string): { content: CanvasBaselineContent; revision?: string; inheritance?: StageInheritanceBase; sourceStage?: StageSnapshot } | undefined => {
     const inMemory = contents.current.get(id);
     if (inMemory) {
       const baseline = baselines.find((item) => item.id === id)!;
-      return { content: inMemory, revision: revisions.current.get(id) ?? baseline.stage.graph.revision ?? baseline.stage.id };
+      return { content: inMemory, revision: revisions.current.get(id) ?? baseline.stage.graph.revision ?? baseline.stage.id, ...(inheritances.current.get(id) ? { inheritance: inheritances.current.get(id)! } : {}), ...(sourceStages.current.get(id) ? { sourceStage: sourceStages.current.get(id)! } : {}) };
     }
     const saved = restored?.baselines[id];
     if (!saved) return undefined;
@@ -247,8 +270,11 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
         edgeRoutes: saved.edgeRoutes,
         frozenGroups: saved.frozenGroups,
         ...(saved.overlay ? { overlay: saved.overlay } : {}),
+        ...(saved.displayRoutes ? { displayRoutes: saved.displayRoutes } : {}),
       },
       revision: saved.revision,
+      ...(saved.inheritance ? { inheritance: saved.inheritance } : {}),
+      ...(saved.sourceStage ? { sourceStage: saved.sourceStage } : {}),
     };
   }, [baselines, restored]);
 
@@ -259,10 +285,11 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   return {
     nodes, nodesRef, setNodes,
     edgeRoutes: routes, routesRef, frozenGroups, frozenRef, overlay, overlayRef,
-    setRoutes, setFrozenGroups, setOverlay, commitContent,
+    setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, displayRoutes, displayRoutesRef, commitContent,
     baselineId, baseline: baselines.find((item) => item.id === baselineId)!,
     initialViewport: viewports.current.get(initialId), getViewport: (id: string) => viewports.current.get(id), saveViewport,
     begin, finish, commit, switchBaseline, applyStageTransition, confirm, getConfirmedContent, getSavedContent,
     undo, redo, canUndo: history().canUndo, canRedo: history().canRedo, saveError, retrySave: save,
+    transition:transitions.current.get(baselineId),
   };
 }

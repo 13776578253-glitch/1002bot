@@ -225,6 +225,7 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
   const finalProjection = hierarchyProjection(working, target.stage);
   conflicts.push(...routeConflicts(working, new Set(finalProjection.nodes.map((node) => node.id)), activeRoutes));
   let displayRoutes: DisplayRouteSnapshot[] = [];
+  let routeMetrics={reusedPaths:0,routedEdges:0,totalEdges:0};
   if (!conflicts.length) {
     const visibleEdges = aggregateProjectedEdges(finalProjection, target.edgeChanges);
     const reserved = activeRoutes.flatMap((route) => {
@@ -234,7 +235,9 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     });
     const inputs = visibleEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text }));
     const retained = retainedDisplayRoutes(working, finalProjection, visibleEdges, origin.displayRoutes, reserved);
-    const routes = new DiagramRouteCache().update(working, finalProjection, inputs, reserved, retained);
+    const cache=new DiagramRouteCache();
+    const routes = cache.update(working, finalProjection, inputs, reserved, retained);
+    routeMetrics={reusedPaths:retained.size,routedEdges:cache.lastStats.routedEdges,totalEdges:inputs.length};
     const geometry = createDiagramGeometry(working, finalProjection, reserved);
     for (const edge of inputs) {
       const route = routes.get(edge.id);
@@ -257,6 +260,7 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     durationMs: performance.now() - started,
     placements: placement.placements,
     expanded: placement.expanded,
+    metrics:{inheritedNodes:working.filter(node=>inherited.has(node.id)).length,addedNodes:addedNodeIds.length,...routeMetrics},
   };
   return { ok: true, base, content, state, record };
 }

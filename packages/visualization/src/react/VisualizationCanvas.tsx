@@ -17,6 +17,7 @@ import { useCanvasController } from './canvas/use-canvas-controller.ts';
 import { baselineNodes } from './canvas/use-workspace-session.ts';
 import { restoreNodeViews } from './model/workspace.ts';
 import { restoreFrozenGroups } from './model/frozen.ts';
+import { prepareSourceRevision } from './model/stage-navigation.ts';
 import { loadWorkspace } from './persistence/storage-session.ts';
 
 const nodeTypes = { card: Card, cluster: Cluster, structure: Structure };
@@ -38,7 +39,7 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
   const onSelectionEnd = useCallback(() => { if (!canvas.preview) setNodes((current) => normalizeMarqueeSelection(current)); }, [canvas.preview, setNodes]);
   const onMove = useCallback((_event: unknown, viewport: { zoom: number }) => setZoom(Math.round(viewport.zoom * 100)), [setZoom]);
   const onMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => { if (!canvas.preview) canvas.saveViewport(viewport); }, [canvas.preview, canvas.saveViewport]);
-  return <main className="canvas-app" data-theme={theme} aria-label="架构画布" data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
+  return <main className="canvas-app" data-theme={theme} aria-label="架构画布" data-transition={JSON.stringify(canvas.transition)} data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
     <ReactFlow<CanvasNode, Edge<LinkData>>
       nodes={displayNodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodesChange={onNodesChange} nodesConnectable={false} deleteKeyCode={null}
@@ -65,7 +66,7 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
     <SelectionTools label={selectionLabel} modes={canvas.selectedModes} onMode={canvas.setLayoutMode} canGroup={roots.length > 1 && !roots.some((node) => node.data.layoutMode === 'locked')} onGroup={createGroup} canFreeze={roots.length > 0} canUnfreeze={roots.some((node) => node.data.frozen) || !!selectedGroup?.data.frozen} onFreeze={canvas.freezeSubgraph} onUnfreeze={canvas.unfreezeSelected} {...(selectedGroup && selectedGroup.data.layoutMode !== 'locked' && !canvas.nodes.some((node) => node.parentId === selectedGroup.id && node.data.layoutMode === 'locked') ? { onUngroup: () => canvas.dissolveGroup(selectedGroup.id) } : {})} />
     <CanvasControls zoom={zoom} boxMode={boxMode} grid={grid} onZoomOut={() => void zoomOut()} onZoomIn={() => void zoomIn()} onFit={() => void fitView({ padding: 0.22, maxZoom: 1.15 })} onToggleBox={() => setBoxMode(!boxMode)} onToggleGrid={() => setGrid(!grid)} onFreeze={canvas.freezeLayout} onConfirm={canvas.confirmStage} onUndo={canvas.undo} onRedo={canvas.redo} canUndo={canvas.canUndo} canRedo={canvas.canRedo} />
     {canvas.connectionEdge && <ConnectionPanel edge={canvas.connectionEdge} stage={baseline.stage} onClose={canvas.closeConnections} onLocate={canvas.locateConnection} {...(canvas.message ? { message: canvas.message } : {})} {...(canvas.selectedRouteState ? { routeState: canvas.selectedRouteState } : {})} onRouteState={canvas.setEdgeRouteState} />}
-    {canvas.preview && <TransitionPanel target={canvas.preview.baseline} conflicts={canvas.preview.conflicts} onCancel={canvas.cancelPreview} />}
+    {canvas.preview && <TransitionPanel target={canvas.preview.baseline} conflicts={canvas.preview.conflicts} onCancel={canvas.cancelPreview} {...(canvas.preview.reset?{onAdopt:canvas.adoptPreview}:{})} />}
     {(canvas.saveError || canvas.message && !canvas.connectionEdge) && <div className="canvas-notice" role="status"><span>{canvas.saveError || canvas.message}</span>{canvas.saveError ? <button onClick={canvas.retrySave}>重试保存</button> : <button aria-label="关闭提示" onClick={canvas.clearMessage}><Icon name="close" /></button>}</div>}
   </main>;
 }
@@ -79,7 +80,14 @@ function WorkspaceLoader(props: VisualizationCanvasProps) {
     setState({ ready: false });
     loadWorkspace(props.persistence!.storage, props.persistence!.key).then((view) => {
       if (view) for (const baseline of props.baselines) {
-        const saved = view.baselines[baseline.id];
+        let saved = view.baselines[baseline.id];
+        if (saved && saved.revision !== (baseline.stage.graph.revision ?? baseline.stage.id)) {
+          const merged = prepareSourceRevision(baseline,saved);
+          if (!merged.ok) throw new Error(merged.conflicts.map((item)=>item.message).join('；'));
+          const {confirmed:_confirmed,confirmedAt:_stamp,...old}=saved;
+          saved={...old,...merged.content,revision:baseline.stage.graph.revision??baseline.stage.id,sourceStage:baseline.stage};
+          view.baselines[baseline.id]=saved;
+        }
         if (saved) {
           const reconciled = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes), saved.frozenGroups);
           if (reconciled.conflicts.length) throw new Error(reconciled.conflicts.map((item) => item.message).join('；'));

@@ -11,6 +11,9 @@ import { freezeSelection, frozenGroupFor, toggleFrozenExpansion, unfreezeGroup }
 import { captureRoutesForGroup, removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints } from '../model/edge-routes.ts';
 import { DiagramRouteCache, type CachedRoute } from '../model/route-cache.ts';
 import { planStageTransition, type StageViewState } from '../model/stage-transition.ts';
+import { prepareStageNavigation } from '../model/stage-navigation.ts';
+import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
+import type { StageTransitionSuccess } from '../model/stage-transition.ts';
 import type { StageConflict } from '../model/stage-types.ts';
 import type { CanvasWorkspaceView, EdgeRouteState, FrozenGroupSnapshot } from '../model/workspace.ts';
 import { useWorkspaceSession } from './use-workspace-session.ts';
@@ -22,6 +25,7 @@ interface TransitionPreview {
   baseline: VisualizationBaseline;
   state: StageViewState;
   conflicts: StageConflict[];
+  reset?: { result: StageTransitionSuccess; inheritance: StageInheritanceBase };
 }
 
 export function useCanvasController(props: VisualizationCanvasProps, restored?: CanvasWorkspaceView) {
@@ -52,6 +56,8 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   }), [baseline, session.commit]);
   const recordConstraint = useRef<(duration: number) => void>(() => {});
   const routesRef = useRef<Map<string, CachedRoute>>(new Map());
+  const captureRendered = useRef<() => void>(() => {});
+  const dragging = useRef(false);
   const fitView = useCallback((options: { padding: number; maxZoom: number }) => flow.fitView(options), [flow.fitView]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     if (preview) return;
@@ -70,7 +76,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       setAlignment(changes.some((change) => change.type === 'position' && change.dragging) ? result.guides : []);
     }
     setNodes(next);
-    if (moved.length && !changes.some((change) => change.type === 'position' && change.dragging)) finish();
+    if (moved.length && !dragging.current && !changes.some((change) => change.type === 'position' && change.dragging)) { captureRendered.current(); finish(); }
   }, [begin, finish, flow.getZoom, links, preview, setNodes]);
 
   const toggleNode = useCallback((id: string) => {
@@ -211,7 +217,9 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const target = props.baselines.find((item) => item.id === id)!;
     const targetRevision = target.stage.graph.revision ?? target.stage.id;
     const saved = session.getSavedContent(id);
-    if (saved && saved.revision === targetRevision) {
+    const targetIndex = props.baselines.findIndex((item) => item.id === id);
+    const parentId = target.previousStageId ?? props.baselines[targetIndex - 1]?.id;
+    if (!parentId && saved && saved.revision === targetRevision) {
       session.saveViewport(flow.getViewport());
       session.switchBaseline(id, (destination, source) => {
         const next = syncHierarchyExpansion(destination, source, target.stage);
@@ -224,37 +232,41 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       clearTransientState();
       return;
     }
-    const targetIndex = props.baselines.findIndex((item) => item.id === id);
-    const parentId = target.previousStageId ?? props.baselines[targetIndex - 1]?.id;
     const parent = parentId ? props.baselines.find((item) => item.id === parentId)! : baseline;
     const sourceContent = session.getConfirmedContent(parent.id);
     if (!sourceContent) { setMessage(`请先确认 ${parent.stage.label} 阶段布局，再进入目标阶段`); return; }
     const sourceRevision = session.getSavedContent(parent.id)?.revision;
     if (sourceRevision !== (parent.stage.graph.revision ?? parent.stage.id)) { setMessage(`来源已更新，请先检查并重新确认 ${parent.stage.label}`); return; }
-    const result = planStageTransition({
-      source: parent, target, sourceContent,
-      ...(saved ? { targetSaved: saved.content, ...(saved.revision ? { targetSavedRevision: saved.revision } : {}) } : {}),
-    });
+    const result = prepareStageNavigation({parent,target,parentContent:sourceContent,...(saved ? {saved:{...saved.content,revision:saved.revision!,...(saved.inheritance?{inheritance:saved.inheritance}:{}),...(saved.sourceStage?{sourceStage:saved.sourceStage}:{})}}:{})});
     if (!result.ok) {
       previewViewport.current = flow.getViewport();
-      setPreview({ targetId: id, baseline: target, state: result.candidate, conflicts: result.conflicts });
+      setPreview({ targetId: id, baseline: target, state: result.candidate, conflicts: result.conflicts, ...(result.resetCandidate && result.inheritance ? {reset:{result:result.resetCandidate,inheritance:result.inheritance}}:{}) });
       setMessage('');
       clearTransientState();
       return;
     }
     session.saveViewport(flow.getViewport());
-    session.applyStageTransition(id, result.state, result.base, result.record);
+    if (result.reused) session.switchBaseline(id);
+    else session.applyStageTransition(id, result.state, result.base, result.record, result.inheritance);
     setPreview(undefined); setMessage('');
     clearTransientState();
   }, [baseline, baselineId, clearTransientState, flow.getViewport, preview, props.baselines, session]);
 
   const confirmStage = useCallback(() => {
     if (preview) return;
+    captureRendered.current();
     session.confirm();
     setPreview(undefined);
     setMessage('已确认当前阶段布局，可作为后续阶段基础');
   }, [preview, session.confirm]);
   const cancelPreview = useCallback(() => { setPreview(undefined); setMessage('已取消候选预览'); }, []);
+  const adoptPreview = useCallback(() => {
+    if (!preview?.reset) return;
+    const {result,inheritance}=preview.reset;
+    session.applyStageTransition(preview.targetId,result.state,session.getSavedContent(preview.targetId)!.content,result.record,inheritance);
+    previewViewport.current=undefined;
+    setPreview(undefined);setMessage('已从父阶段重新继承，旧视图可撤销恢复');
+  },[preview,session]);
 
   useEffect(() => {
     if (preview) return;
@@ -312,21 +324,23 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     nodes: activeNodes, baseline: activeBaseline, projection, displayEdges, selectedEdge, alignment, zoom,
     ...(preview ? { readOnly: true } : {}),
     storedRoutes: preview?.state.edgeRoutes ?? session.edgeRoutes,
+    storedDisplayRoutes: preview?.state.displayRoutes ?? session.displayRoutes,
     toggleNode, chooseEdge, renameNode, commitRename: finish,
   });
   routesRef.current = scene.routes;
+  captureRendered.current = () => session.setDisplayRoutes(scene.snapshotRoutes(nodesRef.current));
   const selectedDisplayEdge = selectedEdge ? displayEdges.find((edge) => edge.id === selectedEdge) : undefined;
   const selectedCanonicalEdgeId = selectedDisplayEdge && !selectedDisplayEdge.aggregated ? selectedDisplayEdge.members[0]?.canonicalEdgeId : undefined;
   const selectedRouteState = selectedCanonicalEdgeId ? routeStateFor(session.edgeRoutes, selectedCanonicalEdgeId) : undefined;
   const dragProfile = useDragProfile(scene.routeStats);
   recordConstraint.current = dragProfile.recordConstraint;
-  const beginDrag = useCallback(() => { if (!preview) { begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
-  const finishDrag = useCallback(() => { if (!preview) { finish(); dragProfile.stop(); setAlignment([]); } }, [dragProfile.stop, finish, preview]);
+  const beginDrag = useCallback(() => { if (!preview) { dragging.current=true; begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
+  const finishDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=false; finish(); dragProfile.stop(); setAlignment([]); } }, [dragProfile.stop, finish, preview]);
   const saveViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => { if (!preview) session.saveViewport(viewport); }, [preview, session.saveViewport]);
   return {
     ...scene, ...session, saveViewport, undo, redo, baselines: props.baselines, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom,
     setSelectedEdge, setAlignment, onNodesChange, toggleNode, chooseEdge, selectBaseline, createGroup, dissolveGroup,
-    setLayoutMode, freezeLayout, beginDrag, finishDrag, confirmStage, cancelPreview, preview,
+    setLayoutMode, freezeLayout, beginDrag, finishDrag, confirmStage, cancelPreview, adoptPreview, preview,
     freezeSubgraph, unfreezeSelected, setEdgeRouteState, selectedRouteState,
     dragProfile: dragProfile.result,
     zoomIn: () => flow.zoomIn(), zoomOut: () => flow.zoomOut(), fitView,

@@ -11,6 +11,8 @@ import type {
   StageTransitionRecord,
 } from '../model/workspace.ts';
 import type { UserGraphOverlay } from '../model/overlay.ts';
+import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
+import { assertValidGraph } from '../../core/graph/validate.ts';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -104,6 +106,13 @@ function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
       if (!isRecord(item.label)) throw new Error('路径标签格式不正确');
       for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(item.label[key])) throw new Error('路径标签格式不正确');
     }
+    if (item.frozenBoundaries !== undefined) {
+      if (!Array.isArray(item.frozenBoundaries)) throw new Error('冻结路径分段格式不正确');
+      for (const segment of item.frozenBoundaries) {
+        if (!isRecord(segment) || !isText(segment.ownerId) || !['source', 'target'].includes(String(segment.endpoint)) || !FROZEN_SIDES.has(segment.side as FrozenBoundarySide) || !Array.isArray(segment.points) || segment.points.length < 2) throw new Error('冻结路径分段格式不正确');
+        for (const point of segment.points) checkPoint(point, '冻结路径分段格式不正确');
+      }
+    }
     return item as unknown as EdgeRouteSnapshot;
   });
 }
@@ -135,6 +144,13 @@ function checkFrozenGroups(raw: unknown, nodes: readonly CanvasNodeView[]): Froz
       if (!isRecord(item.previousModes) || Object.values(item.previousModes).some((mode) => mode !== undefined && !LAYOUT_MODES.has(String(mode)))) throw new Error('冻结前节点状态格式不正确');
     }
     if (item.previousRoutes !== undefined) checkEdgeRoutes(item.previousRoutes);
+    if (item.frozenFrames !== undefined) {
+      if (!isRecord(item.frozenFrames) || Object.values(item.frozenFrames).some((frame) => !isRecord(frame) || !isFiniteNumber(frame.width) || !isFiniteNumber(frame.height) || frame.width <= 0 || frame.height <= 0)) throw new Error('冻结框尺寸格式不正确');
+    }
+    if (item.protectedFrame !== undefined) {
+      checkPoint(item.protectedFrame, '冻结保护框格式不正确');
+      if (!isRecord(item.protectedFrame) || !isFiniteNumber(item.protectedFrame.width) || !isFiniteNumber(item.protectedFrame.height) || item.protectedFrame.width <= 0 || item.protectedFrame.height <= 0) throw new Error('冻结保护框格式不正确');
+    }
     groups.push(item as unknown as FrozenGroupSnapshot);
   }
   return groups;
@@ -166,7 +182,27 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   const edgeRoutes = checkEdgeRoutes(raw.edgeRoutes);
   const frozenGroups = checkFrozenGroups(raw.frozenGroups, nodes);
   const overlay = checkOverlay(raw.overlay);
-  return { nodes, edgeRoutes, frozenGroups, ...(overlay ? { overlay } : {}) };
+  if (raw.displayRoutes !== undefined) {
+    if (!Array.isArray(raw.displayRoutes)) throw new Error('投影路径快照格式不正确');
+    for (const route of raw.displayRoutes) {
+      if (!isRecord(route) || !isText(route.id) || !isText(route.source) || !isText(route.target) || !isText(route.sourceHandle) || !isText(route.targetHandle) || typeof route.text !== 'string' || !Array.isArray(route.memberIds) || !route.memberIds.every(isText) || !Array.isArray(route.points) || route.points.length < 2 || !isRecord(route.label)) throw new Error('投影路径快照格式不正确');
+      for (const point of route.points) checkPoint(point, '投影路径快照格式不正确');
+      for (const bounds of [route.sourceBounds, route.targetBounds]) {
+        checkPoint(bounds, '投影路径端点格式不正确');
+        if (!isRecord(bounds) || !isFiniteNumber(bounds.w) || !isFiniteNumber(bounds.h)) throw new Error('投影路径端点格式不正确');
+      }
+      for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(route.label[key])) throw new Error('投影路径标签格式不正确');
+    }
+  }
+  return { nodes, edgeRoutes, frozenGroups, ...(overlay ? { overlay } : {}), ...(raw.displayRoutes ? { displayRoutes: raw.displayRoutes as NonNullable<CanvasBaselineContent['displayRoutes']> } : {}) };
+}
+
+function checkInheritance(raw: unknown): StageInheritanceBase | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw) || !isText(raw.parentId) || !isText(raw.parentRevision) || !isText(raw.targetRevision) || !isRecord(raw.parentContent) || !isRecord(raw.targetContent) || !isRecord(raw.targetStage) || !isRecord(raw.targetStage.graph) || !Array.isArray(raw.targetStage.graph.nodes) || !Array.isArray(raw.targetStage.graph.edges)) throw new Error('阶段继承基准格式不正确');
+  checkContent(raw.parentContent); checkContent(raw.targetContent);
+  assertValidGraph(raw.targetStage.graph as unknown as StageInheritanceBase['targetStage']['graph']);
+  return raw as unknown as StageInheritanceBase;
 }
 
 function normalizeV1(view: UnknownRecord): CanvasWorkspaceView {
@@ -203,6 +239,11 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
     if (raw.confirmedAt !== undefined && !isText(raw.confirmedAt)) throw new Error('阶段确认时间格式不正确');
     const viewport = checkViewport(raw.viewport);
     const transition = checkTransition(raw.transition);
+    const inheritance = checkInheritance(raw.inheritance);
+    if (raw.sourceStage !== undefined) {
+      if (!isRecord(raw.sourceStage) || !isRecord(raw.sourceStage.graph) || !Array.isArray(raw.sourceStage.graph.nodes) || !Array.isArray(raw.sourceStage.graph.edges)) throw new Error('来源基准格式不正确');
+      assertValidGraph(raw.sourceStage.graph as unknown as StageInheritanceBase['targetStage']['graph']);
+    }
     baselines[id] = {
       revision: raw.revision,
       ...content,
@@ -210,6 +251,8 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
       ...(raw.confirmedAt !== undefined ? { confirmedAt: raw.confirmedAt as string } : {}),
       ...(viewport ? { viewport } : {}),
       ...(transition ? { transition } : {}),
+      ...(inheritance ? { inheritance } : {}),
+      ...(raw.sourceStage ? {sourceStage:raw.sourceStage as unknown as StageInheritanceBase['targetStage']} : {}),
     };
   }
   return { version: 2, baselineId: view.baselineId as string, baselines };

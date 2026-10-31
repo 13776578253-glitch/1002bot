@@ -89,6 +89,7 @@ export interface StageTransitionRecord {
   durationMs: number;
   placements: StagePlacementRecord[];
   expanded: string[];
+  metrics?: { inheritedNodes: number; addedNodes: number; reusedPaths: number; routedEdges: number; totalEdges: number };
 }
 
 export interface CanvasBaselineContent {

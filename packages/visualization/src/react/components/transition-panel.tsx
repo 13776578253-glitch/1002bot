@@ -8,14 +8,16 @@ export interface TransitionPanelProps {
   target: VisualizationBaseline;
   conflicts: readonly StageConflict[];
   onCancel(): void;
+  onAdopt?(): void;
 }
 
-export const TransitionPanel = memo(function TransitionPanel({ target, conflicts, onCancel }: TransitionPanelProps) {
+export const TransitionPanel = memo(function TransitionPanel({ target, conflicts, onCancel, onAdopt }: TransitionPanelProps) {
   const heading = useId();
   return <aside className="connection-panel transition-panel" aria-labelledby={heading}>
     <div className="connection-panel-header"><h2 id={heading}>阶段布局冲突</h2><button className="icon-button" aria-label="取消候选预览" onClick={onCancel}><Icon name="close" /></button></div>
     <div className="connection-panel-summary">{target.stage.label} · {target.stage.title}</div>
     <p className="connection-message" role="status">只读候选预览，未写入阶段快照。</p>
+    {onAdopt && <button className="connection-locate" onClick={onAdopt}>从父阶段重新继承</button>}
     <ol className="connection-list">{conflicts.map((conflict, index) => <li className="connection-item" key={`${conflict.kind}:${index}`}>
       <div className="connection-name"><span>{conflict.kind}</span></div>
       <div className="connection-endpoints"><span>{conflict.message}</span></div>
