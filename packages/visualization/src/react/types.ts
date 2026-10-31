@@ -1,5 +1,6 @@
 /** React canvas component options and input contracts. */
 import type { VisualizationBaseline } from '../core/schema/baseline.ts';
+import type { CanvasViewStorage } from './model/workspace.ts';
 
 export interface VisualizationCanvasProps {
   /** 架构演进基线快照数组；至少包含一项，按数组顺序渲染。 */
@@ -8,4 +9,5 @@ export interface VisualizationCanvasProps {
   initialBaselineId?: string;
   /** 初始主题外观；未指定时默认从本地存储读取或回退至深色主题。 */
   initialTheme?: 'dark' | 'light';
+  persistence?: { key: string; storage: CanvasViewStorage };
 }

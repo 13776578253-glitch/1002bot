@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/VisualizationCanvas.tsx`, `src/adapters/progress-reports/index.ts`
+Owner: `packages/visualization/package.json`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/adapters/progress-reports/index.ts`
 
 # Visualization
 
@@ -29,6 +29,9 @@ pnpm check:dist
 | `src/core/layout/geometry.ts` | 正交避障、矩形与路径运算 |
 | `src/react/model` | 初始位置、递归显隐、分组、吸附、四向有限扩缩、路由与标签 |
 | `src/react/canvas` | 受控交互状态与场景派生 |
+| `src/react/model/workspace.ts` | 可序列化工作视图、稳定 ID 恢复与有界事务历史 |
+| `src/react/model/route-cache.ts` | 按端点和障碍变化失效的精确路径与标签缓存 |
+| `src/react/model/display-edges.ts` | 折叠展示边聚合及原始连接成员 |
 | `src/react/components` | 节点、关系和控制组件 |
 | `src/react/styles` | 画布作用域内的主题、节点、连线和控制样式 |
 | `src/adapters/progress-reports` | 将可序列化的报告目录与阶段增量转换为完整基线；无 IO 或 UI 依赖 |
@@ -60,6 +63,31 @@ export function Architecture({ baselines }: { baselines: readonly VisualizationB
 ```
 
 组件填充父容器。`baselines` 至少一项，按数组顺序展示；未指定 `initialBaselineId` 时默认选择最后一项。`initialTheme` 可设为 `dark` 或 `light`，默认读取本地主题偏好。
+
+## 稳定工作视图
+
+节点约束为 `free`、`fixed`、`locked`。固定节点允许手动移动，自动避让保持其位置；锁定节点保护直接移动、标题与归属编辑，仍允许查看及符合空间约束的展开。父级整体移动保留内部相对坐标。冻结操作一次固定全部可见自由节点，锁定状态保持不变。
+
+报告模块折叠后，按可见端点、方向和关系类型聚合外部连线；点击数量标签查看原始关系及端点路径。定位仅展开所需祖先并聚焦目标。新增和替换保留文字及数量；空间不足时保持布局并提示相关约束。
+
+`persistence` 为可选配置。Playground 已启用本机自动恢复；其他调用方可注入同步或异步 `CanvasViewStorage`：
+
+```tsx
+import { VisualizationCanvas, createLocalStorageViewStorage } from '@1002bot/visualization/react';
+
+const persistence = {
+  key: 'architecture-workspace',
+  storage: createLocalStorageViewStorage(localStorage),
+};
+
+<VisualizationCanvas baselines={baselines} persistence={persistence} />;
+```
+
+`CanvasWorkspaceView` 保存当前阶段、各阶段布局/展开/约束、手动分组与标题、容器扩容基准和视口；函数、选择状态、路径缓存与撤销栈不保存。源版本变化时按稳定 ID 合并：新节点自由，删除实体和空组移除，报告归属取当前源，合法手动归属保留。恢复冲突或存储错误会显示状态和重试入口，读取失败期间不覆盖原记录。
+
+位置与约束按阶段保存；切换时共同节点继续同步当前展开状态。展开和切换不自动缩放全图，恢复各阶段已保存视口；适应画布由按钮触发。拖动结束、标题提交及其他布局操作后保存，视口在移动结束时保存。
+
+每阶段当前页面会话保留100步撤销/重做。一次拖动包含祖先扩缩和邻居避让；冻结、分组、标题提交和展开各占一步。快捷键为 Ctrl/Cmd+Z 与 Ctrl/Cmd+Shift+Z（另支持 Ctrl+Y），输入框使用原生编辑历史。
 
 ## 数据接口
 

@@ -32,3 +32,39 @@
   :where(.canvas-app) .selection-tools { top:64px; max-width:calc(100% - 24px); }
 }
 @media(prefers-reduced-motion:reduce) { :where(.canvas-app) .baseline-panel { animation:none; } }
+:where(.canvas-app) .icon-button:disabled { opacity:.35; cursor:default; }
+:where(.canvas-app) .layout-modes { display:flex; gap:3px; }
+:where(.canvas-app) .layout-modes button { background:transparent; color:var(--muted); padding:4px 7px; }
+:where(.canvas-app) .layout-modes button[aria-pressed="true"] { background:var(--accent-bg); color:var(--accent); }
+:where(.canvas-app) .layout-mark { display:inline-flex; flex:none; align-items:center; color:var(--muted); }
+:where(.canvas-app) .layout-mark svg { width:14px; height:14px; }
+:where(.canvas-app) [data-layout-mode="locked"] { cursor:default; }
+:where(.canvas-app) .link-label button { display:flex; align-items:center; justify-content:center; gap:7px; white-space:nowrap; }
+:where(.canvas-app) .edge-added { color:var(--change-added); }
+:where(.canvas-app) .edge-replaced { color:var(--change-replaced); }
+:where(.canvas-app) .connection-panel { position:absolute; z-index:21; top:72px; right:20px; width:320px; max-width:calc(100vw - 40px); max-height:calc(100dvh - 152px); overflow:auto; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px; box-shadow:0 4px 16px #0002; }
+:where(.canvas-app) .connection-panel-header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+:where(.canvas-app) .connection-panel h2 { font-size:14px; font-weight:600; margin:0; }
+:where(.canvas-app) .connection-panel-summary { color:var(--muted); font-size:12px; line-height:20px; padding:4px 0 8px; }
+:where(.canvas-app) .connection-list { list-style:none; padding:0; margin:0; }
+:where(.canvas-app) .connection-item { padding:12px 0; border-top:1px solid var(--line); }
+:where(.canvas-app) .connection-name { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+:where(.canvas-app) .connection-endpoints { display:flex; flex-direction:column; gap:3px; color:var(--muted); font-size:12px; line-height:19px; overflow-wrap:anywhere; margin:7px 0; }
+:where(.canvas-app) .connection-endpoints>span:nth-child(2) { line-height:12px; }
+:where(.canvas-app) .connection-locate { display:inline-flex; gap:5px; align-items:center; padding:4px 7px; min-height:30px; color:var(--text); font-size:12px; border:1px solid var(--line); border-radius:5px; background:transparent; }
+:where(.canvas-app) .connection-locate:hover { background:var(--hover); }
+:where(.canvas-app) .connection-locate svg { width:14px; height:14px; }
+:where(.canvas-app) .connection-message { color:var(--accent); font-size:12px; line-height:20px; }
+:where(.canvas-app) .canvas-notice { position:absolute; z-index:30; bottom:76px; left:20px; display:flex; align-items:center; gap:12px; max-width:calc(100% - 40px); padding:9px 12px; border:1px solid var(--line); border-radius:7px; color:var(--text); background:var(--surface); font-size:12px; line-height:20px; }
+:where(.canvas-app) .canvas-notice button { border:0; border-radius:4px; background:var(--hover); color:var(--text); padding:4px; white-space:nowrap; }
+:where(.canvas-app) .canvas-notice svg { width:14px; height:14px; }
+:where(.canvas-app).workspace-loading { display:flex; justify-content:center; align-items:center; gap:12px; color:var(--muted); }
+:where(.canvas-app).workspace-loading button { border:1px solid var(--line); border-radius:5px; background:var(--surface); color:var(--text); padding:7px 10px; }
+:where(.canvas-app) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media(max-width:600px) {
+  :where(.canvas-app) .connection-panel { top:64px; right:12px; max-width:calc(100vw - 24px); }
+  :where(.canvas-app) .selection-tools { gap:7px; }
+  :where(.canvas-app) .layout-modes button span { display:none; }
+  :where(.canvas-app) .canvas-controls { gap:0; }
+  :where(.canvas-app) .canvas-controls .icon-button { width:30px; }
+}

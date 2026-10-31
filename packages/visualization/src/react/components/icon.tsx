@@ -13,6 +13,11 @@ export function Icon({ name }: { name: string }) {
     expand: 'm9 6 6 6-6 6', collapse: 'm6 9 6 6 6-6',
     layers: 'm12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5',
     close: 'm6 6 12 12M6 18 18 6',
+    pin: 'm16 3 5 5-4 2-3 6-2-2-6 3 3-6-2-2 6-3ZM3 21l6-6',
+    lock: 'M6 10h12v11H6ZM8 10V6a4 4 0 0 1 8 0v4M12 14v3',
+    move: 'M12 3v18M3 12h18m-12-6 3-3 3 3m-6 12 3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3',
+    undo: 'M9 4 4 9l5 5M4 9h10a6 6 0 0 1 0 12',
+    redo: 'm15 4 5 5-5 5m5-5H10a6 6 0 0 0 0 12',
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} />{name === 'sun' && <circle cx="12" cy="12" r="4" />}</svg>;
 }
