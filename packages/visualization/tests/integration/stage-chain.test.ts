@@ -16,7 +16,7 @@ import { captureFrozenSubgraph, validateFrozenConnections, boundaryWorldPoints }
 import { applyStoredRoutes, retainedCanonicalRoutes, reservedLockedRoutes, worldRoutePoints } from '../../src/react/model/edge-routes.ts';
 
 test('confirmed report M1 advances through every published stage without moving inherited content anchors', () => {
-  const baselines = adaptProgressReports(JSON.parse(readFileSync(new URL('../../datasets/progress-reports/architecture.json', import.meta.url), 'utf8')) as ReportDataset);
+  const baselines = adaptProgressReports(JSON.parse(readFileSync(new URL('../fixtures/legacy-reports.json', import.meta.url), 'utf8')) as ReportDataset);
   let nodes = baselineNodes(baselines[0]!);
   for (const node of nodes.filter((node) => node.data.expandable)) nodes = toggleHierarchy(nodes, node.id, baselines[0]!.stage);
   let rootIndex = 0;

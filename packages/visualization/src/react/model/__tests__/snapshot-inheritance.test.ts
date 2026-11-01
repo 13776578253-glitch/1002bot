@@ -243,7 +243,7 @@ test('temporarily hidden display paths survive a rebase while their canonical ed
 });
 
 test('real report baseline merges independent local and upstream node movements', () => {
-  const dataset = JSON.parse(readFileSync(new URL('../../../../datasets/progress-reports/architecture.json', import.meta.url), 'utf8')) as ReportDataset;
+  const dataset = JSON.parse(readFileSync(new URL('../../../../tests/fixtures/legacy-reports.json', import.meta.url), 'utf8')) as ReportDataset;
   const [, second] = adaptProgressReports(dataset);
   const base = captureContent(baselineNodes(second!));
   const local = structuredClone(base), incoming = structuredClone(base);

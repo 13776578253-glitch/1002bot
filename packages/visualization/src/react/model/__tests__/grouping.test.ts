@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CARD_SIZE, groupSelection, leafMembers, normalizeMarqueeSelection, selectionRoots, ungroup, worldPosition, type CanvasNode } from '../grouping.ts';
 import { createHierarchyNodes, toggleHierarchy } from '../hierarchy.ts';
-import { recursiveStage, initialPositions } from '../../../../examples/fixtures/recursive.ts';
+import { recursiveStage, initialPositions } from '../../../../tests/fixtures/recursive.ts';
 
 const card = (id: string, x: number, y: number): CanvasNode => ({
   id, type: 'card', position: { x, y }, ...CARD_SIZE, data: { title: id }, selected: true,

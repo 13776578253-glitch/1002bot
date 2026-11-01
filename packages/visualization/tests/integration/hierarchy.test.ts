@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHierarchyNodes as createNodes, hierarchyProjection as projectNodes, nodeIsVisible, toggleHierarchy as toggleNodes } from '../../src/react/model/hierarchy.ts';
 import { groupSelection, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { recursiveStage, initialPositions } from '../../examples/fixtures/recursive.ts';
+import { recursiveStage, initialPositions } from '../fixtures/recursive.ts';
 import { assertValidSnapshot } from '../../src/core/schema/validate.ts';
 import { routeDiagramEdge } from '../../src/react/model/routing.ts';
 import { obstacleFromRect } from '../../src/core/layout/geometry.ts';

@@ -4,7 +4,7 @@ Owner: `packages/visualization/src/core/project/types.ts`, `src/adapters/project
 
 当前站点从 `project.json` 加载 M0。M0 采用 M1 报告的六块简化总览：Event 调用方、Runtime、Agent、Provider、World、Session，共五条展示关系。原始关系保留 Session 的追加与读取两项事实。State、组合根和公共契约保留在 Source 中。
 
-`architecture.json` 为保留的旧 M1.0–M6.0 数据集，旧报告适配器继续支持读取。当前站点不再加载它。迁移前逐字节备份在 `backups/2026-11-01-before-project-model/`，SHA-256 记录在该目录的 manifest.json。
+旧 M1.0–M6.0 数据集已迁至 `tests/fixtures/legacy-reports.json`，仅由旧报告适配器的测试读取，当前站点不加载。迁移前的逐字节副本保存在仓库根 `.scratch/visualization-backups/2026-11-01-before-project-model/`，不纳入版本控制。
 
 ## 文件职责
 

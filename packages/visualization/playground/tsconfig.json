@@ -10,9 +10,7 @@
     "vite.config.ts",
     "../src/**/*.ts",
     "../src/**/*.tsx",
-    "../src/**/*.d.ts",
-    "../examples/**/*.ts",
-    "../examples/**/*.tsx"
+    "../src/**/*.d.ts"
   ],
   "exclude": [
     "../src/**/__tests__/**",

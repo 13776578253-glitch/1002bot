@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleBaselines as baselineOptions } from '../../examples/baselines.ts';
+import { sampleBaselines as baselineOptions } from '../fixtures/baselines.ts';
 import { relationLabel } from '../../src/react/model/change.ts';
 import type { StageSnapshot } from '../../src/core/schema/types.ts';
 type BaselineId = 'M1' | 'M2';

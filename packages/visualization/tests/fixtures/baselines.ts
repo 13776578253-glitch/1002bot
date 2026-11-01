@@ -1,6 +1,6 @@
-/** Standalone sample architecture baselines (M1/M2) with recursive hierarchies for playground and verification. */
-import type { CanonicalEdge, CanonicalNode, StageSnapshot } from '../src/core/schema/types.ts';
-import type { ChangeKind, ChangeMark, VisualizationBaseline } from '../src/core/schema/baseline.ts';
+/** Sample architecture baselines for visualization tests. */
+import type { CanonicalEdge, CanonicalNode, StageSnapshot } from '../../src/core/schema/types.ts';
+import type { ChangeKind, ChangeMark, VisualizationBaseline } from '../../src/core/schema/baseline.ts';
 
 const component = (id: string, parentId: string | null, label: string, summary: string, order: number): CanonicalNode => ({
   id, parentId, label, summary, kind: parentId === null ? 'root' : 'component', ports: [], order,

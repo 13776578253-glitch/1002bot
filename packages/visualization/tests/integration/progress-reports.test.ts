@@ -5,7 +5,7 @@ import { adaptProgressReports, type ReportDataset } from '../../src/adapters/pro
 import { assertValidBaselines, projectGraph } from '../../src/index.ts';
 
 const repository = new URL('../../../../', import.meta.url);
-const dataset: ReportDataset = JSON.parse(await readFile(new URL('../../datasets/progress-reports/architecture.json', import.meta.url), 'utf8'));
+const dataset: ReportDataset = JSON.parse(await readFile(new URL('../fixtures/legacy-reports.json', import.meta.url), 'utf8'));
 const baselines = adaptProgressReports(dataset);
 const baseline = (id: string) => baselines.find((item) => item.id === id)!;
 const nodeIds = (id: string) => new Set(baseline(id).stage.graph.nodes.map((node) => node.id));

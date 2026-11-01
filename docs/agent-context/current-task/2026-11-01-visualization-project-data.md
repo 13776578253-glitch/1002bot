@@ -35,3 +35,5 @@ Plan copied unchanged to docs/agent-context/history/plans/2026-11-01-visualizati
 Open issues: M0 functionality none. Internal module details and later stage data require deliberate authoring in subsequent rounds. Checkpoints are stored; no checkpoint browser/restoration UI was introduced. Previous large-graph performance acceptance remains outside this M0 data milestone.
 
 Commit suggestion: feat(visualization)!: introduce authored project data from M0
+
+Correction 2026-11-01: the old dataset and its backup moved out of `datasets/progress-reports/`. The dataset is now `packages/visualization/tests/fixtures/legacy-reports.json` and is read only by tests; the byte-identical backup is at the repository root `.scratch/visualization-backups/2026-11-01-before-project-model/` and is no longer versioned. Byte size and SHA-256 are unchanged. Record: `current-task/2026-11-01-visualization-legacy-fixture-migration.md`.

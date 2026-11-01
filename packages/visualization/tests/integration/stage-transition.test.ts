@@ -43,7 +43,7 @@ const second = baseline('two', stage('two', addedNodes, [], 'two-r1'), {
 const expandedSource = (): CanvasNode[] => toggleHierarchy(createHierarchyNodes(first.stage, first.positions), 'module', first.stage);
 
 test('report M1 to M2 leaves confirmed source geometry unchanged when transition cannot preserve it', () => {
-  const dataset = JSON.parse(readFileSync(new URL('../../datasets/progress-reports/architecture.json', import.meta.url), 'utf8')) as ReportDataset;
+  const dataset = JSON.parse(readFileSync(new URL('../fixtures/legacy-reports.json', import.meta.url), 'utf8')) as ReportDataset;
   const [m1, m2] = adaptProgressReports(dataset);
   const source = captureContent(baselineNodes(m1!));
   const original = JSON.stringify(source);

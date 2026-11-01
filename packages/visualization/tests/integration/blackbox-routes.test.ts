@@ -104,7 +104,7 @@ test('a frozen boundary route that cannot avoid a locked path reports failure in
 });
 
 test('freezing report Runtime with surrounding space captures all canonical incident edges', () => {
-  const dataset = JSON.parse(readFileSync(new URL('../../datasets/progress-reports/architecture.json', import.meta.url), 'utf8')) as ReportDataset;
+  const dataset = JSON.parse(readFileSync(new URL('../fixtures/legacy-reports.json', import.meta.url), 'utf8')) as ReportDataset;
   const baseline = adaptProgressReports(dataset).at(-1)!;
   const source = baselineNodes(baseline).map((n) => !n.parentId && n.id !== 'runtime' ? { ...n, position: { x:n.position.x+6000, y:n.position.y+6000 } } : n);
   const frozen = freezeSelection({ nodes: source, rootIds: ['runtime'], groupId: 'report:runtime', stage: baseline.stage });
