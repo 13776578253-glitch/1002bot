@@ -7,7 +7,7 @@ import type { CanvasWorkspaceView } from './model/workspace.ts';
 import { Card, Structure, Cluster } from './components/nodes.tsx';
 import { Link, type LinkData } from './components/relation-edge.tsx';
 import { Icon } from './components/icon.tsx';
-import { BaselinePicker } from './components/baseline-picker.tsx';
+import { TopActions } from './components/top-actions.tsx';
 import { CanvasControls } from './components/canvas-controls.tsx';
 import { SelectionTools } from './components/selection-tools.tsx';
 import { ConnectionPanel } from './components/connection-panel.tsx';
@@ -29,7 +29,7 @@ const panButtons = [0, 1, 2], boxPanButtons = [1, 2];
 
 function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { restored?: CanvasWorkspaceView }) {
   const canvas = useCanvasController(props, restored);
-  const { displayNodes, edges, visibleGuides, selectedGroup, roots, selectionLabel, setNodes, baseline, baselines, baselineId, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom, setSelectedEdge, onNodesChange, toggleNode, chooseEdge, selectBaseline, createGroup, zoomIn, zoomOut, fitView } = canvas;
+  const { displayNodes, edges, visibleGuides, selectedGroup, roots, selectionLabel, setNodes, baseline, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom, setSelectedEdge, onNodesChange, toggleNode, chooseEdge, createGroup, zoomIn, zoomOut, fitView } = canvas;
   const onDoubleClick = useCallback((event: MouseEvent, node: CanvasNode) => {
     if (canvas.preview) return;
     if (node.data.expandable && !(event.target as Element).closest('.nodrag') && (node.type === 'card' || (event.target as Element).closest('.structure-header'))) toggleNode(node.id);
@@ -62,12 +62,12 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
       {grid && <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--grid)" className="canvas-grid" />}
       <ViewportPortal><svg className="alignment-guides" aria-hidden="true">{visibleGuides.map((guide, index) => <line key={index} x1={guide.axis === 'x' ? guide.value : guide.start} y1={guide.axis === 'y' ? guide.value : guide.start} x2={guide.axis === 'x' ? guide.value : guide.end} y2={guide.axis === 'y' ? guide.value : guide.end} strokeWidth={1 / Math.max(0.2, zoom / 100)} />)}</svg></ViewportPortal>
     </ReactFlow>
-    <div className="top-actions"><BaselinePicker baselines={baselines} selected={baselineId} onSelect={selectBaseline} /><button className="icon-button theme-button" aria-label={`切换为${theme === 'dark' ? '浅' : '深'}色主题`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button></div>
+    <TopActions workspaceTitle={baseline.stage.title} stageLabel={baseline.stage.label} theme={theme} onThemeChange={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
     <SelectionTools label={selectionLabel} modes={canvas.selectedModes} onMode={canvas.setLayoutMode} canGroup={roots.length > 1 && !roots.some((node) => node.data.layoutMode === 'locked')} onGroup={createGroup} canFreeze={roots.length > 0} canUnfreeze={roots.some((node) => node.data.frozen) || !!selectedGroup?.data.frozen} onFreeze={canvas.freezeSubgraph} onUnfreeze={canvas.unfreezeSelected} {...(selectedGroup && selectedGroup.data.layoutMode !== 'locked' && !canvas.nodes.some((node) => node.parentId === selectedGroup.id && node.data.layoutMode === 'locked') ? { onUngroup: () => canvas.dissolveGroup(selectedGroup.id) } : {})} />
     <CanvasControls zoom={zoom} boxMode={boxMode} grid={grid} onZoomOut={() => void zoomOut()} onZoomIn={() => void zoomIn()} onFit={() => void fitView({ padding: 0.22, maxZoom: 1.15 })} onToggleBox={() => setBoxMode(!boxMode)} onToggleGrid={() => setGrid(!grid)} onFreeze={canvas.freezeLayout} onConfirm={canvas.confirmStage} onUndo={canvas.undo} onRedo={canvas.redo} canUndo={canvas.canUndo} canRedo={canvas.canRedo} />
     {canvas.connectionEdge && <ConnectionPanel edge={canvas.connectionEdge} stage={baseline.stage} onClose={canvas.closeConnections} onLocate={canvas.locateConnection} {...(canvas.message ? { message: canvas.message } : {})} {...(canvas.selectedRouteState ? { routeState: canvas.selectedRouteState } : {})} onRouteState={canvas.setEdgeRouteState} />}
     {canvas.preview && <TransitionPanel target={canvas.preview.baseline} conflicts={canvas.preview.conflicts} onCancel={canvas.cancelPreview} {...(canvas.preview.reset?{onAdopt:canvas.adoptPreview}:{})} />}
-    {(canvas.saveError || canvas.message && !canvas.connectionEdge) && <div className="canvas-notice" role="status"><span>{canvas.saveError || canvas.message}</span>{canvas.saveError ? <button onClick={canvas.retrySave}>重试保存</button> : <button aria-label="关闭提示" onClick={canvas.clearMessage}><Icon name="close" /></button>}</div>}
+    {(canvas.saveError || canvas.message && !canvas.connectionEdge) && <div className="canvas-notice" role="status" data-tone={canvas.saveError ? 'error' : 'info'}><span className="notice-symbol" aria-hidden="true"><Icon name={canvas.saveError ? 'warning' : 'info'} /></span><span className="notice-message">{canvas.saveError || canvas.message}</span>{canvas.saveError ? <button onClick={canvas.retrySave}>重试保存</button> : <button aria-label="关闭提示" onClick={canvas.clearMessage}><Icon name="close" /></button>}</div>}
   </main>;
 }
 

@@ -19,6 +19,13 @@ export function Icon({ name }: { name: string }) {
     undo: 'M9 4 4 9l5 5M4 9h10a6 6 0 0 1 0 12',
     redo: 'm15 4 5 5-5 5m5-5H10a6 6 0 0 0 0 12',
     check: 'm4 12 5 5L20 6',
+    folder: 'M3 7V5h6l2 2h10v13H3V7Z',
+    import: 'M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5',
+    export: 'M12 15V3m-4 4 4-4 4 4M4 16v5h16v-5',
+    history: 'M3 10a9 9 0 1 1 2 8M3 4v6h6M12 7v5l3 2',
+    save: 'M4 3h13l4 4v14H3V3h1ZM7 3v6h10V3M7 21v-8h10v8',
+    info: 'M12 16v-4M12 8h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+    warning: 'm12 3 10 18H2L12 3ZM12 9v5M12 17h.01',
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} />{name === 'sun' && <circle cx="12" cy="12" r="4" />}</svg>;
 }
