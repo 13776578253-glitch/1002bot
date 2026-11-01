@@ -4,6 +4,7 @@
   --bg:#211f1c; --surface:#2b2824; --hover:#34302b; --line:#48423a;
   --canvas-bg:#201f1c; --chrome-bg:#292722; --chrome-hover:#34312b; --chrome-line:#49443c;
   --chrome-shadow:0 2px 10px #0002;
+  --snapshot-overlay:#14120f99; --snapshot-inset:#25231f;
   --text:#eee9e1; --muted:#b6aea2; --accent:#dfab90; --accent-bg:#3c2e27;
   --edge:#969084; --grid:rgba(190,181,166,.38); --group-bg:rgba(171,193,213,.045); --group-line:#7e8b99;
   --change-added:#81bc9a; --change-inherited:#b6aea2; --change-replaced:#d6ab62; --change-baseline:#b6aea2;
@@ -14,6 +15,7 @@
   --bg:#f7f5f0; --surface:#fffdf9; --hover:#e9e5dd; --line:#cdc5b8;
   --canvas-bg:#f5f3ee; --chrome-bg:#fffdf9; --chrome-hover:#efebe4; --chrome-line:#d8d1c5;
   --chrome-shadow:0 2px 10px #312a1d12;
+  --snapshot-overlay:#302a2140; --snapshot-inset:#f5f2ec;
   --text:#302b25; --muted:#6c6357; --accent:#a85f3e; --accent-bg:#f1e2d8;
   --edge:#81786b; --grid:rgba(105,96,82,.34); --group-bg:rgba(110,136,167,.045); --group-line:#98a2b3;
   --change-added:#23754f; --change-inherited:#6c6357; --change-replaced:#95600d; --change-baseline:#6c6357;
