@@ -8,19 +8,19 @@ export interface SnapshotDialogProps {
   description?: string;
   stages: readonly { id: string; label: string }[];
   stageId: string;
+  onSelectStage(id: string): void;
   onClose(): void;
 }
 
 const tabs = ['详情', '活动记录', '备注'] as const;
 
-export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, description, onClose }: SnapshotDialogProps) {
+export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, description, onSelectStage, onClose }: SnapshotDialogProps) {
   const id = useId();
   const dialog = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const tabButtons = useRef<HTMLButtonElement[]>([]);
   const [tab, setTab] = useState(0);
   const [note, setNote] = useState('');
-  const [selectedStage, setSelectedStage] = useState(stageId);
   useEffect(() => {
     closeButton.current!.focus();
     const keydown = (event: KeyboardEvent) => {
@@ -45,15 +45,15 @@ export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, de
           if (next === undefined) return;
           event.preventDefault(); event.stopPropagation(); setTab(next); tabButtons.current[next]!.focus();
         }}>{label}</button>)}</div>
-        <section className="snapshot-tab-content" role="tabpanel" id={`${id}-panel-${tab}`} aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}>
-          {tab === 1 && <div className="snapshot-activity-empty"><Icon name="history" /><p>暂无可显示的活动</p></div>}
-          {tab === 2 && <label className="snapshot-note"><span>快照备注</span><textarea placeholder="记录这次快照的说明…" value={note} onChange={(event) => setNote(event.target.value)} /></label>}
-        </section>
+        {tabs.map((label, index) => <section key={label} className="snapshot-tab-content" role="tabpanel" id={`${id}-panel-${index}`} aria-labelledby={`${id}-tab-${index}`} tabIndex={tab === index ? 0 : -1} hidden={tab !== index}>
+          {index === 1 && <div className="snapshot-activity-empty"><Icon name="history" /><p>暂无可显示的活动</p></div>}
+          {index === 2 && <label className="snapshot-note"><span>快照备注</span><textarea placeholder="记录这次快照的说明…" value={note} onChange={(event) => setNote(event.target.value)} /></label>}
+        </section>)}
       </div>
       <aside className="snapshot-sidebar" aria-label="快照属性">
         <div className="snapshot-properties"><h3>快照属性</h3><dl>
           <div><dt>状态</dt><dd><span className="snapshot-status"><span />工作区</span></dd></div>
-          <div><dt><label htmlFor={`${id}-stage`}>所属阶段</label></dt><dd><div className="snapshot-stage"><select id={`${id}-stage`} value={selectedStage} onChange={(event) => setSelectedStage(event.target.value)}>{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.label}</option>)}</select><Icon name="down" /></div></dd></div>
+          <div><dt><label htmlFor={`${id}-stage`}>所属阶段</label></dt><dd><div className="snapshot-stage"><select id={`${id}-stage`} value={stageId} onChange={(event) => { const next = event.target.value; if (next !== stageId) onSelectStage(next); }}>{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.label}</option>)}</select><Icon name="down" /></div></dd></div>
           <div><dt>标签</dt><dd className="snapshot-unset">—</dd></div>
           <div><dt>保存时间</dt><dd className="snapshot-unset">—</dd></div>
         </dl></div>

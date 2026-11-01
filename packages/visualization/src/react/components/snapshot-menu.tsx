@@ -8,8 +8,13 @@ export function SnapshotMenu(props: Omit<SnapshotDialogProps, 'onClose'>) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => { setOpen(false); trigger.current!.focus(); }, []);
+  const select = useCallback((id: string) => {
+    if (id === props.stageId) return;
+    props.onSelectStage(id);
+    close();
+  }, [close, props.onSelectStage, props.stageId]);
   return <>
     <button ref={trigger} className="icon-button top-action" aria-label="快照" title="快照" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="history" /></button>
-    {open && createPortal(<SnapshotDialog {...props} onClose={close} />, trigger.current!.closest('.canvas-app')!)}
+    {open && createPortal(<SnapshotDialog {...props} onClose={close} onSelectStage={select} />, trigger.current!.closest('.canvas-app')!)}
   </>;
 }

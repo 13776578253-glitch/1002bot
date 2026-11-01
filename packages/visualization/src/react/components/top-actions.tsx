@@ -2,7 +2,7 @@
 import { Icon } from './icon.tsx';
 import { SnapshotMenu } from './snapshot-menu.tsx';
 
-export function TopActions({ workspaceTitle, stageLabel, stageId, stages, description, theme, onThemeChange }: {
+export function TopActions({ workspaceTitle, stageLabel, stageId, stages, description, theme, onThemeChange, onSelectStage }: {
   workspaceTitle: string;
   stageLabel: string;
   description?: string;
@@ -10,10 +10,11 @@ export function TopActions({ workspaceTitle, stageLabel, stageId, stages, descri
   stages: readonly { id: string; label: string }[];
   theme: 'dark' | 'light';
   onThemeChange(): void;
+  onSelectStage(id: string): void;
 }) {
   return <div className="top-actions" role="toolbar" aria-label="项目与视图">
     <button className="icon-button top-action" aria-label="项目" title="项目" aria-disabled="true"><Icon name="folder" /></button>
-    <SnapshotMenu workspaceTitle={workspaceTitle} stageLabel={stageLabel} stageId={stageId} stages={stages} {...(description ? { description } : {})} />
+    <SnapshotMenu workspaceTitle={workspaceTitle} stageLabel={stageLabel} stageId={stageId} stages={stages} onSelectStage={onSelectStage} {...(description ? { description } : {})} />
     <span className="top-actions-divider" aria-hidden="true" />
     <button className="icon-button top-action" aria-label="导入" title="导入" aria-disabled="true"><Icon name="import" /></button>
     <button className="icon-button top-action" aria-label="导出" title="导出" aria-disabled="true"><Icon name="export" /></button>
