@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "id": "1002bot",
+  "title": "1002bot",
+  "revision": "project-v1",
+  "source": [
+    "source/catalog.json"
+  ],
+  "stages": [
+    "stages/02b980d3.json"
+  ],
+  "views": [
+    "views/overview.json"
+  ],
+  "workspace": "workspace/initial.json"
+}

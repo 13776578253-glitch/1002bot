@@ -9,8 +9,8 @@ const projectStorage = createProjectViewStorage(localStorage, project.id);
 const persistence = {
   key: `visualization:project:${project.id}:workspace:v1`,
   storage: {
-    load: (key: string) => projectStorage.load(key) ?? projectWorkspaceToCanvas(initialWorkspace),
+    load: (key: string) => projectStorage.load(key) ?? (initialWorkspace ? projectWorkspaceToCanvas(initialWorkspace) : undefined),
     save: projectStorage.save,
   },
 };
-createRoot(document.getElementById('root')!).render(<VisualizationCanvas baselines={baselines} initialBaselineId="M0" persistence={persistence} />);
+createRoot(document.getElementById('root')!).render(<VisualizationCanvas baselines={baselines} initialBaselineId={baselines[0]!.id} persistence={persistence} />);

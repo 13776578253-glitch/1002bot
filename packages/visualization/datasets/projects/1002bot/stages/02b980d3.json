@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "id": "02b980d3",
+  "label": "最小运行基座",
+  "title": "最小运行基座",
+  "subtitle": "Event → Runtime → Agent / Provider / World / Session",
+  "doc": "docs/进度汇报/2026-10-04-M1.0进度与架构图.md",
+  "select": {
+    "componentIds": [
+      "event-caller",
+      "runtime",
+      "agent",
+      "provider",
+      "world",
+      "session",
+      "state",
+      "assembly"
+    ],
+    "relationIds": [
+      "event-entry",
+      "runtime-agent",
+      "runtime-provider",
+      "runtime-world",
+      "runtime-session-append",
+      "runtime-session-read",
+      "assembly-runtime"
+    ],
+    "contractIds": [
+      "event",
+      "agent",
+      "provider",
+      "world",
+      "session-store",
+      "state-store"
+    ]
+  },
+  "remove": {
+    "componentIds": [],
+    "relationIds": [],
+    "contractIds": []
+  }
+}

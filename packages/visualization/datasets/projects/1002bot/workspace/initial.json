@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "projectId": "runtime-architecture",
-  "activeStageId": "M0",
+  "projectId": "1002bot",
+  "activeStageId": "02b980d3",
   "stages": {
-    "M0": {
-      "revision": "project-m0-v1:M0:M0-overview",
+    "02b980d3": {
+      "revision": "project-v1:02b980d3:overview",
       "overrides": {
         "nodeTitles": {}
       },
@@ -103,8 +103,8 @@
       "sourceStage": {
         "subtitle": "Event → Runtime → Agent / Provider / World / Session",
         "doc": "docs/进度汇报/2026-10-04-M1.0进度与架构图.md",
-        "id": "M0",
-        "label": "M0",
+        "id": "02b980d3",
+        "label": "最小运行基座",
         "title": "最小运行基座",
         "track": "main",
         "order": 0,
@@ -115,7 +115,7 @@
               "id": "project-root",
               "parentId": null,
               "kind": "root",
-              "label": "Agent 运行基座",
+              "label": "1002bot",
               "order": 0,
               "ports": []
             },
@@ -265,7 +265,7 @@
               "order": 4
             }
           ],
-          "revision": "project-m0-v1:M0:M0-overview"
+          "revision": "project-v1:02b980d3:overview"
         },
         "presentation": {
           "relations": {

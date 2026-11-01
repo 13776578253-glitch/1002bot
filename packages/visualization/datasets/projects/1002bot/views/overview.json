@@ -1,6 +1,7 @@
 {
-  "id": "M0-overview",
-  "stageId": "M0",
+  "id": "overview",
+  "portPolicy": { "direction": "top-down" },
+  "stageId": "02b980d3",
   "rootId": "project-root",
   "nodes": [
     {

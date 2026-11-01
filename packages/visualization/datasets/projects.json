@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "defaultProjectId": "1002bot",
+  "projects": [
+    {
+      "id": "1002bot",
+      "title": "1002bot",
+      "manifest": "projects/1002bot/project.json"
+    }
+  ]
+}

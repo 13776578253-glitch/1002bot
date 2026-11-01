@@ -6,6 +6,7 @@ import { assertValidBaselines } from '../../core/schema/baseline.ts';
 import { assertValidGraph } from '../../core/graph/validate.ts';
 
 export type * from '../../core/project/types.ts';
+export { resolveSourceStages } from '../../core/project/resolve.ts';
 
 interface Facts {
   components: Map<string, ProjectComponent>;
@@ -133,7 +134,7 @@ function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, i
   const graph: CanonicalGraph = { rootId: view.rootId, nodes, edges, revision: `${project.revision}:${stage.id}:${view.id}` };
   assertValidGraph(graph);
   const { id: _id, label: _label, title: _title, previousId: _previousId, upsert: _upsert, remove: _remove, ...meta } = stage;
-  const presentation = { relations: Object.fromEntries(view.relations.map((relation) => [relation.id, {
+  const presentation = { ...(view.portPolicy ? { portPolicy: view.portPolicy } : {}), relations: Object.fromEntries(view.relations.map((relation) => [relation.id, {
     expanded: [...relation.visibility.expanded], collapsed: [...relation.visibility.collapsed], sourceRelationIds: [...relation.sourceRelationIds],
     ...(relation.refines ? { refines: relation.refines } : {}),
   }])) };

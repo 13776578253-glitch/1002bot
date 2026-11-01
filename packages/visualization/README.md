@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
+Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
 
 # Visualization
 
@@ -15,9 +15,10 @@ pnpm typecheck
 pnpm build
 pnpm build:web
 pnpm check:dist
+pnpm check:snapshots
 ```
 
-`build` 生成通用库的 JS、类型声明与样式；`build:web` 生成 `playground/dist/index.html` 和资源。开发服务器固定绑定 `127.0.0.1:5199`，端口占用时直接报错。
+`build` 生成通用库的 JS、类型声明与样式；`build:web` 生成 `playground/dist/index.html` 和资源。开发服务器固定绑定 `127.0.0.1:5199`，端口占用时直接报错。`check:snapshots` 校验每个项目快照的文件名与 `id` 等于其 `select`/`remove` 的短哈希。
 
 ## 模块边界
 
@@ -44,19 +45,23 @@ pnpm check:dist
 | `src/adapters/project` | Source 增量、View 语义与人工几何的纯适配 |
 | `src/react/model/manual-layout.ts` | 人工坐标与边界检查，保持未操作节点和容器几何 |
 | `src/react/model/project-workspace.ts`、`persistence/project-storage.ts` | 项目工作空间与画布合同桥接、独立确认检查点 |
-| `datasets/progress-reports/project.json` | 当前 M0 项目清单，Source / Views / Workspace 分离资源 |
+| `datasets/projects.json` | 项目注册表；默认项目指向清单 |
+| `datasets/projects/1002bot/project.json` | 当前项目清单，Source / Stages / Views / Workspace 资源 |
+| `datasets/projects/1002bot/source/catalog.json` | 组件、关系与契约事实 |
+| `datasets/projects/1002bot/stages/` | 快照选择，文件名为短哈希 |
+| `tools/snapshot-id.ts` | 计算、校验与写回快照短哈希 id |
 | `tests/fixtures/legacy-reports.json` | 旧 M1.0–M6.0 报告数据集，仅供旧报告适配器测试 |
 | `tests/fixtures` | 基线与递归层级测试共用的样例输入 |
-| `playground/src/baselines.ts` | 加载项目清单、Source / Views / Workspace 独立 JSON 资源 |
-| `playground/src/main.tsx` | 公共画布、M0 项目及项目存储桥接的装配入口 |
+| `playground/src/baselines.ts` | 读取注册表、清单与 Source / Stages / Views / Workspace 资源 |
+| `playground/src/main.tsx` | 公共画布、默认项目及项目存储桥接的装配入口 |
 
 Core 不依赖 React；库源码不导入示例、数据集或 Playground。测试按模型单元、模块协作、输入合同和架构边界划分。
 
 ## 项目数据
 
-当前站点从 `datasets/progress-reports/project.json` 加载 M0 六块总览，使用人工编排模式。Source 保存事实、契约、来源和阶段增量；Views 保存展示选择、总览／详情关系映射、容器端口和人工几何；Workspace 保存分阶段用户草稿、确认快照及历史检查点。布局不会由展开、阶段切换或拖动自动重排。缺少位置、重叠和越界须显式处理。
+当前站点从 `datasets/projects.json` 的默认项目加载首个快照的六块总览，使用人工编排模式。Source 保存累积事实与契约；Stages 选择每份快照出现的事实；Views 保存展示选择、总览／详情关系映射、容器端口和人工几何；Workspace 保存分快照用户草稿、确认快照及历史检查点。布局不会由展开、阶段切换或拖动自动重排。缺少位置、重叠和越界须显式处理。
 
-项目适配器通过 `@1002bot/visualization/adapters/project` 导出。旧报告适配器与 `tests/fixtures/legacy-reports.json` 保留用于旧数据；当前站点使用独立项目存储键。详细合同和迁移约定见 [数据说明](datasets/progress-reports/README.md)。
+项目适配器通过 `@1002bot/visualization/adapters/project` 导出，`resolveSourceStages` 负责把事实目录与阶段选择组装成适配器输入。旧报告适配器与 `tests/fixtures/legacy-reports.json` 保留用于旧数据；当前站点使用独立项目存储键。详细合同和迁移约定见 [数据说明](datasets/README.md)。
 
 ## React 接入
 

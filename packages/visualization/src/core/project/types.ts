@@ -1,5 +1,6 @@
 /** Project facts and authored view definitions; working geometry is owned by the workspace. */
 import type { CanonicalEdge, CanonicalEndpoint, CanonicalPort, NodeKind, StageMeta } from '../schema/types.ts';
+import type { PortPolicy } from '../layout/port-policy.ts';
 
 export interface ProjectComponent {
   id: string;
@@ -73,6 +74,7 @@ export interface ProjectViewDefinition {
   id: string;
   stageId: string;
   rootId: string;
+  portPolicy?: PortPolicy;
   nodes: ProjectViewNode[];
   relations: ProjectViewRelation[];
 }
@@ -88,11 +90,55 @@ export interface ArchitectureProject {
 
 /** File references are resolved only by the application loading the project. */
 export interface ProjectManifest {
-  version: 1;
+  version: 2;
   id: string;
   title: string;
   revision: string;
-  source: { stages: string[] };
+  source: string[];
+  stages: string[];
   views: string[];
-  workspace: string;
+  workspace?: string;
+}
+
+export interface ProjectRegistry {
+  version: 1;
+  defaultProjectId: string;
+  projects: ProjectEntry[];
+}
+
+export interface ProjectEntry {
+  id: string;
+  title: string;
+  manifest: string;
+}
+
+/** Cumulative entity facts; stage files select ids from this catalog. */
+export interface ProjectSourceCatalog {
+  version: 1;
+  projectId: string;
+  components: ProjectComponent[];
+  relations: ProjectRelation[];
+  contracts: ProjectContract[];
+}
+
+export interface ProjectStageSelection {
+  version: 1;
+  id: string;
+  label: string;
+  title: string;
+  subtitle?: string;
+  date?: string;
+  status?: string;
+  doc?: string;
+  previousId?: string;
+  select: {
+    componentIds: string[];
+    relationIds: string[];
+    contractIds: string[];
+  };
+  remove: {
+    componentIds: string[];
+    relationIds: string[];
+    contractIds: string[];
+  };
 }
