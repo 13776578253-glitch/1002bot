@@ -1,0 +1,27 @@
+[
+  {
+    "source": "docs/agent-context/current-task/2026-11-01-visualization-commit-closeout.md",
+    "archived": "docs/agent-context/finish-task/2026-11-01-visualization-commit-closeout-snapshot/2026-11-01-visualization-commit-closeout.md",
+    "sha256": "56c73bc2e5ca84b3e8106ef7bb62aa6e2496d8c933173b6bb7d95c115e441640"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-11-01-visualization-snapshot-refinement.md",
+    "archived": "docs/agent-context/finish-task/2026-11-01-visualization-commit-closeout-snapshot/2026-11-01-visualization-snapshot-refinement.md",
+    "sha256": "39a2450e3e1e5b681f4c2e91f2929ed01a15b05b15cc78c096c5b5aaa7040a41"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-11-01-visualization-legacy-fixture-migration.md",
+    "archived": "docs/agent-context/finish-task/2026-11-01-visualization-commit-closeout-snapshot/2026-11-01-visualization-legacy-fixture-migration.md",
+    "sha256": "cabc3fcb0b5f3f9abce00b6b1ef5732df479332c60cd75aa12fc445a6a02f33b"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-11-01-visualization-project-data.md",
+    "archived": "docs/agent-context/finish-task/2026-11-01-visualization-commit-closeout-snapshot/2026-11-01-visualization-project-data.md",
+    "sha256": "d8d47526265ad9e5d31080651211d7b41ecc0b99d3977838db45ddbba2ac0e32"
+  },
+  {
+    "source": "docs/agent-context/current-task/2026-11-01-visualization-test-fixtures.md",
+    "archived": "docs/agent-context/finish-task/2026-11-01-visualization-commit-closeout-snapshot/2026-11-01-visualization-test-fixtures.md",
+    "sha256": "34828c3bbc18e75882384bd41cd9f23ea25ee72d9c5a313a094faf0a28477d8a"
+  }
+]
