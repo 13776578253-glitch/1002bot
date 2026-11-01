@@ -18,3 +18,9 @@ Compatibility: Older automatic snapshots without policyKey recompute on load. Ex
 Archive: finish-task/2026-11-01-visualization-port-candidates-snapshot/README.md indexes the byte-identical task copy; this source record remains in current-task.
 Open issues: none in the initial routing correction scope. Numerical weight tuning, distributed port positions and coordinated multi-edge rerouting remain future work with larger datasets.
 Commit suggestion: feat(visualization)!: rank port candidates and symmetric routes
+
+Final diagonal-direction review: added both simple elbow candidates before obstacle-grid search. A clear midpoint dogleg may have four complete-path turns while an elbow around a neighboring card needs only two. The free-layout six-node side connections now have a dedicated regression alongside the top-down symmetry case. Verification is rerun for the final tree below; prior archive remains immutable.
+
+Final review result: Free-layout diagonal side pairs use the same two-bend simple-elbow comparison as mirrored doglegs. Display restore accepts overlap only inside an unchanged protected fragment of that same edge; foreign locked paths outside that fragment remain hard obstacles. The full real-report frozen-stage refresh regression retains exact path point arrays. A focused corridor test checks both lawful shared frozen segments and forbidden exterior crossings.
+
+Final verification: package tests 236/236, including 15 dedicated port/cache/frozen cases; package/web typechecks, library/site builds, root tests 242/242 and root typecheck passed. The final automatic routing fingerprint is port-candidates-v2, so paths cached during the first candidate implementation are also recomputed. Explicit pinned/locked/frozen geometry remains protected. Follow-up archive: finish-task/2026-11-01-visualization-port-candidates-final-snapshot/README.md.

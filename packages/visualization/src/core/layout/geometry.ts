@@ -217,6 +217,8 @@ export function routeOrthogonal(
   const candidates = [
     [start, { x: midX, y: start.y }, { x: midX, y: goal.y }, goal],
     [start, { x: start.x, y: midY }, { x: goal.x, y: midY }, goal],
+    [start, { x: goal.x, y: start.y }, goal],
+    [start, { x: start.x, y: goal.y }, goal],
   ].map(points => simplifyPoints(points.filter((point, index) => index === 0 || point.x !== points[index - 1]!.x || point.y !== points[index - 1]!.y)));
   const clear = (points: Point[]) => points.slice(1).every((to, index) => {
     const from = points[index]!;

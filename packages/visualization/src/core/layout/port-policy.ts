@@ -12,7 +12,7 @@ export type RouteCost = Record<RouteCostMetric, number>;
 export const DEFAULT_ROUTE_PRIORITY: readonly RouteCostMetric[] = ['direction', 'length', 'bends', 'portCrowding', 'overlap'];
 
 export function routePolicyKey(policy: PortPolicy = {}): string {
-  return JSON.stringify(['port-candidates-v1', policy.direction ?? 'auto', policy.priority ?? DEFAULT_ROUTE_PRIORITY]);
+  return JSON.stringify(['port-candidates-v2', policy.direction ?? 'auto', policy.priority ?? DEFAULT_ROUTE_PRIORITY]);
 }
 
 export function compareRouteCost(a: RouteCost, b: RouteCost, policy: PortPolicy): number {

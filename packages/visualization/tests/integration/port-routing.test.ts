@@ -84,6 +84,16 @@ test('automatic port policy follows horizontal geometry in both directions', () 
   assert.equal(routeLength(forward.points), routeLength(backward.points));
 });
 
+test('automatic diagonal side ports consider simple elbows around neighboring cards', () => {
+  const input = geometry(overviewNodes());
+  for (const target of ['agent', 'session']) {
+    const route = routeDiagramGeometry(input, 'runtime', target, `runtime-${target}`, { direction: 'auto' });
+    assert.ok(route.feasible);
+    assert.equal(route.points.length - 2, 2, target);
+    assert.ok(pathIsClear(route.points, input, 'runtime', target));
+  }
+});
+
 test('an occupied preferred port falls back to another collision-free pair', () => {
   const input = geometry([card('source', 0, 0, 120, 60), card('blocker', -20, 65, 160, 60), card('target', 0, 300, 120, 60)]);
   const route = routeDiagramGeometry(input, 'source', 'target', 'edge', { direction: 'top-down' });
@@ -229,4 +239,17 @@ test('a one-sided frozen boundary resolves or reports conflict when the automati
     assert.deepEqual(result.route.points.slice(0, 2), snapshot.frozenBoundaries![0]!.points);
   } else assert.ok(result.message);
   assert.deepEqual({ nodes, group, snapshot, fallback }, before);
+});
+
+test('a shared frozen corridor is restored without allowing exterior locked crossings', () => {
+  const nodes = [card('source', 0, 0, 120, 60), card('target', 0, 300, 120, 60)];
+  const { projection, edges, inputs } = scene(nodes, 'source', 'target');
+  const routes = new DiagramRouteCache().update(nodes, projection, inputs);
+  const shared = [{ x: 60, y: 60 }, { x: 60, y: 120 }];
+  const protectedRoutes = [{ edgeId: 'link', points: shared }, { edgeId: 'shared-frozen', points: shared }];
+  const saved = captureDisplayRoutes(nodes, projection, edges, routes, protectedRoutes);
+  assert.equal(retainedDisplayRoutes(nodes, projection, edges, saved, protectedRoutes).size, 1);
+  const exterior = [...protectedRoutes, { edgeId: 'exterior', points: [{ x: -20, y: 200 }, { x: 140, y: 200 }] }];
+  const invalid = captureDisplayRoutes(nodes, projection, edges, routes, exterior);
+  assert.equal(retainedDisplayRoutes(nodes, projection, edges, invalid, exterior).size, 0);
 });
