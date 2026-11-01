@@ -189,7 +189,7 @@ export function routeOrthogonal(
   fromRect: Rect,
   toRect: Rect,
   obstacles: readonly Obstacle[],
-  options: { offset?: number; padding?: number } = {},
+  options: { offset?: number; padding?: number; startAxis?: 0 | 1; endAxis?: 0 | 1 } = {},
 ): Point[] {
   const pad = options.padding ?? 14;
   const isRight = toRect.x + toRect.w / 2 >= fromRect.x + fromRect.w / 2;
@@ -212,39 +212,26 @@ export function routeOrthogonal(
     y: goal.y,
   };
 
-  // 检测直连候选线段是否避开所有障碍物
-  if (isRight && startStub.x < goalStub.x) {
-    const midX = Math.round((startStub.x + goalStub.x) / 2);
-    const candidate = [
-      start,
-      { x: midX, y: start.y },
-      { x: midX, y: goal.y },
-      goal,
-    ];
-
-    const collides = obstacles.some((obs) => {
-      const minX1 = Math.min(start.x, midX);
-      const maxX1 = Math.max(start.x, midX);
-      if (start.y > obs.top && start.y < obs.bottom && maxX1 > obs.left && minX1 < obs.right) {
-        return true;
-      }
-      const minY2 = Math.min(start.y, goal.y);
-      const maxY2 = Math.max(start.y, goal.y);
-      if (midX > obs.left && midX < obs.right && maxY2 > obs.top && minY2 < obs.bottom) {
-        return true;
-      }
-      const minX3 = Math.min(midX, goal.x);
-      const maxX3 = Math.max(midX, goal.x);
-      if (goal.y > obs.top && goal.y < obs.bottom && maxX3 > obs.left && minX3 < obs.right) {
-        return true;
-      }
-      return false;
-    });
-
-    if (!collides) {
-      return simplifyPoints(candidate);
-    }
-  }
+  // Compare mirrored doglegs with both port axes included in their bend count.
+  const midX = (startStub.x + goalStub.x) / 2, midY = (startStub.y + goalStub.y) / 2;
+  const candidates = [
+    [start, { x: midX, y: start.y }, { x: midX, y: goal.y }, goal],
+    [start, { x: start.x, y: midY }, { x: goal.x, y: midY }, goal],
+  ].map(points => simplifyPoints(points.filter((point, index) => index === 0 || point.x !== points[index - 1]!.x || point.y !== points[index - 1]!.y)));
+  const clear = (points: Point[]) => points.slice(1).every((to, index) => {
+    const from = points[index]!;
+    return obstacles.every(obs => from.y === to.y
+      ? !(from.y > obs.top && from.y < obs.bottom && Math.max(from.x, to.x) > obs.left && Math.min(from.x, to.x) < obs.right)
+      : !(from.x > obs.left && from.x < obs.right && Math.max(from.y, to.y) > obs.top && Math.min(from.y, to.y) < obs.bottom));
+  });
+  const bends = (points: Point[]) => {
+    const axes = points.slice(1).map((point, index) => point.y === points[index]!.y ? 0 : 1);
+    if (options.startAxis !== undefined) axes.unshift(options.startAxis);
+    if (options.endAxis !== undefined) axes.push(options.endAxis);
+    return axes.reduce<number>((count, axis, index) => count + (index > 0 && axis !== axes[index - 1] ? 1 : 0), 0);
+  };
+  const direct = candidates.filter(clear).sort((a, b) => bends(a) - bends(b))[0];
+  if (direct) return direct;
 
   // 提取端点与障碍物轮廓构建搜索网格坐标集合
   const xs = new Set<number>([start.x, startStub.x, goal.x, goalStub.x]);
@@ -342,14 +329,15 @@ export function routeOrthogonal(
 
   const costs = new Map<number, number>();
   const parents = new Map<number, number>();
-  const startId = (sy * nx + sx) * 3 + 2;
+  const startDir = options.startAxis ?? 2;
+  const startId = (sy * nx + sx) * 3 + startDir;
 
   costs.set(startId, 0);
   push({
     id: startId,
     ix: sx,
     iy: sy,
-    dir: 2,
+    dir: startDir,
     g: 0,
     f: Math.abs(startStub.x - goalStub.x) + Math.abs(startStub.y - goalStub.y),
   });
@@ -378,7 +366,8 @@ export function routeOrthogonal(
 
       const dist = Math.abs(sortedX[nix]! - sortedX[cur.ix]!) + Math.abs(sortedY[niy]! - sortedY[cur.iy]!);
       const bendCost = cur.dir !== dir && cur.dir !== 2 ? 30 : 0;
-      const g = cur.g + dist + bendCost;
+      const terminalBend = nix === gx && niy === gy && options.endAxis !== undefined && options.endAxis !== dir ? 30 : 0;
+      const g = cur.g + dist + bendCost + terminalBend;
       const nid = (niy * nx + nix) * 3 + dir;
 
       if (g < (costs.get(nid) ?? Infinity)) {

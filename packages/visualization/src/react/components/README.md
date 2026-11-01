@@ -11,3 +11,5 @@ Tab and note state stay local to the dialog and are discarded on close. Stage se
 Status notices are centered at the bottom, above the toolbar on narrower screens. The notice icon is neutral for general messages; save errors use a warning icon and retain the retry action. Message lifetime follows the controller.
 
 Canvas chrome has scoped light/dark tokens. Node geometry, routing, persistence and project sources are independent of these controls.
+
+Edges with no feasible obstacle-free route are omitted and reported by the canvas notice. The edge renderer consumes the selected geometry; port policy and cost comparison belong to the route model.

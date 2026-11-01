@@ -125,8 +125,8 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
   const source = snapshot.frozenBoundaries?.find((part) => part.endpoint === 'source');
   const target = snapshot.frozenBoundaries?.find((part) => part.endpoint === 'target');
   if (!source && !target) return { ok: true, route: fallback };
-  const sourceFragment = source ? boundaryWorldPoints(source, nodes) : [fallback.points[0]!];
-  const targetFragment = target ? boundaryWorldPoints(target, nodes) : [fallback.points.at(-1)!];
+  const sourceFragment = source ? boundaryWorldPoints(source, nodes) : [portAnchor(geometry.bounds.get(sourceId)!, handles[fallback.sourceHandle]!)];
+  const targetFragment = target ? boundaryWorldPoints(target, nodes) : [portAnchor(geometry.bounds.get(targetId)!, handles[fallback.targetHandle]!)];
   const boundaryKey=JSON.stringify([sourceFragment,targetFragment]);
   const cached=boundaryCache.get(snapshot);
   const start = sourceFragment.at(-1)!, end = targetFragment.at(-1)!;
@@ -197,7 +197,7 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
   if (!pathIsClear(connector, connectorGeometry, sourceId, targetId, edgeId)) return { ok: false, message: '无法从冻结边界端口绕开节点或锁定路径' };
   const points = [...sourceFragment, ...connector.slice(1, -1), ...[...targetFragment].reverse()]
     .filter((point, index, array) => index === 0 || !samePoint(point, array[index - 1]!));
-  const route={...fallback,points,label:placeEdgeLabel(connector,fallback.text,geometry.blockers,geometry.frames)};
+  const route={...fallback,feasible:true,points,label:placeEdgeLabel(connector,fallback.text,geometry.blockers,geometry.frames)};
   boundaryCache.set(snapshot,{points:fallback.points,boundaryKey,route,connector});
   return { ok: true, route };
 }
@@ -206,6 +206,7 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
 function captureCrossing(edge: DisplayEdge, sourceIn: boolean, geometry: DiagramGeometry, projectionNodes: readonly CanvasNode[], projection: ReturnType<typeof projectGraph>, nodes: readonly CanvasNode[], group: FrozenGroupSnapshot, groups: readonly FrozenGroupSnapshot[], existing: EdgeRouteSnapshot | undefined): { route: CachedRoute; segment: FrozenBoundarySegment } | undefined {
   const root = nodes.find((node) => node.id === group.rootId)!, rect = worldBounds(root, nodes);
   const generated = routeDiagramGeometry(geometry, edge.source, edge.target, edge.id);
+  if (!generated.feasible) return undefined;
   const normal: CachedRoute = { ...generated, text: edge.text, label: placeEdgeLabel(generated.points, edge.text, geometry.blockers, geometry.frames) };
   const innerId = sourceIn ? edge.source : edge.target;
   const innerRect = geometry.bounds.get(innerId)!;

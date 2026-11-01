@@ -6,6 +6,7 @@
  */
 
 import type { CanonicalGraph, CanonicalNode, StageSnapshot } from './types.ts';
+import { DEFAULT_ROUTE_PRIORITY } from '../layout/port-policy.ts';
 
 export interface ValidationIssue {
   message: string;
@@ -74,6 +75,13 @@ function checkGraphShape(graph: CanonicalGraph, issues: ValidationIssue[]): void
 /** 校验阶段快照的基础类型与字段形状，返回非致命的结构问题列表。 */
 export function validateSnapshot(snapshot: StageSnapshot): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  const policy = snapshot.presentation?.portPolicy;
+  if (policy !== undefined) {
+    if (!policy || typeof policy !== 'object' || policy.direction !== undefined && !['auto', 'top-down'].includes(policy.direction)
+      || policy.priority !== undefined && (!Array.isArray(policy.priority) || policy.priority.some(metric => !DEFAULT_ROUTE_PRIORITY.includes(metric)))) {
+      issues.push({ message: 'invalid port policy', path: 'presentation.portPolicy' });
+    }
+  }
   requiredString(snapshot.id, 'stage id', 'stage', issues);
   requiredString(snapshot.label, 'stage label', 'stage', issues);
   requiredString(snapshot.title, 'stage title', 'stage', issues);

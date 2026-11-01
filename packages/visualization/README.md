@@ -155,3 +155,7 @@ const persistence = {
 正式接口为 `VisualizationCanvas` 和 `VisualizationCanvasProps`，旧 `EvolutionCanvas`、store、scene/layout-provider 接口已移除。样式改为显式导入 `./styles.css`。唯一页面是 `/`；旧 HTML 入口、主题预览、生成数据工具与旧业务 adapter 已移除。
 
 后续开发以 `src/` 的公共组件和合同为基础，新增业务适配器放在库外或独立 examples 中。
+
+## Port policy
+
+The authored overview uses `portPolicy: { "direction": "top-down" }`. Views without a direction preference use geometric endpoint direction. Candidate routing and snapshot compatibility are described in [the route model](src/react/model/README.md).

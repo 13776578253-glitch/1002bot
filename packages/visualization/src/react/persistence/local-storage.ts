@@ -92,6 +92,7 @@ function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
       throw new Error('路径视图格式不正确');
     }
     if (ids.has(item.canonicalEdgeId)) throw new Error('路径视图包含重复关系');
+    if (item.policyKey !== undefined && !isText(item.policyKey)) throw new Error('路径策略版本格式不正确');
     ids.add(item.canonicalEdgeId);
     if (!isText(item.source.nodeId) || !isText(item.target.nodeId)) throw new Error('路径视图格式不正确');
     if (item.source.portId !== undefined && !isText(item.source.portId)) throw new Error('路径视图格式不正确');
@@ -185,6 +186,7 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   if (raw.displayRoutes !== undefined) {
     if (!Array.isArray(raw.displayRoutes)) throw new Error('投影路径快照格式不正确');
     for (const route of raw.displayRoutes) {
+      if (isRecord(route) && route.policyKey !== undefined && !isText(route.policyKey)) throw new Error('投影路径策略版本格式不正确');
       if (isRecord(route) && route.barrierKey !== undefined && !isText(route.barrierKey)) throw new Error('投影路径障碍版本格式不正确');
       if (!isRecord(route) || !isText(route.id) || !isText(route.source) || !isText(route.target) || !isText(route.sourceHandle) || !isText(route.targetHandle) || typeof route.text !== 'string' || !Array.isArray(route.memberIds) || !route.memberIds.every(isText) || !Array.isArray(route.points) || route.points.length < 2 || !isRecord(route.label)) throw new Error('投影路径快照格式不正确');
       for (const point of route.points) checkPoint(point, '投影路径快照格式不正确');

@@ -33,6 +33,7 @@ function groupContainingBoth(groups: readonly FrozenGroupSnapshot[], source: str
 }
 
 export function routeSnapshot(edge: DisplayEdge, route: CachedRoute, state: EdgeRouteState, nodes: readonly CanvasNode[], groups: readonly FrozenGroupSnapshot[]): EdgeRouteSnapshot | undefined {
+  if (route.feasible === false) return undefined;
   const member = edge.members[0];
   if (!member) return undefined;
   const canonical = member.edge;
@@ -40,6 +41,7 @@ export function routeSnapshot(edge: DisplayEdge, route: CachedRoute, state: Edge
   const origin = owner ? worldPosition(nodes.find((node) => node.id === owner.rootId)!, nodes) : undefined;
   return {
     canonicalEdgeId: canonical.id,
+    ...(route.policyKey ? { policyKey: route.policyKey } : {}),
     state,
     source: { nodeId: canonical.source.nodeId, ...(canonical.source.portId === undefined ? {} : { portId: canonical.source.portId }), ...(route.sourceHandle ? { handle: route.sourceHandle } : {}) },
     target: { nodeId: canonical.target.nodeId, ...(canonical.target.portId === undefined ? {} : { portId: canonical.target.portId }), ...(route.targetHandle ? { handle: route.targetHandle } : {}) },
@@ -234,10 +236,14 @@ export function applyStoredRoutes(
     if (retained.source.nodeId !== member.source.nodeId || retained.target.nodeId !== member.target.nodeId) continue;
     const current = routes.get(edge.id);
     if (!current) continue;
+    if (retained.state === 'auto' && !retained.frozenBoundaries?.length && current.policyKey && retained.policyKey !== current.policyKey) continue;
     if(retained.frozenBoundaries?.length&&groups.length){
       const resolved=resolveFrozenBoundaryRoute(edge.id,retained,nodes,geometry,edge.source,edge.target,current,groups,retainedBoundaryRoutes.has(current));
       if(resolved.ok)next.set(edge.id,resolved.route);
-      else boundaryFailures?.set(edge.id, resolved.message);
+      else {
+        boundaryFailures?.set(edge.id, resolved.message);
+        next.set(edge.id, { ...current, feasible: false, points: [] });
+      }
       continue;
     }
     const points = worldRoutePoints(retained, nodes);

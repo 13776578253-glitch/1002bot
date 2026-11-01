@@ -5,6 +5,8 @@
  * explicit references. Stable IDs carry identity across stages.
  */
 
+import type { PortPolicy } from '../layout/port-policy.ts';
+
 export type GraphNodeId = string;
 export type GraphEdgeId = string;
 export type GraphPortId = string;
@@ -103,6 +105,7 @@ export interface StageSnapshot extends StageMeta {
   title: string;
   graph: CanonicalGraph;
   presentation?: {
+    portPolicy?: PortPolicy;
     relations: Readonly<Record<string, {
       expanded: readonly string[];
       collapsed: readonly string[];

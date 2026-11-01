@@ -17,6 +17,7 @@ export interface LinkData extends Record<string, unknown> {
 
 /** 正交避障连线组件；渲染圆角平滑路径并在指定无重叠坐标处渲染胶囊标签。 */
 export const Link = memo(function Link(props: EdgeProps<Edge<LinkData>>) {
+  if (props.data!.points.length < 2) return null;
   const path = svgPathFromPoints(props.data!.points, 14);
   const { x, y, width, height } = props.data!.label;
   return <>

@@ -19,6 +19,7 @@ export interface EdgeRouteEndpointView {
 
 /** A route retained by canonical edge identity; display aggregation never owns its own frozen path. */
 export interface EdgeRouteSnapshot {
+  policyKey?: string;
   canonicalEdgeId: string;
   state: EdgeRouteState;
   source: EdgeRouteEndpointView;
@@ -39,6 +40,7 @@ export interface FrozenBoundarySegment {
 
 /** Projection paths are view geometry; their member identities remain canonical. */
 export interface DisplayRouteSnapshot {
+  policyKey?: string;
   id: string;
   source: string;
   target: string;

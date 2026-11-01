@@ -1,4 +1,5 @@
 /** Incremental orthogonal paths and labels, invalidated by endpoint and obstacle geometry. */
+import { routePolicyKey, type PortPolicy } from '../../core/layout/port-policy.ts';
 import type { Projection } from '../../core/projection/index.ts';
 import type { Point, Rect } from '../../core/layout/geometry.ts';
 import type { CanvasNode } from './grouping.ts';
@@ -14,6 +15,8 @@ export interface RouteInput {
 }
 
 export interface CachedRoute {
+  feasible?: boolean;
+  policyKey?: string;
   sourceHandle: string;
   targetHandle: string;
   points: Point[];
@@ -81,6 +84,7 @@ function transportLabel(previous: CachedRoute, points: readonly Point[]): EdgeLa
 export class DiagramRouteCache {
   private geometry: DiagramGeometry | undefined;
   private reservedKey = '';
+  private policyKey = '';
   private inputs = new Map<string, RouteInput>();
   private routes = new Map<string, CachedRoute>();
   private parts = new SpatialIndex<IndexedPart>();
@@ -95,6 +99,7 @@ export class DiagramRouteCache {
 
   private index(id: string, route: CachedRoute): void {
     this.unindex(id);
+    if (route.feasible === false) return;
     const keys: string[] = [];
     for (let index = 1; index < route.points.length; index++) {
       const from = route.points[index - 1]!, to = route.points[index]!;
@@ -108,12 +113,15 @@ export class DiagramRouteCache {
     this.partKeys.set(id, keys);
   }
 
-  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = [], retained: ReadonlyMap<string, CachedRoute> = new Map()): Map<string, CachedRoute> {
+  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = [], retained: ReadonlyMap<string, CachedRoute> = new Map(), policy: PortPolicy = {}): Map<string, CachedRoute> {
     const start = performance.now();
     const geometry = createDiagramGeometry(nodes, projection, reserved);
     const reservedKey = JSON.stringify(reserved.map((route) => [route.edgeId, route.points.map((point) => [point.x, point.y])]));
     const reservedChanged = reservedKey !== this.reservedKey;
     this.reservedKey = reservedKey;
+    const policyKey = routePolicyKey(policy);
+    const policyChanged = policyKey !== this.policyKey;
+    this.policyKey = policyKey;
     const inputs = new Map(edges.map((edge) => [edge.id, edge]));
     const routeDirty = new Set<string>(), labelDirty = new Set<string>();
     const changed = new Set<string>();
@@ -140,7 +148,7 @@ export class DiagramRouteCache {
     }
     for (const edge of edges) {
       const old = this.inputs.get(edge.id);
-      if (!old || old.source !== edge.source || old.target !== edge.target) {
+      if (policyChanged || !old || old.source !== edge.source || old.target !== edge.target) {
         routeDirty.add(edge.id);
         topologyChanged = true;
       }
@@ -177,11 +185,16 @@ export class DiagramRouteCache {
         }
       }
     }
+    if (changed.size || reservedChanged) for (const [id, route] of this.routes) if (route.feasible === false && inputs.has(id)) routeDirty.add(id);
     for (const id of routeDirty) labelDirty.add(id);
 
     const routingStarted = performance.now();
     const nextRoutes = new Map<string, CachedRoute>();
     const translated = new Set<string>();
+    const occupancy = new Map(edges.flatMap(edge => {
+      const route = retained.get(edge.id) ?? (!routeDirty.has(edge.id) ? this.routes.get(edge.id) : undefined);
+      return route && route.feasible !== false ? [[edge.id, { ...route, id: edge.id, source: edge.source, target: edge.target }] as const] : [];
+    }));
     for (const edge of edges) {
       const previous = this.routes.get(edge.id);
       const saved = retained.get(edge.id);
@@ -197,30 +210,33 @@ export class DiagramRouteCache {
       const old = this.inputs.get(edge.id);
       const a = this.geometry?.bounds.get(edge.source), b = this.geometry?.bounds.get(edge.target);
       const source = geometry.bounds.get(edge.source)!, target = geometry.bounds.get(edge.target)!;
-      if (previous && old?.source === edge.source && old.target === edge.target && a && b
+      if (!policyChanged && previous && previous.feasible !== false && old?.source === edge.source && old.target === edge.target && a && b
         && source.w === a.w && source.h === a.h && target.w === b.w && target.h === b.h
         && source.x - a.x === target.x - b.x && source.y - a.y === target.y - b.y) {
         const dx = source.x - a.x, dy = source.y - a.y;
         const points = previous.points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
         if (pathIsClear(points, geometry, edge.source, edge.target, edge.id)) {
           nextRoutes.set(edge.id, { ...previous, points, label: { ...previous.label, x: previous.label.x + dx, y: previous.label.y + dy }, text: edge.text });
+          occupancy.set(edge.id, { ...previous, points, id: edge.id, source: edge.source, target: edge.target });
           translated.add(edge.id);
           if (dx || dy) stats.translatedEdges++;
           continue;
         }
       }
-      const route = routeDiagramGeometry(geometry, edge.source, edge.target, edge.id);
-      nextRoutes.set(edge.id, { ...route, label: previous?.label ?? { x: 0, y: 0, width: 0, height: 0 }, text: edge.text });
+      const route = routeDiagramGeometry(geometry, edge.source, edge.target, edge.id, policy, [...occupancy.values()]);
+      if (route.feasible) occupancy.set(edge.id, { ...route, label: previous?.label ?? { x: 0, y: 0, width: 0, height: 0 }, text: edge.text, id: edge.id, source: edge.source, target: edge.target });
+      nextRoutes.set(edge.id, { ...route, policyKey, label: previous?.label ?? { x: 0, y: 0, width: 0, height: 0 }, text: edge.text });
       stats.routedEdges++;
     }
 
     stats.routingMs = performance.now() - routingStarted;
     const labelStarted = performance.now();
     const occupied: Rect[] = [];
-    for (const [id, route] of nextRoutes) if (!labelDirty.has(id)) occupied.push(labelRect(route.label));
+    for (const [id, route] of nextRoutes) if (!labelDirty.has(id) && route.feasible !== false) occupied.push(labelRect(route.label));
     for (const edge of [...edges].sort((a, b) => a.id.localeCompare(b.id))) {
       if (!labelDirty.has(edge.id)) continue;
       const route = nextRoutes.get(edge.id)!;
+      if (route.feasible === false) continue;
       const previous = this.routes.get(edge.id);
       const candidate = translated.has(edge.id) ? route.label : previous ? transportLabel(previous, route.points) : undefined;
       if (candidate && edge.text === this.inputs.get(edge.id)?.text && labelIsClear(candidate, geometry, occupied, route.points.at(-1)!, edge.id)) {

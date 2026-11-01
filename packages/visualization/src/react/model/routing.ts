@@ -1,4 +1,5 @@
 /** Diagram edge routing with obstacle collection and stub extension. */
+import { compareRouteCost, type PortPolicy, type RouteCost } from '../../core/layout/port-policy.ts';
 import type { Projection } from '../../core/projection/index.ts';
 import {
   midpointOfPoints, obstacleFromRect, portAnchor, routeOrthogonal, simplifyPoints,
@@ -78,6 +79,7 @@ export function segmentCrossesRect(from: Point, to: Point, rect: Rect): boolean 
 }
 
 export function pathIsClear(points: readonly Point[], geometry: DiagramGeometry, sourceId: string, targetId: string, ignoreEdgeId?: string): boolean {
+  if (points.length < 2) return false;
   for (let index = 1; index < points.length; index++) {
     const from = points[index - 1]!, to = points[index]!;
     for (const obstacle of geometry.obstacleIndex.query(segmentBounds(from, to))) {
@@ -99,28 +101,69 @@ export function routeDiagramEdge(nodes: readonly CanvasNode[], projection: Proje
   return routeDiagramGeometry(geometry, sourceId, targetId);
 }
 
-export function routeDiagramGeometry(geometry: DiagramGeometry, sourceId: string, targetId: string, edgeId?: string) {
-  const preferred = routeWithHandles(geometry, sourceId, targetId, edgeId);
-  if (pathIsClear(preferred.points, geometry, sourceId, targetId, edgeId)) return preferred;
-  for (const sourceHandle of ['return-out', 'left-out', 'out', 'top-out']) {
-    for (const targetHandle of ['left-in', 'return', 'in', 'bottom-in']) {
-      if (sourceHandle === preferred.sourceHandle && targetHandle === preferred.targetHandle) continue;
-      const candidate = routeWithHandles(geometry, sourceId, targetId, edgeId, { sourceHandle, targetHandle });
-      if (pathIsClear(candidate.points, geometry, sourceId, targetId, edgeId)) return candidate;
-    }
-  }
-  return preferred;
+export interface RouteOccupancy {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle: string;
+  targetHandle: string;
+  points: readonly Point[];
 }
 
-function routeWithHandles(geometry: DiagramGeometry, sourceId: string, targetId: string, edgeId?: string, chosen?: { sourceHandle: string; targetHandle: string }) {
+const sourceSides: Record<string, PortSide> = { out: 'bottom', 'top-out': 'top', 'return-out': 'right', 'left-out': 'left' };
+const targetSides: Record<string, PortSide> = { in: 'top', 'bottom-in': 'bottom', return: 'right', 'left-in': 'left' };
+
+function preferredHandles(geometry: DiagramGeometry, sourceId: string, targetId: string, policy: PortPolicy) {
+  if (policy.direction === 'top-down') return { sourceHandle: 'out', targetHandle: 'in' };
   const source = geometry.bounds.get(sourceId)!, target = geometry.bounds.get(targetId)!;
   const dx = target.x + target.w / 2 - source.x - source.w / 2;
   const dy = target.y + target.h / 2 - source.y - source.h / 2;
-  const handles = chosen ?? (Math.abs(dx) > Math.abs(dy) * 1.15
+  return Math.abs(dx) > Math.abs(dy) * 1.15
     ? dx > 0 ? { sourceHandle: 'return-out', targetHandle: 'left-in' } : { sourceHandle: 'left-out', targetHandle: 'return' }
-    : dy >= 0 ? { sourceHandle: 'out', targetHandle: 'in' } : { sourceHandle: 'top-out', targetHandle: 'bottom-in' });
-  const sourceSides: Record<string, PortSide> = { out: 'bottom', 'top-out': 'top', 'return-out': 'right', 'left-out': 'left' };
-  const targetSides: Record<string, PortSide> = { in: 'top', 'bottom-in': 'bottom', return: 'right', 'left-in': 'left' };
+    : dy >= 0 ? { sourceHandle: 'out', targetHandle: 'in' } : { sourceHandle: 'top-out', targetHandle: 'bottom-in' };
+}
+
+function overlapLength(a: readonly Point[], b: readonly Point[]): number {
+  let total = 0;
+  for (let i = 1; i < a.length; i++) for (let j = 1; j < b.length; j++) {
+    const p = a[i - 1]!, q = a[i]!, r = b[j - 1]!, s = b[j]!;
+    if (p.y === q.y && r.y === s.y && p.y === r.y) total += Math.max(0, Math.min(Math.max(p.x, q.x), Math.max(r.x, s.x)) - Math.max(Math.min(p.x, q.x), Math.min(r.x, s.x)));
+    if (p.x === q.x && r.x === s.x && p.x === r.x) total += Math.max(0, Math.min(Math.max(p.y, q.y), Math.max(r.y, s.y)) - Math.max(Math.min(p.y, q.y), Math.min(r.y, s.y)));
+  }
+  return total;
+}
+
+export function routeDiagramGeometry(geometry: DiagramGeometry, sourceId: string, targetId: string, edgeId?: string, policy: PortPolicy = {}, occupied: readonly RouteOccupancy[] = []) {
+  const preferred = preferredHandles(geometry, sourceId, targetId, policy);
+  type Candidate = ReturnType<typeof routeWithHandles> & { feasible: boolean; cost: RouteCost };
+  let best: Candidate | undefined;
+  const peers = occupied.filter(route => route.id !== edgeId);
+  const sourceHandles = [...new Set([preferred.sourceHandle, 'out', 'return-out', 'left-out', 'top-out'])];
+  const targetHandles = [...new Set([preferred.targetHandle, 'in', 'left-in', 'return', 'bottom-in'])];
+  for (const sourceHandle of sourceHandles) for (const targetHandle of targetHandles) {
+    const route = routeWithHandles(geometry, sourceId, targetId, edgeId, { sourceHandle, targetHandle });
+    if (!pathIsClear(route.points, geometry, sourceId, targetId, edgeId) || !attachedOutward(route.points, sourceSides[sourceHandle]!, targetSides[targetHandle]!)) continue;
+    const cost: RouteCost = {
+      length: route.points.slice(1).reduce((sum, point, index) => sum + Math.abs(point.x - route.points[index]!.x) + Math.abs(point.y - route.points[index]!.y), 0),
+      bends: Math.max(0, route.points.length - 2),
+      direction: Number(sourceHandle !== preferred.sourceHandle) + Number(targetHandle !== preferred.targetHandle),
+      portCrowding: peers.reduce((sum, route) => sum + Number(route.source === sourceId && route.sourceHandle === sourceHandle) + Number(route.target === sourceId && targetSides[route.targetHandle] === sourceSides[sourceHandle]) + Number(route.target === targetId && route.targetHandle === targetHandle) + Number(route.source === targetId && sourceSides[route.sourceHandle] === targetSides[targetHandle]), 0),
+      overlap: peers.reduce((sum, peer) => sum + overlapLength(route.points, peer.points), 0),
+    };
+    const candidate = { ...route, feasible: true, cost };
+    if (!best || compareRouteCost(cost, best.cost, policy) < 0) best = candidate;
+  }
+  return best ?? { ...preferred, points: [] as Point[], label: { x: 0, y: 0 }, feasible: false, cost: { length: Infinity, bends: Infinity, direction: Infinity, portCrowding: Infinity, overlap: Infinity } };
+}
+
+function attachedOutward(points: readonly Point[], sourceSide: PortSide, targetSide: PortSide): boolean {
+  if (points.length < 2) return false;
+  const outside = (anchor: Point, next: Point, side: PortSide) => side === 'left' ? next.x < anchor.x && next.y === anchor.y : side === 'right' ? next.x > anchor.x && next.y === anchor.y : side === 'top' ? next.y < anchor.y && next.x === anchor.x : next.y > anchor.y && next.x === anchor.x;
+  return outside(points[0]!, points[1]!, sourceSide) && outside(points.at(-1)!, points.at(-2)!, targetSide);
+}
+
+function routeWithHandles(geometry: DiagramGeometry, sourceId: string, targetId: string, edgeId: string | undefined, handles: { sourceHandle: string; targetHandle: string }) {
+  const source = geometry.bounds.get(sourceId)!, target = geometry.bounds.get(targetId)!;
   const sourceSide = sourceSides[handles.sourceHandle]!, targetSide = targetSides[handles.targetHandle]!;
   const start = portAnchor(source, sourceSide), end = portAnchor(target, targetSide);
 
@@ -149,7 +192,7 @@ function routeWithHandles(geometry: DiagramGeometry, sourceId: string, targetId:
   const startStub = extend(start, sourceSide), endStub = extend(end, targetSide);
   let points: Point[];
   while (true) {
-    const middle = routeOrthogonal({ ...startStub, w: 0, h: 0 }, { ...endStub, w: 0, h: 0 }, obstacles, { offset: 0, padding: 10 });
+    const middle = routeOrthogonal({ ...startStub, w: 0, h: 0 }, { ...endStub, w: 0, h: 0 }, obstacles, { offset: 0, padding: 10, startAxis: sourceSide === 'top' || sourceSide === 'bottom' ? 1 : 0, endAxis: targetSide === 'top' || targetSide === 'bottom' ? 1 : 0 });
     points = simplifyPoints([start, ...middle, end]);
     const additions = new Map<string, DiagramObstacle>();
     for (let index = 1; index < points.length; index++) {

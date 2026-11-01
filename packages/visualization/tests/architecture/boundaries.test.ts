@@ -23,7 +23,7 @@ test('the playground has one HTML entry and composes the public canvas', async (
   const html = (await files(join(root, 'playground'))).filter((item) => item.endsWith('.html') && !item.includes(join('playground', 'dist')));
   assert.deepEqual(html.map((item) => relative(join(root, 'playground'), item)), ['index.html']);
   assert.match(await readFile(join(root, 'playground/src/main.tsx'), 'utf8'), /from '..\/..\/src\/react\/index.ts'/);
-  assert.deepEqual(await readdir(join(root, 'src/core/layout')), ['geometry.ts']);
+  assert.deepEqual((await readdir(join(root, 'src/core/layout'))).sort(), ['geometry.ts', 'port-policy.ts']);
 });
 
 test('library styles are scoped to the canvas instead of changing the host document', async () => {

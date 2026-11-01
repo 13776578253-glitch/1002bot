@@ -37,11 +37,12 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const geometryKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}:${node.type}:${node.position.x},${node.position.y},${node.width},${node.height}`).join('|');
   const parentKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}`).join('|');
   const selectedKey = nodes.filter((node) => node.selected).map((node) => node.id).join('|');
+  const portPolicy = baseline.stage.presentation?.portPolicy;
   const cache = useMemo(() => new DiagramRouteCache(), [baseline.id,baseline.stage.graph.revision,readOnly]);
   const routeInputs = useMemo(() => displayEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text })), [displayEdges]);
   const reserved = useMemo(() => reservedLockedRoutes(storedRoutes, nodes, frozenGroups), [storedRoutes, geometryKey]);
-  const retained = useMemo(() => retainedCanonicalRoutes(nodes, projection, displayEdges, storedRoutes, retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved), frozenGroups), [geometryKey, projection, displayEdges, storedDisplayRoutes, reserved, storedRoutes]);
-  const rawRoutes = useMemo(() => cache.update(nodes, projection, routeInputs, reserved, retained), [geometryKey, projection, routeInputs, reserved, retained]);
+  const retained = useMemo(() => retainedCanonicalRoutes(nodes, projection, displayEdges, storedRoutes, retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups), [geometryKey, projection, displayEdges, storedDisplayRoutes, reserved, storedRoutes, portPolicy]);
+  const rawRoutes = useMemo(() => cache.update(nodes, projection, routeInputs, reserved, retained, portPolicy), [geometryKey, projection, routeInputs, reserved, retained, portPolicy]);
   const resolved = useMemo(() => {
     const started = performance.now();
     const routes = applyStoredRoutes(rawRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
@@ -107,14 +108,14 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const guideBlockers = alignment.length ? displayNodes.filter((node) => !node.hidden).map((node) => ({ ...worldPosition(node, nodes), w: node.width!, h: node.type === 'card' ? node.height! : node.type === 'structure' ? 68 : 54 })) : [];
   if (alignment.length) for (const { label } of routes.values()) guideBlockers.push({ x: label.x - label.width / 2, y: label.y - label.height / 2, w: label.width, h: label.height });
   return {
-    displayNodes, edges, routes, visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
+    displayNodes, edges, routes, blockedRoutes: [...routes].filter(([, route]) => route.feasible === false).map(([id]) => id), visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
     selectionLabel: roots.length > 1 ? `已选 ${roots.length} 项` : roots[0]?.data.title ?? '',
     selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats,
     snapshotRoutes: (current: CanvasNode[]) => {
       const reserved = reservedLockedRoutes(storedRoutes, current, frozenGroups);
-      const retained = retainedCanonicalRoutes(current, projection, displayEdges, storedRoutes, retainedDisplayRoutes(current, projection, displayEdges, storedDisplayRoutes, reserved), frozenGroups);
-      const generated = cache.update(current, projection, routeInputs, reserved, retained);
-      return captureDisplayRoutes(current, projection, displayEdges, applyStoredRoutes(generated, displayEdges, storedRoutes, current, projection,frozenGroups), reserved);
+      const retained = retainedCanonicalRoutes(current, projection, displayEdges, storedRoutes, retainedDisplayRoutes(current, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups);
+      const generated = cache.update(current, projection, routeInputs, reserved, retained, portPolicy);
+      return captureDisplayRoutes(current, projection, displayEdges, applyStoredRoutes(generated, displayEdges, storedRoutes, current, projection,frozenGroups), reserved, portPolicy);
     },
   };
 }

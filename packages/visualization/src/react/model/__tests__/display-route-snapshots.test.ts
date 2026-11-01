@@ -5,8 +5,9 @@ import { aggregateProjectedEdges } from '../display-edges.ts';
 import { captureDisplayRoutes, retainedDisplayRoutes } from '../display-route-snapshots.ts';
 import { DiagramRouteCache } from '../route-cache.ts';
 import type { StageSnapshot } from '../../../core/schema/types.ts';
+import { createDiagramGeometry, pathIsClear } from '../routing.ts';
 
-test('restored paths retain established crossings while barrier movement or a new node invalidates them', () => {
+test('restored automatic paths respect locked barriers and reuse only collision-free geometry', () => {
   const stage: StageSnapshot = { id: 'one', label: 'one', title: 'one', order: 0, track: 'main', graph: {
     rootId: 'root', nodes: [
       { id: 'root', parentId: null, label: 'root', kind: 'root', order: 0, ports: [] },
@@ -19,11 +20,16 @@ test('restored paths retain established crossings while barrier movement or a ne
   const barriers = [{ edgeId: 'permanent', points: [{ x: 350, y: -100 }, { x: 350, y: 200 }] }];
   const saved = captureDisplayRoutes(nodes, projection, edges, routes, barriers);
   const restored = retainedDisplayRoutes(nodes, projection, edges, saved, barriers);
-  assert.equal(restored.size, 1);
+  assert.equal(restored.size, 0);
   const cache = new DiagramRouteCache();
-  cache.update(nodes, projection, edges, barriers, restored);
+  const rerouted = cache.update(nodes, projection, edges, barriers, restored);
+  assert.equal(cache.lastStats.routedEdges, 1);
+  assert.ok(pathIsClear(rerouted.get('link')!.points, createDiagramGeometry(nodes, projection, barriers), 'a', 'b', 'link'));
+  const validSaved = captureDisplayRoutes(nodes, projection, edges, rerouted, barriers);
+  const validRetained = retainedDisplayRoutes(nodes, projection, edges, validSaved, barriers);
+  assert.equal(validRetained.size, 1);
+  cache.update(nodes, projection, edges, barriers, validRetained);
   assert.equal(cache.lastStats.routedEdges, 0);
-  assert.deepEqual(cache.update(nodes, projection, edges, barriers, restored).get('link')!.points, routes.get('link')!.points);
   const moved = [{ ...barriers[0]!, points: barriers[0]!.points.map(point => ({ x: point.x + 20, y: point.y })) }];
   assert.equal(retainedDisplayRoutes(nodes, projection, edges, saved, moved).size, 0);
   const obstructed = nodes.map(node => node.id === 'b' ? { ...node, position: { x: 600, y: 0 } } : node);
