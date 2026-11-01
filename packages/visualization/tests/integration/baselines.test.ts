@@ -14,6 +14,24 @@ import { validateOrthogonalPath } from '../helpers/geometry.ts';
 
 const createHierarchyNodes = (stage: StageSnapshot) => createNodes(stage, baselineOptions.find((baseline) => baseline.stage === stage)!.positions);
 
+test('stage expansion synchronization retains a rejected branch and applies independent branches', () => {
+  const stage: StageSnapshot = { id: 'sync', label: 'sync', title: 'sync', order: 0, track: 'main', graph: {
+    rootId: 'root', nodes: [
+      { id: 'root', parentId: null, kind: 'root', label: 'root', order: 0, ports: [] },
+      ...['a', 'b'].flatMap((id, order) => [
+        { id, parentId: 'root', kind: 'component' as const, label: id, order, ports: [] },
+        { id: `${id}-child`, parentId: id, kind: 'component' as const, label: `${id}-child`, order: 0, ports: [] },
+      ]),
+    ], edges: [],
+  } };
+  const target = createNodes(stage, { a: { x: 0, y: 0 }, b: { x: 1000, y: 0 } });
+  const source = target.map(node => ({ ...node, data: { ...node.data, expanded: !!node.data.expandable } }));
+  const next = syncHierarchyExpansion(target, source, stage, (before, after) => before.find(node => node.id === 'a')!.data.expanded === after.find(node => node.id === 'a')!.data.expanded);
+  assert.equal(next.find(node => node.id === 'a')!.data.expanded, false);
+  assert.equal(next.find(node => node.id === 'b')!.data.expanded, true);
+  assert.deepEqual(next.find(node => node.id === 'a')!.position, target.find(node => node.id === 'a')!.position);
+});
+
 const EPSILON = 0.000001;
 const bounds = (node: CanvasNode, nodes: readonly CanvasNode[]): Rect => ({ ...worldPosition(node, nodes), w: node.width!, h: node.height! });
 const overlaps = (a: Rect, b: Rect): boolean => a.x < b.x + b.w - EPSILON && a.x + a.w > b.x + EPSILON

@@ -4,11 +4,13 @@ import type { Projection } from '../../core/projection/index.ts';
 import type { CanonicalEdge } from '../../core/schema/types.ts';
 import type { DisplayEdge } from './display-edges.ts';
 import type { CachedRoute } from './route-cache.ts';
-import { createDiagramGeometry, pathIsClear, segmentCrossesRect, type DiagramGeometry } from './routing.ts';
+import { createDiagramGeometry, pathIsClear, segmentCrossesRect, type DiagramGeometry, type ReservedRoute } from './routing.ts';
 import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
 import { nodeIsVisible } from './hierarchy.ts';
 import type { EdgeRouteSnapshot, EdgeRouteState, FrozenGroupSnapshot } from './workspace.ts';
 import { boundaryWorldPoints, resolveFrozenBoundaryRoute } from './blackbox-routes.ts';
+
+const retainedBoundaryRoutes = new WeakSet<CachedRoute>();
 
 export function endpointFingerprint(edge: CanonicalEdge): string {
   return `${edge.id}:${edge.source.nodeId}:${edge.source.portId ?? ''}>${edge.target.nodeId}:${edge.target.portId ?? ''}`;
@@ -85,13 +87,23 @@ export function routeStateFor(routes: readonly EdgeRouteSnapshot[], canonicalEdg
 }
 
 /** Locked routes remain hard obstacles; pinned routes are intentionally soft. */
-export function reservedLockedRoutes(routes: readonly EdgeRouteSnapshot[], nodes: readonly CanvasNode[]): { edgeId: string; points: Point[] }[] {
-  return routes.flatMap((route) => {
-    const boundaries=(route.frozenBoundaries??[]).map(part=>({edgeId:route.canonicalEdgeId,points:boundaryWorldPoints(part,nodes)}));
+export function reservedLockedRoutes(routes: readonly EdgeRouteSnapshot[], nodes: readonly CanvasNode[], groups: readonly FrozenGroupSnapshot[] = []): ReservedRoute[] {
+  const closed = new Map(groups.flatMap(group => {
+    const root = nodes.find(node => node.id === group.rootId)!;
+    return root.data.expandable && !root.data.expanded ? [[group.rootId, group] as const] : [];
+  }));
+  const frames: ReservedRoute[] = [...closed.values()].map(group => {
+    const owner = nodes.find(node => node.id === group.rootId)!, origin = worldPosition(owner, nodes);
+    const frame = group.protectedFrame ?? { x: 0, y: 0, width: group.worldBounds.w, height: group.worldBounds.h };
+    return { edgeId: `frozen-frame:${group.rootId}`, points: [], obstacle: { nodeId: group.rootId, bounds: { x: origin.x + frame.x, y: origin.y + frame.y, w: frame.width, h: frame.height } } };
+  });
+  return [...frames, ...routes.flatMap((route) => {
+    const boundaries=(route.frozenBoundaries??[]).filter(part=>!closed.has(part.ownerId)).map(part=>({edgeId:route.canonicalEdgeId,points:boundaryWorldPoints(part,nodes)}));
     if (route.state !== 'locked') return boundaries;
+    if (route.space.kind === 'owner' && closed.has(route.space.ownerId)) return boundaries;
     const points = worldRoutePoints(route, nodes);
     return points ? [{ edgeId: route.canonicalEdgeId, points },...boundaries] : boundaries;
-  });
+  })];
 }
 
 /** Report moves that detach a locked route or introduce a node over its path. */
@@ -163,6 +175,40 @@ export function storedRouteAttached(route: EdgeRouteSnapshot, nodes: readonly Ca
     && Math.abs(points.at(-1)!.x - end.x) < 0.001 && Math.abs(points.at(-1)!.y - end.y) < 0.001;
 }
 
+/** Permanent canonical geometry seeds the cache before automatic paths are searched. */
+export function retainedCanonicalRoutes(nodes: readonly CanvasNode[], projection: Projection, edges: readonly DisplayEdge[], stored: readonly EdgeRouteSnapshot[], retained: ReadonlyMap<string, CachedRoute>, groups: readonly FrozenGroupSnapshot[] = []): Map<string, CachedRoute> {
+  const result = new Map(retained);
+  const geometry = createDiagramGeometry(nodes, projection);
+  const byId = new Map(stored.map(route => [route.canonicalEdgeId, route]));
+  for (const edge of edges) {
+    if (edge.aggregated || edge.members[0]!.source.boundary || edge.members[0]!.target.boundary) continue;
+    const snapshot = byId.get(edge.id);
+    if (!snapshot || (snapshot.state !== 'locked' && !snapshot.frozenBoundaries?.length) || snapshot.endpointFingerprint !== endpointFingerprint(edge.members[0]!.edge)) continue;
+    if (snapshot.frozenBoundaries?.some(part => !nodes.find(node => node.id === part.ownerId)!.data.expanded)) continue;
+    const saved = retained.get(edge.id);
+    const savedPoints = snapshot.frozenBoundaries?.length && saved && worldRoutePoints(snapshot, nodes);
+    const confirmedLocked = snapshot.state === 'locked' && saved && savedPoints && savedPoints.length === saved.points.length
+      && savedPoints.every((point, index) => point.x === saved.points[index]!.x && point.y === saved.points[index]!.y);
+    if (snapshot.frozenBoundaries?.length && saved && (snapshot.state !== 'locked' || confirmedLocked)) {
+      retainedBoundaryRoutes.add(saved);
+      continue;
+    }
+    const attached = storedRouteAttached(snapshot, nodes, geometry);
+    if (!attached && !snapshot.frozenBoundaries?.length) continue;
+    let points = worldRoutePoints(snapshot, nodes)!;
+    if (!attached || (snapshot.state !== 'locked' && snapshot.frozenBoundaries?.length && !retained.has(edge.id))) {
+      const sides: Record<string, PortSide> = { out: 'bottom', 'top-out': 'top', 'return-out': 'right', 'left-out': 'left', in: 'top', 'bottom-in': 'bottom', return: 'right', 'left-in': 'left' };
+      const start = portAnchor(geometry.bounds.get(edge.source)!, sides[snapshot.source.handle!]!);
+      const end = portAnchor(geometry.bounds.get(edge.target)!, sides[snapshot.target.handle!]!);
+      points = [start, { x: end.x, y: start.y }, end];
+    }
+    const origin = snapshot.space.kind === 'owner' ? worldPosition(nodes.find(node => node.id === (snapshot.space as { ownerId: string }).ownerId)!, nodes) : { x: 0, y: 0 };
+    const label = snapshot.label ? { ...snapshot.label, x: snapshot.label.x + origin.x, y: snapshot.label.y + origin.y } : retained.get(edge.id)?.label;
+    if (label) result.set(edge.id, { points, sourceHandle: snapshot.source.handle!, targetHandle: snapshot.target.handle!, label, text: edge.text });
+  }
+  return result;
+}
+
 /** Apply retained canonical routes only to one-to-one visible display edges. */
 export function applyStoredRoutes(
   routes: ReadonlyMap<string, CachedRoute>,
@@ -171,10 +217,11 @@ export function applyStoredRoutes(
   nodes: readonly CanvasNode[],
   projection: Projection,
   groups: readonly FrozenGroupSnapshot[] = [],
+  boundaryFailures?: Map<string, string>,
 ): Map<string, CachedRoute> {
   if (!stored.length) return routes as Map<string, CachedRoute>;
   const byId = new Map(stored.map((route) => [route.canonicalEdgeId, route]));
-  const geometry = createDiagramGeometry(nodes, projection, reservedLockedRoutes(stored, nodes));
+  const geometry = createDiagramGeometry(nodes, projection, reservedLockedRoutes(stored, nodes, groups));
   const next = new Map(routes);
   for (const edge of edges) {
     if (edge.aggregated) continue;
@@ -182,13 +229,15 @@ export function applyStoredRoutes(
     if (!member || member.source.boundary || member.target.boundary) continue;
     const retained = byId.get(member.canonicalEdgeId);
     if (!retained) continue;
+    if (retained.frozenBoundaries?.some(part => !nodes.find(node => node.id === part.ownerId)!.data.expanded)) continue;
     if (retained.endpointFingerprint !== endpointFingerprint(member.edge)) continue;
     if (retained.source.nodeId !== member.source.nodeId || retained.target.nodeId !== member.target.nodeId) continue;
     const current = routes.get(edge.id);
     if (!current) continue;
     if(retained.frozenBoundaries?.length&&groups.length){
-      const resolved=resolveFrozenBoundaryRoute(edge.id,retained,nodes,geometry,edge.source,edge.target,current,groups);
+      const resolved=resolveFrozenBoundaryRoute(edge.id,retained,nodes,geometry,edge.source,edge.target,current,groups,retainedBoundaryRoutes.has(current));
       if(resolved.ok)next.set(edge.id,resolved.route);
+      else boundaryFailures?.set(edge.id, resolved.message);
       continue;
     }
     const points = worldRoutePoints(retained, nodes);

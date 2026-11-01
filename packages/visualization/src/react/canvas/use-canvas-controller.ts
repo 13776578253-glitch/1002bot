@@ -7,10 +7,11 @@ import { groupSelection, selectionRoots, ungroup, type CanvasNode, type LayoutMo
 import { hierarchyProjection, nodeIsVisible, toggleHierarchy, syncHierarchyExpansion } from '../model/hierarchy.ts';
 import { constrainNodeMoves, type AlignmentGuide } from '../model/constraints.ts';
 import { aggregateProjectedEdges, type DisplayEdge } from '../model/display-edges.ts';
-import { freezeSelection, frozenGroupFor, toggleFrozenExpansion, unfreezeGroup } from '../model/frozen.ts';
-import { captureRoutesForGroup, removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints } from '../model/edge-routes.ts';
-import { DiagramRouteCache, type CachedRoute } from '../model/route-cache.ts';
-import { planStageTransition, type StageViewState } from '../model/stage-transition.ts';
+import { freezeSelection, frozenGroupFor, toggleFrozenExpansion } from '../model/frozen.ts';
+import { removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints, reservedLockedRoutes } from '../model/edge-routes.ts';
+import { captureDisplayRoutes } from '../model/display-route-snapshots.ts';
+import type { CachedRoute } from '../model/route-cache.ts';
+import type { StageViewState } from '../model/stage-transition.ts';
 import { prepareStageNavigation } from '../model/stage-navigation.ts';
 import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
 import type { StageTransitionSuccess } from '../model/stage-transition.ts';
@@ -50,14 +51,17 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const [alignment, setAlignment] = useState<AlignmentGuide[]>([]);
   const flow = useReactFlow<CanvasNode>();
   const previewViewport = useRef<{ x: number; y: number; zoom: number } | undefined>(undefined);
-  const commit = useCallback((transform: (current: CanvasNode[]) => CanvasNode[]) => session.commit((current) => {
-    const next = transform(current);
-    const conflict = validateStoredRoutes(current, next, session.routesRef.current, hierarchyProjection(next, baseline.stage));
-    if (conflict) { setMessage(conflict); return current; }
-    const connections=validateFrozenConnections(current,next,baseline.stage,session.routesRef.current,session.frozenRef.current,routesRef.current);
-    if(connections.length){setMessage(connections[0]!.message);return current;}
-    return next;
-  }), [baseline, session.commit]);
+  const commit = useCallback((transform: (current: CanvasNode[]) => CanvasNode[]) => {
+    captureRendered.current();
+    return session.commit((current) => {
+      const next = transform(current);
+      const conflict = validateStoredRoutes(current, next, session.routesRef.current, hierarchyProjection(next, baseline.stage));
+      if (conflict) { setMessage(conflict); return current; }
+      const connections=validateFrozenConnections(current,next,baseline.stage,session.routesRef.current,session.frozenRef.current,routesRef.current);
+      if(connections.length){setMessage(connections[0]!.message);return current;}
+      return next;
+    });
+  }, [baseline, session.commit]);
   const recordConstraint = useRef<(duration: number) => void>(() => {});
   const routesRef = useRef<Map<string, CachedRoute>>(new Map());
   const captureRendered = useRef<() => void>(() => {});
@@ -73,7 +77,6 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       const visible = new Set(next.filter((node) => nodeIsVisible(node, next, projectionRef.current)).map((node) => node.id));
       const started = performance.now();
       const result = constrainNodeMoves(current, next, moved, flow.getZoom(), visible, links);
-      recordConstraint.current(performance.now() - started);
       next = result.nodes;
       const grown=rebaseFrozenGrowth(current,next,session.routesRef.current,session.frozenRef.current);
       const routeConflict = validateStoredRoutes(current, next, session.routesRef.current, projectionRef.current,grown.routes);
@@ -81,6 +84,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       if (routeConflict||connections.length) { next = current; setMessage(routeConflict??connections[0]!.message); }
       else {if(grown.routes!==session.routesRef.current)session.setRoutes(grown.routes);if(grown.groups!==session.frozenRef.current)session.setFrozenGroups(grown.groups);}
       setAlignment(changes.some((change) => change.type === 'position' && change.dragging) ? result.guides : []);
+      recordConstraint.current(performance.now() - started);
     }
     setNodes(next);
     if (moved.length && !dragging.current && !changes.some((change) => change.type === 'position' && change.dragging)) { captureRendered.current(); finish(); }
@@ -94,8 +98,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       if (!frozenNode.data.expandable) return;
       const next=toggleFrozenExpansion(current, id, !frozenNode.data.expanded,session.frozenRef.current);
       if(next===current){setMessage('冻结框展开范围与已有节点冲突，原布局已保留');return;}
-      commit(() => next);
-      setMessage('');
+      if (commit(() => next)) setMessage('');
       setSelectedEdge(undefined);
       return;
     }
@@ -103,7 +106,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     if (next === current) { setMessage('空间不足：请移动或解除相关节点的固定后再展开'); return; }
     const conflict = validateStoredRoutes(current, next, session.routesRef.current, hierarchyProjection(next, baseline.stage));
     if (conflict) { setMessage(conflict); return; }
-    commit(() => next); setMessage(''); setSelectedEdge(undefined);
+    if (commit(() => next)) setMessage(''); setSelectedEdge(undefined);
   }, [baseline, commit, preview]);
 
   const chooseEdge = useCallback((id: string) => {
@@ -148,6 +151,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
 
   const freezeSubgraph = useCallback(() => {
     if (preview) return;
+    captureRendered.current();
     const roots = selectionRoots(nodesRef.current);
     if (!roots.length) { setMessage('请选择要冻结的节点或容器'); return; }
     const result = freezeSelection({
@@ -165,6 +169,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       ...current, nodes: captured.nodes,
       frozenGroups: [...current.frozenGroups, captured.group],
       edgeRoutes: merged,
+      displayRoutes: captureDisplayRoutes(nodesRef.current, projection, displayEdges, routesRef.current, reservedLockedRoutes(merged, captured.nodes, [...session.frozenGroups, captured.group])),
     }));
     setMessage(`已冻结 ${1 + result.group.memberIds.length} 个节点`);
     clearTransientState();
@@ -172,6 +177,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
 
   const unfreezeSelected = useCallback(() => {
     if (preview) return;
+    captureRendered.current();
     const roots = selectionRoots(nodesRef.current);
     const group = roots.map((node) => frozenGroupFor(session.frozenGroups, node.id)).find((item): item is FrozenGroupSnapshot => !!item);
     if (!group) { setMessage('请选择冻结组根节点或成员'); return; }
@@ -185,6 +191,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
 
   const setEdgeRouteState = useCallback((state: EdgeRouteState) => {
     if (preview || !selectedEdge) return;
+    captureRendered.current();
     const edge = displayEdges.find((item) => item.id === selectedEdge);
     if (!edge || edge.aggregated) return;
     const canonicalId = edge.members[0]?.canonicalEdgeId;
@@ -211,21 +218,28 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const selectBaseline = useCallback((id: string) => {
     if (preview) { setPreview(undefined); setMessage('已取消候选预览'); return; }
     if (id === baselineId) return;
+    captureRendered.current();
     const target = props.baselines.find((item) => item.id === id)!;
     const targetRevision = target.stage.graph.revision ?? target.stage.id;
     const saved = session.getSavedContent(id);
     const targetIndex = props.baselines.findIndex((item) => item.id === id);
     const parentId = target.previousStageId ?? props.baselines[targetIndex - 1]?.id;
-    if (!parentId && saved && saved.revision === targetRevision) {
-      session.saveViewport(flow.getViewport());
-      session.switchBaseline(id, (destination, source) => {
-        const next = syncHierarchyExpansion(destination, source, target.stage);
-        const conflict = validateStoredRoutes(destination, next, saved.content.edgeRoutes, hierarchyProjection(next, target.stage));
-        if (conflict) { setMessage(conflict); return destination; }
-        const wanted = new Map(source.filter((node) => node.data.expandable).map((node) => [node.id, !!node.data.expanded]));
-        setMessage(next.some((node) => wanted.has(node.id) && node.data.expandable && wanted.get(node.id) !== !!node.data.expanded) ? '部分模块空间不足，已保留目标阶段的原展开状态' : '');
-        return next;
+    const synchronize = (destination: CanvasNode[], source: CanvasNode[], routes: typeof session.edgeRoutes, groups: FrozenGroupSnapshot[]) => {
+      let conflict = '';
+      const next = syncHierarchyExpansion(destination, source, target.stage, (before, after) => {
+        const issue = validateStoredRoutes(before, after, routes, hierarchyProjection(after, target.stage))
+          ?? validateFrozenConnections(before, after, target.stage, routes, groups)[0]?.message;
+        if (issue) { conflict = issue; return false; }
+        return true;
       });
+      const wanted = new Map(source.filter(node => node.data.expandable).map(node => [node.id, !!node.data.expanded]));
+      const partial = next.some(node => !node.data.frozen && wanted.has(node.id) && node.data.expandable && wanted.get(node.id) !== !!node.data.expanded);
+      setMessage(conflict || (partial ? '部分模块空间不足，已保留目标阶段的原展开状态' : ''));
+      return next;
+    };
+    if (!parentId && (!saved || saved.revision === targetRevision)) {
+      session.saveViewport(flow.getViewport());
+      session.switchBaseline(id, (destination, source) => synchronize(destination, source, saved?.content.edgeRoutes ?? [], saved?.content.frozenGroups ?? []));
       clearTransientState();
       return;
     }
@@ -243,9 +257,13 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       return;
     }
     session.saveViewport(flow.getViewport());
-    if (result.reused) session.switchBaseline(id);
-    else session.applyStageTransition(id, result.state, result.base, result.record, result.inheritance);
-    setPreview(undefined); setMessage('');
+    if (result.reused) session.switchBaseline(id, (destination, source) => synchronize(destination, source, result.state.edgeRoutes, result.state.frozenGroups));
+    else {
+      const requiredExpansion = new Set(result.record.expanded);
+      const synchronized = synchronize(result.state.nodes, nodesRef.current.filter(node => !requiredExpansion.has(node.id)), result.state.edgeRoutes, result.state.frozenGroups);
+      session.applyStageTransition(id, { ...result.state, nodes: synchronized }, result.base, result.record, result.inheritance);
+    }
+    setPreview(undefined);
     clearTransientState();
   }, [baseline, baselineId, clearTransientState, flow.getViewport, preview, props.baselines, session]);
 
@@ -295,8 +313,8 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   }, [baseline, commit, flow.fitView, preview]);
   const closeConnections = useCallback(() => setConnectionEdge(undefined), []);
   const clearMessage = useCallback(() => setMessage(''), []);
-  const undo = useCallback(() => { if (!preview) { session.undo(); setMessage(''); } }, [preview, session.undo]);
-  const redo = useCallback(() => { if (!preview) { session.redo(); setMessage(''); } }, [preview, session.redo]);
+  const undo = useCallback(() => { if (!preview) { captureRendered.current(); session.undo(); setMessage(''); } }, [preview, session.undo]);
+  const redo = useCallback(() => { if (!preview) { captureRendered.current(); session.redo(); setMessage(''); } }, [preview, session.redo]);
 
   useEffect(() => { localStorage.setItem('architecture-theme', theme); }, [theme]);
   useEffect(() => {
@@ -332,7 +350,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const selectedRouteState = selectedCanonicalEdgeId ? routeStateFor(session.edgeRoutes, selectedCanonicalEdgeId) : undefined;
   const dragProfile = useDragProfile(scene.routeStats);
   recordConstraint.current = dragProfile.recordConstraint;
-  const beginDrag = useCallback(() => { if (!preview) { dragging.current=true; begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
+  const beginDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=true; begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
   const finishDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=false; finish(); dragProfile.stop(); setAlignment([]); } }, [dragProfile.stop, finish, preview]);
   const saveViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => { if (!preview) session.saveViewport(viewport); }, [preview, session.saveViewport]);
   return {

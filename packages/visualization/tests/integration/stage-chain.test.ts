@@ -9,8 +9,11 @@ import { planStageTransition } from '../../src/react/model/stage-transition.ts';
 import { hierarchyProjection } from '../../src/react/model/hierarchy.ts';
 import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
 import { DiagramRouteCache } from '../../src/react/model/route-cache.ts';
-import { captureDisplayRoutes } from '../../src/react/model/display-route-snapshots.ts';
+import { captureDisplayRoutes, retainedDisplayRoutes } from '../../src/react/model/display-route-snapshots.ts';
 import { createDiagramGeometry, pathIsClear } from '../../src/react/model/routing.ts';
+import { freezeSelection, toggleFrozenExpansion } from '../../src/react/model/frozen.ts';
+import { captureFrozenSubgraph, validateFrozenConnections, boundaryWorldPoints } from '../../src/react/model/blackbox-routes.ts';
+import { applyStoredRoutes, retainedCanonicalRoutes, reservedLockedRoutes, worldRoutePoints } from '../../src/react/model/edge-routes.ts';
 
 test('confirmed report M1 advances through every published stage without moving inherited content anchors', () => {
   const baselines = adaptProgressReports(JSON.parse(readFileSync(new URL('../../datasets/progress-reports/architecture.json', import.meta.url), 'utf8')) as ReportDataset);
@@ -43,4 +46,32 @@ test('confirmed report M1 advances through every published stage without moving 
       if (next) assert.deepEqual(anchor(next, nodes), anchor(node, before), `${baselines[index]!.id}: ${node.id}`);
     }
   }
+  const baseline = baselines.at(-1)!, finalProjection = hierarchyProjection(nodes, baseline.stage);
+  const finalEdges = aggregateProjectedEdges(finalProjection, baseline.edgeChanges);
+  const finalRoutes = new DiagramRouteCache().update(nodes, finalProjection, finalEdges);
+  const frozen = freezeSelection({ nodes, rootIds: ['runtime'], groupId: 'runtime:confirmed', stage: baseline.stage });
+  assert.ok(frozen.ok); if (!frozen.ok) return;
+  const captured = captureFrozenSubgraph({ nodes: frozen.nodes, stage: baseline.stage, group: frozen.group, groups: [frozen.group], displayEdges: finalEdges, displayRoutes: finalRoutes, storedRoutes: [] });
+  assert.ok(captured.ok, captured.ok ? '' : JSON.stringify(captured.conflicts)); if (!captured.ok) return;
+  const collapsed = toggleFrozenExpansion(captured.nodes, 'runtime', false, [captured.group]);
+  const reservations = reservedLockedRoutes(captured.routes, collapsed, [captured.group]);
+  assert.equal(reservations.filter(route => route.obstacle).length, 1);
+  assert.ok(reservations.length < captured.routes.length);
+  const moved = collapsed.map(node => node.id === 'runtime' ? { ...node, position: { x: node.position.x + 130, y: node.position.y + 130 } } : node);
+  assert.deepEqual(validateFrozenConnections(collapsed, moved, baseline.stage, captured.routes, [captured.group], finalRoutes), []);
+  const opened = toggleFrozenExpansion(moved, 'runtime', true, [captured.group]);
+  assert.deepEqual(validateFrozenConnections(moved, opened, baseline.stage, captured.routes, [captured.group], finalRoutes), []);
+  for (const route of captured.routes) {
+    if (route.space.kind === 'owner') assert.deepEqual(worldRoutePoints(route, opened), worldRoutePoints(route, captured.nodes)!.map(point => ({ x: point.x + 130, y: point.y + 130 })));
+    for (const segment of route.frozenBoundaries ?? []) assert.deepEqual(boundaryWorldPoints(segment, opened), boundaryWorldPoints(segment, captured.nodes).map(point => ({ x: point.x + 130, y: point.y + 130 })));
+  }
+  const openedProjection = hierarchyProjection(opened, baseline.stage), openedEdges = aggregateProjectedEdges(openedProjection, baseline.edgeChanges);
+  const barriers = reservedLockedRoutes(captured.routes, opened, [captured.group]);
+  const seeds = retainedCanonicalRoutes(opened, openedProjection, openedEdges, captured.routes, new Map(), [captured.group]);
+  const visible = applyStoredRoutes(new DiagramRouteCache().update(opened, openedProjection, openedEdges, barriers, seeds), openedEdges, captured.routes, opened, openedProjection, [captured.group]);
+  const snapshots = captureDisplayRoutes(opened, openedProjection, openedEdges, visible, barriers);
+  const freshRoutes = structuredClone(captured.routes), freshGroup = structuredClone(captured.group);
+  const restoredSeeds = retainedCanonicalRoutes(opened, openedProjection, openedEdges, freshRoutes, retainedDisplayRoutes(opened, openedProjection, openedEdges, snapshots, barriers), [freshGroup]);
+  const restored = applyStoredRoutes(new DiagramRouteCache().update(opened, openedProjection, openedEdges, barriers, restoredSeeds), openedEdges, freshRoutes, opened, openedProjection, [freshGroup]);
+  for (const edge of openedEdges) assert.deepEqual(restored.get(edge.id)!.points, visible.get(edge.id)!.points, `restored frozen view: ${edge.id}`);
 });

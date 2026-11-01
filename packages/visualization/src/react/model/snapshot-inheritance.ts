@@ -104,25 +104,26 @@ function mergeAtomicList<T>(base: readonly T[], local: readonly T[], incoming: r
 }
 
 /** Text and canonical members belong to the current stage, while route geometry is editable. */
-function mergeDisplayRoutes(base: readonly DisplayRouteSnapshot[], local: readonly DisplayRouteSnapshot[], incoming: readonly DisplayRouteSnapshot[], targetStage: StageSnapshot, conflicts: StageConflict[]): DisplayRouteSnapshot[] {
-  const geometry = (route: DisplayRouteSnapshot) => { const { text: _text, memberIds: _members, ...value } = route; return value; };
+function mergeDisplayRoutes(base: readonly DisplayRouteSnapshot[], local: readonly DisplayRouteSnapshot[], incoming: readonly DisplayRouteSnapshot[], targetStage: StageSnapshot): DisplayRouteSnapshot[] {
+  const geometry = (route: DisplayRouteSnapshot) => { const { text: _text, memberIds: _members, barrierKey: _barriers, ...value } = route; return value; };
   const a = maps(base.map(geometry), (route) => route.id), b = maps(local.map(geometry), (route) => route.id), c = maps(incoming.map(geometry), (route) => route.id);
   const currentText = maps(incoming, (route) => route.id), localText = maps(local, (route) => route.id);
   const edgeIds = new Set(targetStage.graph.edges.map((edge) => edge.id));
   const order = [...new Set([...local.map((route) => route.id), ...incoming.map((route) => route.id), ...base.map((route) => route.id)])];
   return order.flatMap((id) => {
     const hidden = localText.get(id);
+    const metadata = currentText.get(id) ?? hidden;
+    if (!metadata?.memberIds.some(member => edgeIds.has(member))) return [];
     if (a.has(id) && hidden && !c.has(id)) {
       const members = hidden.memberIds.filter((member) => edgeIds.has(member));
       if (members.length) return [{ ...structuredClone(hidden), memberIds: members }];
     }
-    if (a.has(id) && b.has(id) && c.has(id) && equal(a.get(id), b.get(id)) && !equal(a.get(id), c.get(id))) {
-      conflicts.push(conflict(id, `${id} 的已确认路径几何受到上游变化影响`));
-    }
-    const value = mergeEntity(a.get(id), b.get(id), c.get(id), id, conflicts);
+    const useLocal = b.has(id) && !equal(a.get(id), b.get(id));
+    const value = useLocal ? b.get(id) : c.get(id) ?? b.get(id);
     if (!value) return [];
     const source = currentText.get(id) ?? localText.get(id)!;
-    return [{ ...structuredClone(value), text: source.text, memberIds: [...source.memberIds] }];
+    const geometrySource = useLocal ? hidden : currentText.get(id) ?? hidden;
+    return [{ ...structuredClone(value), text: source.text, memberIds: [...source.memberIds], ...(geometrySource?.barrierKey ? { barrierKey: geometrySource.barrierKey } : {}) }];
   });
 }
 
@@ -229,7 +230,7 @@ export function mergeStageContent(input: { base: CanvasBaselineContent; local: C
   const conflicts: StageConflict[] = [];
   const nodes = mergeNodes(base.nodes, local.nodes, incoming.nodes, conflicts);
   const edgeRoutes = mergeAtomicList(base.edgeRoutes, local.edgeRoutes, incoming.edgeRoutes, (route: EdgeRouteSnapshot) => route.canonicalEdgeId, conflicts);
-  const displayRoutes = mergeDisplayRoutes(base.displayRoutes ?? [], local.displayRoutes ?? [], incoming.displayRoutes ?? [], targetStage, conflicts);
+  const displayRoutes = mergeDisplayRoutes(base.displayRoutes ?? [], local.displayRoutes ?? [], incoming.displayRoutes ?? [], targetStage);
   const frozenGroups = mergeFrozenGroups(base.frozenGroups, local.frozenGroups, incoming.frozenGroups, conflicts);
   const overlay = choose(base.overlay, local.overlay, incoming.overlay, 'overlay', '用户覆盖层', conflicts);
   const nodeIds = new Set(nodes.map((node) => node.id));

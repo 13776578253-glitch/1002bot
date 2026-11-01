@@ -13,11 +13,13 @@ export interface DiagramObstacle {
   bounds: Rect;
   padded: Rect;
   card: boolean;
+  endpointBounds?: Rect;
 }
 
 export interface ReservedRoute {
   edgeId: string;
   points: Point[];
+  obstacle?: { nodeId: string; bounds: Rect };
 }
 
 /** Geometry is shared by all invalidated edges in one interaction update. */
@@ -38,6 +40,7 @@ function reservedRects(reserved: readonly ReservedRoute[]): { edgeId: string; re
 }
 
 export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: Projection, reserved: readonly ReservedRoute[] = []): DiagramGeometry {
+  const protectedFrames = new Map(reserved.flatMap(route => route.obstacle ? [[route.obstacle.nodeId, route.obstacle.bounds] as const] : []));
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const bounds = new Map<string, Rect>();
   const rect = (node: CanvasNode): Rect => {
@@ -55,8 +58,8 @@ export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: 
     const full = rect(node);
     if (!nodeIsVisible(node, nodes, projection)) continue;
     const card = node.type === 'card';
-    const obstacle = card ? full : { ...full, h: node.type === 'structure' ? 68 : 54 };
-    const entry = { id: node.id, bounds: obstacle, padded: expandBounds(obstacle, card ? 10 : 0), card };
+    const obstacle = protectedFrames.get(node.id) ?? (card ? full : { ...full, h: node.type === 'structure' ? 68 : 54 });
+    const entry = { id: node.id, bounds: obstacle, padded: expandBounds(obstacle, card ? 10 : 0), card, endpointBounds: card ? full : { ...full, h: node.type === 'structure' ? 68 : 54 } };
     obstacles.set(node.id, entry);
     obstacleIndex.set(node.id, entry.padded, entry);
     blockers.push(obstacle);
@@ -78,7 +81,7 @@ export function pathIsClear(points: readonly Point[], geometry: DiagramGeometry,
   for (let index = 1; index < points.length; index++) {
     const from = points[index - 1]!, to = points[index]!;
     for (const obstacle of geometry.obstacleIndex.query(segmentBounds(from, to))) {
-      const bounds = obstacle.id === sourceId || obstacle.id === targetId ? obstacle.bounds : obstacle.padded;
+      const bounds = obstacle.id === sourceId || obstacle.id === targetId ? obstacle.endpointBounds ?? obstacle.bounds : obstacle.padded;
       if (segmentCrossesRect(from, to, bounds)) return false;
     }
     for (const reserved of geometry.reserved) {
@@ -125,7 +128,7 @@ function routeWithHandles(geometry: DiagramGeometry, sourceId: string, targetId:
   const selected = new Map(geometry.obstacleIndex.query(expandBounds(segmentBounds(start, end), 64)).map((entry) => [entry.id, entry]));
   selected.set(sourceId, geometry.obstacles.get(sourceId)!);
   selected.set(targetId, geometry.obstacles.get(targetId)!);
-  const obstacleBounds = (entry: DiagramObstacle) => entry.id === sourceId || entry.id === targetId ? entry.bounds : entry.padded;
+  const obstacleBounds = (entry: DiagramObstacle) => entry.id === sourceId || entry.id === targetId ? entry.endpointBounds ?? entry.bounds : entry.padded;
   const reservedObstacles = geometry.reserved.filter((entry) => entry.edgeId !== edgeId).map((entry) => obstacleFromRect(entry.rect, 2));
   const obstacleList = () => [...selected.values()].map((entry) => obstacleFromRect(obstacleBounds(entry))).concat(reservedObstacles);
   let obstacles = obstacleList();

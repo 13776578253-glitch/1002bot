@@ -109,7 +109,7 @@ function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
     if (item.frozenBoundaries !== undefined) {
       if (!Array.isArray(item.frozenBoundaries)) throw new Error('冻结路径分段格式不正确');
       for (const segment of item.frozenBoundaries) {
-        if (!isRecord(segment) || !isText(segment.ownerId) || !['source', 'target'].includes(String(segment.endpoint)) || !FROZEN_SIDES.has(segment.side as FrozenBoundarySide) || !Array.isArray(segment.points) || segment.points.length < 2) throw new Error('冻结路径分段格式不正确');
+        if (!isRecord(segment) || !isText(segment.ownerId) || !['source', 'target'].includes(String(segment.endpoint)) || !FROZEN_SIDES.has(segment.side as FrozenBoundarySide) || !Array.isArray(segment.points) || segment.points.length < 1) throw new Error('冻结路径分段格式不正确');
         for (const point of segment.points) checkPoint(point, '冻结路径分段格式不正确');
       }
     }
@@ -185,6 +185,7 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   if (raw.displayRoutes !== undefined) {
     if (!Array.isArray(raw.displayRoutes)) throw new Error('投影路径快照格式不正确');
     for (const route of raw.displayRoutes) {
+      if (isRecord(route) && route.barrierKey !== undefined && !isText(route.barrierKey)) throw new Error('投影路径障碍版本格式不正确');
       if (!isRecord(route) || !isText(route.id) || !isText(route.source) || !isText(route.target) || !isText(route.sourceHandle) || !isText(route.targetHandle) || typeof route.text !== 'string' || !Array.isArray(route.memberIds) || !route.memberIds.every(isText) || !Array.isArray(route.points) || route.points.length < 2 || !isRecord(route.label)) throw new Error('投影路径快照格式不正确');
       for (const point of route.points) checkPoint(point, '投影路径快照格式不正确');
       for (const bounds of [route.sourceBounds, route.targetBounds]) {

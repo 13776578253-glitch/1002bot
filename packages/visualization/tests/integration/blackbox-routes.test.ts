@@ -9,7 +9,8 @@ import { freezeSelection, toggleFrozenExpansion } from '../../src/react/model/fr
 import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
 import { DiagramRouteCache } from '../../src/react/model/route-cache.ts';
 import { createDiagramGeometry } from '../../src/react/model/routing.ts';
-import { worldRoutePoints } from '../../src/react/model/edge-routes.ts';
+import { applyStoredRoutes, worldRoutePoints } from '../../src/react/model/edge-routes.ts';
+import { worldPosition } from '../../src/react/model/grouping.ts';
 import { boundaryWorldPoints, captureFrozenSubgraph, resolveFrozenBoundaryRoute, validateFrozenConnections, releaseFrozenSubgraph } from '../../src/react/model/blackbox-routes.ts';
 import { captureContent, restoreNodeViews, ViewHistory } from '../../src/react/model/workspace.ts';
 import { createLocalStorageViewStorage } from '../../src/react/persistence/local-storage.ts';
@@ -75,6 +76,33 @@ test('releasing one owner preserves the other frozen endpoint on a shared bounda
   assert.deepEqual(released.edgeRoutes[0]!.frozenBoundaries?.map(part=>part.ownerId),['outside']);
 });
 
+test('a frozen boundary route that cannot avoid a locked path reports failure instead of accepting a placeholder', () => {
+  const source = toggleHierarchy(createHierarchyNodes(stage, positions), 'module', stage).map(n => n.id === 'module' ? { ...n, width: 520, data: { ...n.data, contentWidth: 400, contentHeight: 300 } } : n);
+  const frozen = freezeSelection({ nodes: source, rootIds: ['module'], groupId: 'frozen:blocked', stage });
+  assert.equal(frozen.ok, true); if (!frozen.ok) return;
+  const projection = projectGraph(stage, ['module']);
+  const edges = aggregateProjectedEdges(projection, marks);
+  const rendered = new DiagramRouteCache().update(frozen.nodes, projection, edges);
+  const captured = captureFrozenSubgraph({ nodes: frozen.nodes, stage, group: frozen.group, groups: [frozen.group], displayEdges: edges, displayRoutes: rendered, storedRoutes: [] });
+  assert.equal(captured.ok, true); if (!captured.ok) return;
+  const opened = toggleFrozenExpansion(captured.nodes, 'nested', true, [captured.group]);
+  const openProjection = projectGraph(stage, ['module', 'nested']);
+  const openEdges = aggregateProjectedEdges(openProjection, marks);
+  const cross = captured.routes.find(route => route.canonicalEdgeId === 'cross')!;
+  const actual = worldRoutePoints(cross, opened)!;
+  const start = actual[0]!, end = actual.at(-1)!;
+  const fallback = { ...rendered.get('cross')!, sourceHandle: cross.source.handle!, targetHandle: cross.target.handle!, points: [start, { x: end.x, y: start.y }, end] };
+  const outside = opened.find(node => node.id === 'outside')!, pos = worldPosition(outside, opened);
+  const left = pos.x - 40, top = pos.y - 40, right = pos.x + outside.width! + 40, bottom = pos.y + outside.height! + 40;
+  const barrier = { canonicalEdgeId: 'barrier', state: 'locked' as const, source: { nodeId: 'outside' }, target: { nodeId: 'outside' }, space: { kind: 'world' as const }, endpointFingerprint: 'barrier', points: [{ x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }, { x: left, y: top }] };
+  const failures = new Map<string, string>();
+  applyStoredRoutes(new Map([['cross', fallback]]), openEdges, [cross, barrier], opened, openProjection, [captured.group], failures);
+  assert.ok(failures.get('cross')?.includes('无法'));
+  const canonicalFailures = new Map<string, string>();
+  applyStoredRoutes(new Map([['cross', { ...fallback, points: actual }]]), openEdges, [cross, barrier], opened, openProjection, [captured.group], canonicalFailures);
+  assert.ok(canonicalFailures.get('cross')?.includes('无法'), 'an older canonical path is revalidated against changed barriers');
+});
+
 test('freezing report Runtime with surrounding space captures all canonical incident edges', () => {
   const dataset = JSON.parse(readFileSync(new URL('../../datasets/progress-reports/architecture.json', import.meta.url), 'utf8')) as ReportDataset;
   const baseline = adaptProgressReports(dataset).at(-1)!;
@@ -89,4 +117,11 @@ test('freezing report Runtime with surrounding space captures all canonical inci
   const ids = new Set([capture.group.rootId, ...capture.group.memberIds]);
   const expected = baseline.stage.graph.edges.filter((e) => ids.has(e.source.nodeId) || ids.has(e.target.nodeId)).map((e) => e.id).sort();
   assert.deepEqual(capture.routes.map((e) => e.canonicalEdgeId).sort(), expected);
+  let text: string | null = null;
+  const storage = createLocalStorageViewStorage({ getItem: () => text, setItem: (_key, value) => { text = value; } });
+  const content = captureContent(capture.nodes, capture.routes, [capture.group]);
+  storage.save('real-runtime', { version: 2, baselineId: baseline.id, baselines: { [baseline.id]: { ...content, revision: baseline.stage.graph.revision! } } });
+  const restored = storage.load('real-runtime') as import('../../src/react/model/workspace.ts').CanvasWorkspaceView;
+  assert.deepEqual(restored.baselines[baseline.id]!.edgeRoutes, capture.routes);
+  assert.ok(capture.routes.some(route => route.frozenBoundaries?.some(segment => segment.points.length === 1)), 'a canonical endpoint on the frame preserves its boundary port');
 });

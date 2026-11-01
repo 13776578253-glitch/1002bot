@@ -142,7 +142,8 @@ export function constrainNodeMoves(
   const valid = (fitted: readonly CanvasNode[], expectedNodes: readonly CanvasNode[]) => !layoutProtectionConflict(before, fitted, new Set(roots.map((node) => node.id))) && fitted.every((node) => {
     if (node.type === 'card') return true;
     const ceiling = containerGrowthCeiling(node);
-    return node.width! <= ceiling.width && node.height! <= ceiling.height;
+    const prior = previous.get(node.id)!;
+    return node.width! <= Math.max(prior.width!, ceiling.width) && node.height! <= Math.max(prior.height!, ceiling.height);
   }) && roots.every((node) => {
     const current = fitted.find((item) => item.id === node.id)!;
     const expected = worldPosition(expectedNodes.find((item) => item.id === node.id)!, expectedNodes), actual = worldPosition(current, fitted);

@@ -78,6 +78,24 @@ test('direct locked members cannot be grouped or dissolved but fixed nodes remai
   assert.equal(ungroup(lockedGroup, 'editable'), lockedGroup);
 });
 
+test('dragging a child compensates a fixed expandable frame origin without moving its content anchor', () => {
+  const frame: CanvasNode = { id: 'frame', type: 'structure', position: { x: 200, y: 150 }, width: 700, height: 250, data: { title: 'frame', expandable: true, expanded: true, layoutMode: 'fixed', contentWidth: 700, contentHeight: 250 } };
+  const before = [frame, { ...card('moving', 24, 72), parentId: 'frame' }, { ...card('fixed', 360, 72, 'fixed'), parentId: 'frame' }];
+  const next = drag(before, 'moving', -160, -70);
+  const afterFrame = next.find(n => n.id === 'frame')!;
+  assert.ok(afterFrame.position.x < frame.position.x);
+  assert.deepEqual({ x: afterFrame.position.x - (afterFrame.data.fitOffset?.x ?? 0), y: afterFrame.position.y - (afterFrame.data.fitOffset?.y ?? 0) }, frame.position);
+  assert.deepEqual(worldPosition(next.find(n => n.id === 'fixed')!, next), worldPosition(before[2]!, before));
+});
+
+test('an unchanged frame within the stage growth budget does not block unrelated manual movement', () => {
+  const frame: CanvasNode = { id: 'stage-frame', type: 'structure', position: { x: 1000, y: 1000 }, width: 912, height: 672, data: { title: 'stage-frame', contentWidth: 912, contentHeight: 324 } };
+  const before = [card('moving', 0, 0), frame];
+  const next = drag(before, 'moving', 100, 80);
+  assert.deepEqual(next[0]!.position, { x: 100, y: 80 });
+  assert.equal(next[1]!.height, frame.height);
+});
+
 test('baseline expansion synchronization keeps target fixed modes and rejects its conflicting expansion', () => {
   const source = toggleHierarchy(initial(), 'module', stage);
   const target = initial().map((node) => ({ ...node, data: { ...node.data, layoutMode: 'fixed' as const } }));

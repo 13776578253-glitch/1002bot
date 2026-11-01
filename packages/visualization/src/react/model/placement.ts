@@ -2,10 +2,10 @@
 import type { Projection } from '../../core/projection/index.ts';
 import type { StageSnapshot } from '../../core/schema/types.ts';
 import type { Point, Rect } from '../../core/layout/geometry.ts';
-import { CARD_SIZE, MIN_EDGE_GAP, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, MIN_EDGE_GAP, isLayoutProtected, layoutProtectionConflict, worldPosition, type CanvasNode } from './grouping.ts';
 import { hierarchyProjection, nodeIsVisible } from './hierarchy.ts';
 import { toggleFrozenExpansion } from './frozen.ts';
-import { containerInset, MAX_CONTAINER_EXTRA } from './spacing.ts';
+import { containerInset, preferredContainerSize, MAX_CONTAINER_EXTRA } from './spacing.ts';
 import type { EdgeRouteSnapshot, FrozenGroupSnapshot, StagePlacementRecord } from './workspace.ts';
 import type { StageConflict } from './stage-types.ts';
 
@@ -68,7 +68,8 @@ function fitFrame(input: readonly CanvasNode[], id: string, pending: ReadonlySet
   let minX = Math.min(0, ...children.map((child) => child.position.x - inset.x));
   let minY = Math.min(0, ...children.map((child) => child.position.y - inset.top));
   const maxX = Math.max(opening ? 48 + CARD_SIZE.width : width, ...children.map((child) => child.position.x + size(child).w + inset.x));
-  const maxY = Math.max(opening ? inset.top + CARD_SIZE.height*2+MIN_EDGE_GAP + inset.bottom : height, ...children.map((child) => child.position.y + size(child).h + inset.bottom));
+  const minimumRows = Math.min(2, Math.max(1, totalChildren));
+  const maxY = Math.max(opening ? inset.top + CARD_SIZE.height * minimumRows + MIN_EDGE_GAP * (minimumRows - 1) + inset.bottom : height, ...children.map((child) => child.position.y + size(child).h + inset.bottom));
   const nextWidth = maxX - minX, nextHeight = maxY - minY;
   if (opening) {
     if (bias.x < 0) { const lower = Math.max(width - nextWidth, ...children.map((child) => child.position.x + size(child).w + inset.x - nextWidth)); minX += (minX - lower) * bias.x; }
@@ -190,8 +191,8 @@ export function placeAddedNodes(input: PlacementInput): PlacementResult {
         ? toggleFrozenExpansion(working, ancestor, true, input.frozenGroups)
         : replace(working, { ...node, type: 'structure', dragHandle: '.structure-header', data: { ...node.data, expanded: true } });
       let fitted: CanvasNode[] | undefined;
-      for (const bias of [{ x: 0, y: 0 }, { x: -0.5, y: 0 }, { x: -1, y: 0 }, { x: 0, y: -1 }, { x: -0.5, y: -1 }, { x: -1, y: -1 }]) {
-        fitted = fitChain(next, [...ancestorIds(next, ancestor), ancestor], input.stage, pending, node.data.frozen ? new Set() : new Set([ancestor]), bias,input);
+      for (let repairAuto = 0; repairAuto < 2 && !fitted; repairAuto++) for (const bias of [{ x: 0, y: 0 }, { x: -0.5, y: 0 }, { x: -1, y: 0 }, { x: 0, y: -1 }, { x: -0.5, y: -1 }, { x: -1, y: -1 }]) {
+        fitted = fitChain(next, [...ancestorIds(next, ancestor), ancestor], input.stage, pending, node.data.frozen ? new Set() : new Set([ancestor]), bias, repairAuto ? { ...input, reservedPaths: [] } : input);
         if (fitted && collisionFree(working, fitted, input.stage, pending)) break;
         fitted = undefined;
       }
@@ -254,4 +255,90 @@ export function placeAddedNodes(input: PlacementInput): PlacementResult {
     if (current !== original) opened.add(id);
   }
   return { nodes: working, placements, expanded: [...opened], conflicts };
+}
+
+function resizeExpansionCandidate(nodes: CanvasNode[], id: string, width: number, height: number, content?: { contentWidth: number; contentHeight: number }): void {
+  const index = nodes.findIndex((node) => node.id === id);
+  const node = nodes[index]!;
+  const oldWidth = node.width ?? CARD_SIZE.width, oldHeight = node.height ?? CARD_SIZE.height;
+  const dx = width - oldWidth, dy = height - oldHeight;
+  const key = nodes.filter((item) => item.data.expanded).map((item) => item.id).sort().join('|');
+  const baseline = node.data.expansionSizes?.[key] ?? (content ? { width: content.contentWidth, height: content.contentHeight } : undefined);
+  nodes[index] = { ...node, width, height, measured: { width, height }, style: { ...node.style, width, height }, ...(baseline ? { data: { ...node.data, contentWidth: baseline.width, contentHeight: baseline.height, expansionSizes: { ...node.data.expansionSizes, [key]: baseline } } } : {}) };
+  for (let i = 0; i < nodes.length; i++) {
+    const sibling = nodes[i]!;
+    if (sibling.id === id || sibling.parentId !== node.parentId || isLayoutProtected(sibling)) continue;
+    const w = sibling.width ?? CARD_SIZE.width, h = sibling.height ?? CARD_SIZE.height;
+    let x = sibling.position.x, y = sibling.position.y;
+    if (dx && x >= node.position.x + oldWidth && y + h > node.position.y && y < node.position.y + oldHeight) x += dx;
+    if (dy && y >= node.position.y + oldHeight && x + w > node.position.x && x < node.position.x + Math.max(width, oldWidth)) y += dy;
+    if (x !== sibling.position.x || y !== sibling.position.y) nodes[i] = { ...sibling, position: { x, y } };
+  }
+}
+
+/**
+ * 原位切换节点展开/收起状态：
+ * 1. 在 card 与 structure 类型之间原位切换；
+ * 2. 展开时自动按推荐尺寸撑开并向上级联重算父容器尺寸；
+ * 3. 沿 X/Y 轴推开受波及的同级兄弟节点；
+ * 4. 重新计算投影并更新内部节点的选中与可见性。
+ */
+function localExpansionCandidate(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
+  let nodes = [...input];
+  const index = nodes.findIndex((node) => node.id === id);
+  const node = nodes[index];
+  if (!node?.data.expandable) return input as CanvasNode[];
+  const expanded = !node.data.expanded;
+  const { dragHandle: _handle, ...base } = node;
+  nodes[index] = {
+    ...base, type: expanded ? 'structure' : 'card',
+    ...(expanded ? { dragHandle: '.structure-header' } : {}),
+    data: { ...node.data, expanded },
+  };
+  if (expanded) {
+    const size = preferredContainerSize(nodes[index]!, nodes);
+    resizeExpansionCandidate(nodes, id, size.width, size.height, size);
+  } else resizeExpansionCandidate(nodes, id, CARD_SIZE.width, CARD_SIZE.height);
+  let parentId = node.parentId;
+  while (parentId) {
+    const parent = nodes.find((item) => item.id === parentId)!;
+    if (parent.data.expandable && !parent.data.expanded) break;
+    const bounds = preferredContainerSize(parent, nodes);
+    resizeExpansionCandidate(nodes, parentId, bounds.width, bounds.height, bounds);
+    parentId = parent.parentId;
+  }
+  const projection = hierarchyProjection(nodes, stage);
+  nodes = nodes.map((item) => nodeIsVisible(item, nodes, projection) || !item.selected ? item : { ...item, selected: false });
+  return nodes;
+}
+
+/** User expansion proposes local free-node adjustments, then uses the shared frame solver. */
+export function solveHierarchyExpansion(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
+  const original = input.find((node) => node.id === id)!;
+  const verify = (candidate: CanvasNode[]) => {
+    if (candidate === input || !candidate.find(node => node.id === id)!.data.expanded) return candidate;
+    let chain = [id], parent = original.parentId;
+    while (parent) {
+      const owner = byId(candidate, parent);
+      if (!owner.data.expanded) break;
+      chain.unshift(parent); parent = owner.parentId;
+    }
+    return fitChain(candidate, chain, stage, new Set(), new Set()) ?? input as CanvasNode[];
+  };
+  const candidate = verify(localExpansionCandidate(input, id, stage));
+  if (candidate === input || !layoutProtectionConflict(input, candidate)) return candidate;
+  if (original.data.expanded) return input as CanvasNode[];
+  let top = 72;
+  const column = input.map((node) => {
+    if (node.parentId !== id) return node;
+    if (isLayoutProtected(node)) {
+      top = Math.max(top, node.position.y + (node.height ?? CARD_SIZE.height) + 64);
+      return node;
+    }
+    const next = { ...node, position: { x: 24, y: top } };
+    top += (node.height ?? CARD_SIZE.height) + 64;
+    return next;
+  });
+  const local = verify(localExpansionCandidate(column, id, stage));
+  return layoutProtectionConflict(input, local) ? input as CanvasNode[] : local;
 }

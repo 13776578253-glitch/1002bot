@@ -50,6 +50,7 @@ export interface DisplayRouteSnapshot {
   text: string;
   sourceBounds: { x: number; y: number; w: number; h: number };
   targetBounds: { x: number; y: number; w: number; h: number };
+  barrierKey?: string;
 }
 
 export type FrozenBoundarySide = 'top' | 'right' | 'bottom' | 'left';

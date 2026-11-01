@@ -156,7 +156,10 @@ export function layoutProtectionConflict(before: readonly CanvasNode[], after: r
       }
       owner = previous.get(owner)?.parentId;
     }
-    if (Math.abs(newWorld.x - oldWorld.x - dx) > GEOMETRY_EPSILON || Math.abs(newWorld.y - oldWorld.y - dy) > GEOMETRY_EPSILON) return true;
+    const oldOffset = original.data.expandable ? original.data.fitOffset : undefined;
+    const newOffset = current.data.expandable ? current.data.fitOffset : undefined;
+    if (Math.abs(newWorld.x - (newOffset?.x ?? 0) - oldWorld.x + (oldOffset?.x ?? 0) - dx) > GEOMETRY_EPSILON
+      || Math.abs(newWorld.y - (newOffset?.y ?? 0) - oldWorld.y + (oldOffset?.y ?? 0) - dy) > GEOMETRY_EPSILON) return true;
   }
   for (const anchor of after.filter(isLayoutProtected)) {
     for (const peer of after) {

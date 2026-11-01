@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/frozen.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`
+Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`
 
 # Visualization
 
@@ -31,8 +31,10 @@ pnpm check:dist
 | `src/react/canvas` | 受控交互状态与场景派生 |
 | `src/react/model/workspace.ts` | 可序列化工作视图、草稿/已确认快照与有界事务历史 |
 | `src/react/model/stage-transition.ts` | 阶段差异、原子安置流水线与结构化冲突 |
-| `src/react/model/placement.ts` | 新增节点的确定性空隙填充与有限扩容 |
+| `src/react/model/placement.ts` | 展开与增量安置共享的几何求解、确定性空隙填充与有限扩容 |
+| `src/react/model/stage-navigation.ts`、`snapshot-inheritance.ts` | 父确认快照继承、来源修订与当前草稿三方合并 |
 | `src/react/model/frozen.ts` | 单层冻结子图、只读展开与解冻 |
+| `src/react/model/blackbox-routes.ts` | 隐藏内部路径、边界端口与刚性分段、外部连接可行性 |
 | `src/react/model/edge-routes.ts` | Canonical Edge 路径持久化、owner 坐标与可见展示边应用 |
 | `src/react/model/route-cache.ts` | 按端点、障碍和保留路径变化失效的精确路径与标签缓存 |
 | `src/react/model/display-edges.ts` | 折叠展示边聚合及原始连接成员 |
@@ -97,13 +99,19 @@ const persistence = {
 
 工作视图 v2 把草稿和已确认快照分开保存。自动保存只更新草稿；工具栏的确认按钮写入 `confirmedAt` 与当前内容副本，后续阶段以该副本为基础。切换阶段时若来源阶段没有确认快照，画布拒绝进入下一阶段。
 
-首次进入目标阶段时，只对来源差异求解：共同节点沿用已确认世界坐标，替换实体按 `previousId` 继承旧布局，新增节点优先填补关联节点附近的空隙，必要时只展开必要祖先并在容器扩容上限内扩展。删除实体和空组移除。目标阶段已有同修订快照时直接恢复；来源修订变化时按稳定 ID 合并后重新安置新增实体。
+首次进入目标阶段时，只对来源差异求解：共同叶节点沿用已确认世界坐标，容器保留 `worldPosition - fitOffset` 内容锚点。替换实体按 `previousId` 继承旧布局，归属改变的替换实体重新安置。新增节点优先填补空隙，必要时只展开所需祖先并四向有限扩容。阶段增量每轴预算为自然尺寸加 800px，成功后不抬高自然基准；手动拖动保留原比例上限，已合法生成的既有尺寸可保持。
+
+保存阶段同时记录生成它的父确认内容、目标来源图和生成基准。父确认与来源均未改变时直接恢复当前草稿；发生变化时重建传入内容，与当前草稿三方合并。独立编辑合并，同项不同修改、受保护对象移动和删除已编辑对象产生冲突。自动投影路径是可失效的几何缓存，人工路径及冻结账本独立保留。旧目标缺少继承基准时提供显式、可撤销的重新继承操作。
 
 阶段切换是原子事务：`Prepare → Diff → Place → Route → Validate → Commit`。校验失败时不修改源阶段、不写目标快照、不切换基线，只显示只读候选预览和结构化冲突。成功后目标阶段记一步撤销事务。
 
-冻结组首版为单层，禁止嵌套和成员重叠。冻结时容器固定、后代锁定，当前可见且使用真实端点的内部路径锁定；折叠代理路径不会保存为 Canonical 路径。跨边界可见路径为 `pinned`，端点改变时显示自动重算结果。冻结容器可整体拖动，内部相对坐标及 owner 路径和标签随组平移；只读展开不改几何，解冻恢复冻结前约束和人工路径。成员删除或归属变动产生冲突。折叠后代完整路径捕获和跨边界分段锁定仍在后续路线中。
+冻结组为单层，禁止嵌套和成员重叠。冻结时容器固定、全部后代锁定，按 Canonical ID 捕获所有内部连接，包括折叠隐藏的连接。内部点列与标签使用 owner 相对坐标；跨边界连接保留刚性内部段及真实边界端口，外部段单独求解。端口直接落在边框时，内部段可以只有一个坐标点。
+
+整体拖动只改变组原点，内部坐标不变。折叠状态也预检隐藏端口的可行性，展开按已保存尺寸恢复。折叠后的路由将内部障碍压缩为完整保护框，点列仍保留在账本中。解冻恢复原约束与人工路径，并保留其他冻结组的边界保护；收展、拖动和解冻均可撤销。成员或锁定连接的来源删除、更改归属产生冲突。
 
 路径状态为 `auto`、`pinned`、`locked`。`auto` 由算法自由计算；`pinned` 优先保留，失效时可局部重算；`locked` 逐点保留并阻止自动修改。路径按 Canonical Edge ID 保存，折叠聚合展示边不继承独立路径；展开且端点指纹匹配后恢复。锁定路径的标签位置一并保存。
+
+工作视图保存投影路径与障碍版本提示，恢复时直接复用仍可行的路径。改变节点、端口或障碍时只失效受影响几何；冻结时保留已经建立的交叉，后续改变障碍位置须重新校验。选择和视口导航不触发寻路。性能记录同时包含约束预检、自动路由及冻结外部段计算。
 
 `CanvasWorkspaceView` 当前为 v2。v1 记录读取时自动迁移为草稿，原节点视图保留，路径和冻结组为空；确认必须由用户显式操作。
 

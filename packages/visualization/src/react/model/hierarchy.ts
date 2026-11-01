@@ -1,7 +1,7 @@
 /** Hierarchical card tree, container expansion/collapse and cross-baseline expansion synchronization. */
 import { projectGraph, type Projection } from '../../core/projection/index.ts';
-import { CARD_SIZE, isLayoutProtected, layoutProtectionConflict, worldPosition, type CanvasNode } from './grouping.ts';
-import { preferredContainerSize } from './spacing.ts';
+import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
+import { solveHierarchyExpansion } from './placement.ts';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { CanonicalNode, StageSnapshot } from '../../core/schema/types.ts';
 import { indexGraph } from '../../core/graph/index.ts';
@@ -66,87 +66,19 @@ export function nodeIsVisible(node: CanvasNode, nodes: readonly CanvasNode[], pr
   });
 }
 
-function resize(nodes: CanvasNode[], id: string, width: number, height: number, content?: { contentWidth: number; contentHeight: number }): void {
-  const index = nodes.findIndex((node) => node.id === id);
-  const node = nodes[index]!;
-  const oldWidth = node.width ?? CARD_SIZE.width, oldHeight = node.height ?? CARD_SIZE.height;
-  const dx = width - oldWidth, dy = height - oldHeight;
-  const key = nodes.filter((item) => item.data.expanded).map((item) => item.id).sort().join('|');
-  const baseline = node.data.expansionSizes?.[key] ?? (content ? { width: content.contentWidth, height: content.contentHeight } : undefined);
-  nodes[index] = { ...node, width, height, measured: { width, height }, style: { ...node.style, width, height }, ...(baseline ? { data: { ...node.data, contentWidth: baseline.width, contentHeight: baseline.height, expansionSizes: { ...node.data.expansionSizes, [key]: baseline } } } : {}) };
-  for (let i = 0; i < nodes.length; i++) {
-    const sibling = nodes[i]!;
-    if (sibling.id === id || sibling.parentId !== node.parentId || isLayoutProtected(sibling)) continue;
-    const w = sibling.width ?? CARD_SIZE.width, h = sibling.height ?? CARD_SIZE.height;
-    let x = sibling.position.x, y = sibling.position.y;
-    if (dx && x >= node.position.x + oldWidth && y + h > node.position.y && y < node.position.y + oldHeight) x += dx;
-    if (dy && y >= node.position.y + oldHeight && x + w > node.position.x && x < node.position.x + Math.max(width, oldWidth)) y += dy;
-    if (x !== sibling.position.x || y !== sibling.position.y) nodes[i] = { ...sibling, position: { x, y } };
-  }
-}
-
-/**
- * 原位切换节点展开/收起状态：
- * 1. 在 card 与 structure 类型之间原位切换；
- * 2. 展开时自动按推荐尺寸撑开并向上级联重算父容器尺寸；
- * 3. 沿 X/Y 轴推开受波及的同级兄弟节点；
- * 4. 重新计算投影并更新内部节点的选中与可见性。
- */
-function hierarchyCandidate(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
-  let nodes = [...input];
-  const index = nodes.findIndex((node) => node.id === id);
-  const node = nodes[index];
-  if (!node?.data.expandable) return input as CanvasNode[];
-  const expanded = !node.data.expanded;
-  const { dragHandle: _handle, ...base } = node;
-  nodes[index] = {
-    ...base, type: expanded ? 'structure' : 'card',
-    ...(expanded ? { dragHandle: '.structure-header' } : {}),
-    data: { ...node.data, expanded },
-  };
-  if (expanded) {
-    const size = preferredContainerSize(nodes[index]!, nodes);
-    resize(nodes, id, size.width, size.height, size);
-  } else resize(nodes, id, CARD_SIZE.width, CARD_SIZE.height);
-  let parentId = node.parentId;
-  while (parentId) {
-    const parent = nodes.find((item) => item.id === parentId)!;
-    if (parent.data.expandable && !parent.data.expanded) break;
-    const bounds = preferredContainerSize(parent, nodes);
-    resize(nodes, parentId, bounds.width, bounds.height, bounds);
-    parentId = parent.parentId;
-  }
-  const projection = hierarchyProjection(nodes, stage);
-  nodes = nodes.map((item) => nodeIsVisible(item, nodes, projection) || !item.selected ? item : { ...item, selected: false });
-  return nodes;
-}
-
-/** Try the retained layout first, then a local column of free children before reporting a fixed-anchor conflict. */
+/** Toggle through the shared incremental geometry solver. */
 export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
-  const original = input.find((node) => node.id === id)!;
-  const candidate = hierarchyCandidate(input, id, stage);
-  if (candidate === input || !layoutProtectionConflict(input, candidate)) return candidate;
-  if (original.data.expanded) return input as CanvasNode[];
-  let top = 72;
-  const column = input.map((node) => {
-    if (node.parentId !== id) return node;
-    if (isLayoutProtected(node)) {
-      top = Math.max(top, node.position.y + (node.height ?? CARD_SIZE.height) + 64);
-      return node;
-    }
-    const next = { ...node, position: { x: 24, y: top } };
-    top += (node.height ?? CARD_SIZE.height) + 64;
-    return next;
-  });
-  const local = hierarchyCandidate(column, id, stage);
-  return layoutProtectionConflict(input, local) ? input as CanvasNode[] : local;
+  const nodes = solveHierarchyExpansion(input, id, stage);
+  if (nodes === input) return nodes;
+  const projection = hierarchyProjection(nodes, stage);
+  return nodes.map(node => nodeIsVisible(node, nodes, projection) || !node.selected ? node : { ...node, selected: false });
 }
 
 /**
  * 跨基线展开状态同步。
  * 关闭操作按层级由深至浅执行，打开操作按层级由浅至深执行，确保容器尺寸级联计算正确。
  */
-export function syncHierarchyExpansion(target: readonly CanvasNode[], source: readonly CanvasNode[], stage: StageSnapshot): CanvasNode[] {
+export function syncHierarchyExpansion(target: readonly CanvasNode[], source: readonly CanvasNode[], stage: StageSnapshot, accept: (before: CanvasNode[], after: CanvasNode[]) => boolean = () => true): CanvasNode[] {
   const sourceState = new Map(source.filter((node) => node.data.expandable).map((node) => [node.id, !!node.data.expanded]));
   const depth = (node: CanvasNode): number => {
     let count = 0, parentId = node.parentId;
@@ -156,7 +88,10 @@ export function syncHierarchyExpansion(target: readonly CanvasNode[], source: re
   const changed = target.filter((node) => node.data.expandable && !node.data.frozen && sourceState.has(node.id) && !!node.data.expanded !== sourceState.get(node.id));
   const closing = changed.filter((node) => !sourceState.get(node.id)).sort((a, b) => depth(b) - depth(a));
   const opening = changed.filter((node) => sourceState.get(node.id)).sort((a, b) => depth(a) - depth(b));
-  return [...closing, ...opening].reduce((nodes, node) => toggleHierarchy(nodes, node.id, stage), [...target]);
+  return [...closing, ...opening].reduce((nodes, node) => {
+    const next = toggleHierarchy(nodes, node.id, stage);
+    return accept(nodes, next) ? next : nodes;
+  }, [...target]);
 }
 
 /** 按两节点世界坐标相对夹角计算最佳出入连接桩（水平优先选择左右侧，垂直优先选择上下侧）。 */

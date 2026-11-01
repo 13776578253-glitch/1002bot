@@ -1,9 +1,9 @@
 /** Capture canonical paths and hard boundary segments for a frozen subgraph. */
-import { obstacleFromRect, rectIntersects, routeOrthogonal, type Point, type Rect } from '../../core/layout/geometry.ts';
+import { obstacleFromRect, portAnchor, rectIntersects, routeOrthogonal, simplifyPoints, type Point, type Rect } from '../../core/layout/geometry.ts';
 import { projectGraph } from '../../core/projection/index.ts';
 import type { StageSnapshot } from '../../core/schema/types.ts';
 import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
-import { containerGrowthCeiling } from './spacing.ts';
+import { MAX_CONTAINER_EXTRA } from './spacing.ts';
 import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, segmentCrossesRect, type DiagramGeometry } from './routing.ts';
 import { placeEdgeLabel } from './labels.ts';
 import { endpointFingerprint, routeSnapshotForEdge, storedRouteAttached, worldRoutePoints, reservedLockedRoutes } from './edge-routes.ts';
@@ -61,7 +61,7 @@ function materializeFrames(input: CaptureInput): { nodes: CanvasNode[]; virtual:
           return { kind: 'frozen-violation', entityIds: [a.id, b.id], containerId: node.id, message: '隐藏子节点的展开范围重叠，请先调整后再冻结', actions: ['cancel'] };
         }
       }
-      const ceiling = containerGrowthCeiling(node);
+      const ceiling = { width: (node.data.contentWidth ?? size(node).width) + MAX_CONTAINER_EXTRA, height: (node.data.contentHeight ?? size(node).height) + MAX_CONTAINER_EXTRA };
       if (node.data.expanded && (width > ceiling.width + EPSILON || height > ceiling.height + EPSILON)) {
         return { kind: 'growth-ceiling', entityIds: [node.id], containerId: node.id, message: '冻结所需容器尺寸超过扩容上限', actions: ['cancel'] };
       }
@@ -118,10 +118,10 @@ export function boundaryWorldPoints(boundary: FrozenBoundarySegment, nodes: read
 
 const vector = (side: FrozenBoundarySide) => ({ x: side === 'right' ? 1 : side === 'left' ? -1 : 0, y: side === 'bottom' ? 1 : side === 'top' ? -1 : 0 });
 const handles: Record<string, FrozenBoundarySide> = { out: 'bottom', 'top-out': 'top', 'return-out': 'right', 'left-out': 'left', in: 'top', 'bottom-in': 'bottom', return: 'right', 'left-in': 'left' };
-const boundaryCache=new WeakMap<EdgeRouteSnapshot,{points:Point[];boundaryKey:string;route:CachedRoute}>();
+const boundaryCache=new WeakMap<EdgeRouteSnapshot,{points:Point[];boundaryKey:string;route:CachedRoute;connector:Point[]}>();
 
 /** Connect rigid internal segments through free space; an invalid result is a conflict. */
-export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSnapshot, nodes: readonly CanvasNode[], geometry: DiagramGeometry, sourceId: string, targetId: string, fallback: CachedRoute, groups: readonly FrozenGroupSnapshot[]): { ok: true; route: CachedRoute } | { ok: false; message: string } {
+export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSnapshot, nodes: readonly CanvasNode[], geometry: DiagramGeometry, sourceId: string, targetId: string, fallback: CachedRoute, groups: readonly FrozenGroupSnapshot[], preserveConnector = false): { ok: true; route: CachedRoute } | { ok: false; message: string } {
   const source = snapshot.frozenBoundaries?.find((part) => part.endpoint === 'source');
   const target = snapshot.frozenBoundaries?.find((part) => part.endpoint === 'target');
   if (!source && !target) return { ok: true, route: fallback };
@@ -129,30 +129,76 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
   const targetFragment = target ? boundaryWorldPoints(target, nodes) : [fallback.points.at(-1)!];
   const boundaryKey=JSON.stringify([sourceFragment,targetFragment]);
   const cached=boundaryCache.get(snapshot);
-  if(cached&&cached.points===fallback.points&&cached.boundaryKey===boundaryKey&&cached.route.text===fallback.text&&pathIsClear(cached.route.points,geometry,sourceId,targetId,edgeId))return{ok:true,route:cached.route};
   const start = sourceFragment.at(-1)!, end = targetFragment.at(-1)!;
   const startSide = source?.side ?? handles[fallback.sourceHandle]!;
   const endSide = target?.side ?? handles[fallback.targetHandle]!;
   const a = vector(startSide), b = vector(endSide);
-  const startStub = { x: start.x + a.x * 16, y: start.y + a.y * 16 };
-  const endStub = { x: end.x + b.x * 16, y: end.y + b.y * 16 };
   const ownerIds = new Set([source?.ownerId, target?.ownerId].filter((id): id is string => !!id));
   const ownerRects = [...ownerIds].map((id) => {
     const owner = nodes.find((node) => node.id === id)!, group = groups.find((item) => item.rootId === id)!;
     const origin = worldPosition(owner, nodes), frame = group.protectedFrame ?? { x: 0, y: 0, ...(group.frozenFrames?.[id] ?? size(owner)) };
     return { x: origin.x + frame.x, y: origin.y + frame.y, w: frame.width, h: frame.height };
   });
-  const obstacles = [...geometry.obstacles.values()].filter((item) => !ownerIds.has(item.id)).map((item) => obstacleFromRect(item.id === sourceId || item.id === targetId ? item.bounds : item.padded));
+  const internal = (rect: Rect) => ownerRects.some(owner => rect.x >= owner.x - 4 && rect.y >= owner.y - 4 && rect.x + rect.w <= owner.x + owner.w + 4 && rect.y + rect.h <= owner.y + owner.h + 4);
+  const externalReserved = geometry.reserved.filter(item => !internal(item.rect));
+  const connectorGeometry = { ...geometry, reserved: externalReserved };
+  const matches = (part: FrozenBoundarySegment | undefined) => {
+    if (!part) return true;
+    const owner = nodes.find(node => node.id === part.ownerId)!;
+    const group = groups.find(item => item.rootId === part.ownerId)!;
+    const origin = worldPosition(owner, nodes), frame = group.protectedFrame ?? { x: 0, y: 0, ...(group.frozenFrames?.[owner.id] ?? size(owner)) };
+    const actual = frozenBoundary(fallback.points, { x: origin.x + frame.x, y: origin.y + frame.y, w: frame.width, h: frame.height }, owner.id, part.endpoint);
+    if (!actual) return false;
+    const expected = boundaryWorldPoints(part, nodes), observed = boundaryWorldPoints(actual, nodes).map(point => ({ x: point.x + frame.x, y: point.y + frame.y }));
+    return expected.length === observed.length && expected.every((point, index) => samePoint(point, observed[index]!));
+  };
+  if (matches(source) && matches(target) && pathIsClear(fallback.points, preserveConnector ? { ...geometry, reserved: [] } : geometry, sourceId, targetId, edgeId)) {
+    let points = fallback.points;
+    for (const point of [sourceFragment.at(-1)!, targetFragment.at(-1)!]) {
+      if (points.some(existing => samePoint(existing, point))) continue;
+      const index = points.findIndex((to, index) => {
+        if (!index) return false;
+        const from = points[index - 1]!;
+        return (Math.abs(from.x - to.x) < EPSILON && Math.abs(point.x - from.x) < EPSILON && point.y > Math.min(from.y, to.y) && point.y < Math.max(from.y, to.y))
+          || (Math.abs(from.y - to.y) < EPSILON && Math.abs(point.y - from.y) < EPSILON && point.x > Math.min(from.x, to.x) && point.x < Math.max(from.x, to.x));
+      });
+      if (index > 0) points = [...points.slice(0, index), point, ...points.slice(index)];
+    }
+    const route = points === fallback.points ? fallback : { ...fallback, points };
+    const connector = route.points.slice(sourceFragment.length - 1, route.points.length - targetFragment.length + 1);
+    boundaryCache.set(snapshot, { points: fallback.points, boundaryKey, route, connector });
+    return { ok: true, route };
+  }
+  if(cached&&cached.boundaryKey===boundaryKey&&cached.route.text===fallback.text&&pathIsClear(cached.connector,connectorGeometry,sourceId,targetId,edgeId))return{ok:true,route:cached.route};
+  const obstacles = [...geometry.obstacles.values()].filter((item) => !ownerIds.has(item.id) && !internal(item.padded)).map((item) => obstacleFromRect(item.id === sourceId || item.id === targetId ? item.endpointBounds ?? item.bounds : item.padded));
   obstacles.push(...ownerRects.map((rect) => obstacleFromRect(rect)));
-  obstacles.push(...geometry.reserved.filter((item) => item.edgeId !== edgeId).map((item) => obstacleFromRect(item.rect)));
-  const middle = routeOrthogonal({ ...startStub, w: 0, h: 0 }, { ...endStub, w: 0, h: 0 }, obstacles, { offset: 0, padding: 10 });
-  const connector = [start, startStub, ...middle, endStub, end].filter((point, index, array) => index === 0 || !samePoint(point, array[index - 1]!));
+  obstacles.push(...externalReserved.filter((item) => item.edgeId !== edgeId).map((item) => obstacleFromRect(item.rect)));
+  const extend = (point: Point, direction: Point): Point => {
+    for (let distance = 16; distance >= 0; distance -= 4) {
+      const stub = { x: point.x + direction.x * distance, y: point.y + direction.y * distance };
+      if (!obstacles.some(obstacle => stub.x > obstacle.left && stub.x < obstacle.right && stub.y > obstacle.top && stub.y < obstacle.bottom)) return stub;
+    }
+    return point;
+  };
+  const startStub = extend(start, a), endStub = extend(end, b);
+  const clear = (points: Point[]) => !points.slice(1).some((point, index) => ownerRects.some(rect => segmentCrossesRect(points[index]!, point, rect))) && pathIsClear(points, connectorGeometry, sourceId, targetId, edgeId);
+  const candidates: Point[][] = [];
+  if (cached) {
+    const middle = cached.connector.slice(1, -1);
+    if (middle.length) candidates.push([start, startStub, a.x ? { x: middle[0]!.x, y: startStub.y } : { x: startStub.x, y: middle[0]!.y }, ...middle, b.x ? { x: middle.at(-1)!.x, y: endStub.y } : { x: endStub.x, y: middle.at(-1)!.y }, endStub, end]);
+  }
+  candidates.push([start, startStub, { x: endStub.x, y: startStub.y }, endStub, end], [start, startStub, { x: startStub.x, y: endStub.y }, endStub, end]);
+  let connector = candidates.map(simplifyPoints).find(clear);
+  if (!connector) {
+    const middle = routeOrthogonal({ ...startStub, w: 0, h: 0 }, { ...endStub, w: 0, h: 0 }, obstacles, { offset: 0, padding: 10 });
+    connector = [start, startStub, ...middle, endStub, end].filter((point, index, array) => index === 0 || !samePoint(point, array[index - 1]!));
+  }
   if (connector.slice(1).some((point, index) => ownerRects.some((rect) => segmentCrossesRect(connector[index]!, point, rect)))) return { ok: false, message: '无法从冻结边界端口绕开容器' };
-  if (!pathIsClear(connector, geometry, sourceId, targetId, edgeId)) return { ok: false, message: '无法从冻结边界端口绕开节点或锁定路径' };
+  if (!pathIsClear(connector, connectorGeometry, sourceId, targetId, edgeId)) return { ok: false, message: '无法从冻结边界端口绕开节点或锁定路径' };
   const points = [...sourceFragment, ...connector.slice(1, -1), ...[...targetFragment].reverse()]
     .filter((point, index, array) => index === 0 || !samePoint(point, array[index - 1]!));
   const route={...fallback,points,label:placeEdgeLabel(connector,fallback.text,geometry.blockers,geometry.frames)};
-  boundaryCache.set(snapshot,{points:fallback.points,boundaryKey,route});
+  boundaryCache.set(snapshot,{points:fallback.points,boundaryKey,route,connector});
   return { ok: true, route };
 }
 
@@ -289,21 +335,38 @@ export function releaseFrozenSubgraph(nodes:readonly CanvasNode[],routes:readonl
 /** Only boundary connections touched by endpoint motion or new obstacles need preflight routing. */
 export function validateFrozenConnections(before:readonly CanvasNode[],after:readonly CanvasNode[],stage:StageSnapshot,stored:readonly EdgeRouteSnapshot[],groups:readonly FrozenGroupSnapshot[],rendered?:ReadonlyMap<string,CachedRoute>): StageConflict[] {
   if(!stored.some(route=>route.frozenBoundaries?.length))return [];
+  const closedMoved = groups.filter(group => {
+    const a = before.find(node => node.id === group.rootId)!, b = after.find(node => node.id === group.rootId)!;
+    if (!b.data.expandable || b.data.expanded) return false;
+    const x = worldPosition(a, before), y = worldPosition(b, after);
+    return x.x !== y.x || x.y !== y.y;
+  });
+  if (closedMoved.length) {
+    const frames = new Map(closedMoved.flatMap(group => Object.entries(group.frozenFrames ?? {})));
+    for (const group of closedMoved) if (!frames.has(group.rootId)) frames.set(group.rootId, { width: group.worldBounds.w, height: group.worldBounds.h });
+    const expose = (nodes: readonly CanvasNode[]) => nodes.map(node => {
+      const frame = frames.get(node.id);
+      return frame ? { ...node, ...frame, type: 'structure', data: { ...node.data, expanded: true } } : node;
+    });
+    return validateFrozenConnections(expose(before), expose(after), stage, stored, groups, rendered);
+  }
   const projection=hierarchyProjection(after,stage),edges=aggregateProjectedEdges(projection,Object.fromEntries(stage.graph.edges.map(e=>[e.id,{kind:'inherited' as const,label:'沿用'}])));
-  const geometry=createDiagramGeometry(after,projection,reservedLockedRoutes(stored,after));
+  const geometry=createDiagramGeometry(after,projection,reservedLockedRoutes(stored,after,groups));
   const changed=after.filter(node=>{const old=before.find(n=>n.id===node.id);return !old||JSON.stringify(worldBounds(old,before))!==JSON.stringify(worldBounds(node,after));});
   const changedIds=new Set(changed.map(n=>n.id)),issues:StageConflict[]=[];
   for(const edge of edges){
     if(edge.aggregated||edge.members[0]!.source.boundary||edge.members[0]!.target.boundary)continue;
     const snapshot=stored.find(route=>route.canonicalEdgeId===edge.id);
     if(!snapshot?.frozenBoundaries?.length)continue;
+    if(snapshot.frozenBoundaries.some(part=>!after.find(node=>node.id===part.ownerId)!.data.expanded))continue;
     const old=rendered?.get(edge.id),points=old?.points??worldRoutePoints(snapshot,before)??[];
     const affected=[edge.source,edge.target,...snapshot.frozenBoundaries.map(p=>p.ownerId)].some(id=>changedIds.has(id))||changed.some(node=>points.slice(1).some((p,i)=>segmentCrossesRect(points[i]!,p,worldBounds(node,after))));
     if(!affected)continue;
-    const generated=routeDiagramGeometry(geometry,edge.source,edge.target,edge.id);
-    const fallback={...generated,text:edge.text,label:old?.label??placeEdgeLabel(generated.points,edge.text,geometry.blockers,geometry.frames)};
+    const start=portAnchor(geometry.bounds.get(edge.source)!,handles[snapshot.source.handle!]!);
+    const end=portAnchor(geometry.bounds.get(edge.target)!,handles[snapshot.target.handle!]!);
+    const fallback={sourceHandle:snapshot.source.handle!,targetHandle:snapshot.target.handle!,points:[start,{x:end.x,y:start.y},end],text:edge.text,label:old?.label??{x:0,y:0,width:0,height:0}};
     const result=resolveFrozenBoundaryRoute(edge.id,snapshot,after,geometry,edge.source,edge.target,fallback,groups);
-    if(!result.ok)issues.push({kind:'locked-route',entityIds:[edge.id],message:result.message,actions:['cancel']});
+    if(!result.ok)issues.push({kind:'locked-route',entityIds:[edge.id],message:`${edge.text || edge.id}：${result.message}`,actions:['cancel']});
   }
   return issues;
 }

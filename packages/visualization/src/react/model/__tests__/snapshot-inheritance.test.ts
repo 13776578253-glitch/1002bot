@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { StageSnapshot } from '../../../core/schema/types.ts';
 import { adaptProgressReports, type ReportDataset } from '../../../adapters/progress-reports/index.ts';
-import { baselineNodes } from '../hierarchy.ts';
+import { baselineNodes, createHierarchyNodes, hierarchyProjection } from '../hierarchy.ts';
+import { aggregateProjectedEdges } from '../display-edges.ts';
+import { captureDisplayRoutes, retainedDisplayRoutes } from '../display-route-snapshots.ts';
+import { DiagramRouteCache } from '../route-cache.ts';
 import { endpointFingerprint } from '../edge-routes.ts';
 import { captureContent, type CanvasBaselineContent, type CanvasNodeView, type DisplayRouteSnapshot, type EdgeRouteSnapshot, type FrozenGroupSnapshot } from '../workspace.ts';
 import { captureStageInheritance, mergeStageContent, needsStageRebase } from '../snapshot-inheritance.ts';
@@ -157,18 +160,46 @@ test('display route source text changes merge with a local geometry edit', () =>
   assert.equal(result.ok, true);
   if (result.ok) { assert.equal(result.content.displayRoutes![0]!.label.x, 25); assert.equal(result.content.displayRoutes![0]!.text, '调用 · 新增 1'); assert.deepEqual(result.content.displayRoutes![0]!.memberIds, ['link', 'additional-link']); }
   incoming.displayRoutes[0]!.points[1]!.x = 80;
-  const collision = mergeStageContent({ base, local, incoming, targetStage: graph() });
-  assert.equal(collision.ok, false);
+  const hints = mergeStageContent({ base, local, incoming, targetStage: graph() });
+  assert.equal(hints.ok, true);
+  if (hints.ok) assert.equal(hints.content.displayRoutes![0]!.label.x, 25);
 });
 
-test('upstream cannot silently replace a confirmed display route or frozen geometry', () => {
+test('a locally edited display route is revalidated when upstream locked obstacles change', () => {
+  const stage: StageSnapshot = { id: 'one', label: 'one', title: 'one', order: 0, track: 'main', graph: {
+    rootId: 'root', nodes: [
+      { id: 'root', parentId: null, label: 'root', kind: 'root', order: 0, ports: [] },
+      ...['a', 'b'].map((id, order) => ({ id, parentId: 'root', label: id, kind: 'component' as const, order, ports: [] })),
+    ], edges: [{ id: 'link', source: { nodeId: 'a' }, target: { nodeId: 'b' }, relation: 'call', direction: 'directed', order: 0 }],
+  } };
+  const nodes = createHierarchyNodes(stage, { a: { x: 0, y: 0 }, b: { x: 500, y: 0 } });
+  const projection = hierarchyProjection(nodes, stage), edges = aggregateProjectedEdges(projection, { link: { kind: 'baseline', label: '基线' } });
+  const routes = new DiagramRouteCache().update(nodes, projection, edges);
+  const oldBarrier = [{ edgeId: 'locked', points: [{ x: 330, y: -100 }, { x: 330, y: 200 }] }];
+  const newBarrier = [{ edgeId: 'locked', points: [{ x: 350, y: -100 }, { x: 350, y: 200 }] }];
+  const base = captureContent(nodes), local = structuredClone(base), incoming = structuredClone(base);
+  base.displayRoutes = captureDisplayRoutes(nodes, projection, edges, routes, oldBarrier);
+  local.displayRoutes = structuredClone(base.displayRoutes);
+  local.displayRoutes[0]!.label.x += 10;
+  incoming.displayRoutes = captureDisplayRoutes(nodes, projection, edges, routes, newBarrier);
+  const result = mergeStageContent({ base, local, incoming, targetStage: stage });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.content.displayRoutes![0]!.barrierKey, local.displayRoutes[0]!.barrierKey);
+  assert.equal(retainedDisplayRoutes(nodes, projection, edges, result.content.displayRoutes, newBarrier).size, 0);
+  const unedited = mergeStageContent({ base, local: base, incoming, targetStage: stage });
+  assert.equal(unedited.ok, true);
+  if (unedited.ok) assert.equal(unedited.content.displayRoutes![0]!.barrierKey, incoming.displayRoutes[0]!.barrierKey);
+});
+
+test('derived automatic routes follow upstream while frozen geometry remains protected', () => {
   const base = baseContent(), local = structuredClone(base), incoming = structuredClone(base);
   const route: DisplayRouteSnapshot = { id: 'link', source: 'child', target: 'other', memberIds: ['link'], sourceHandle: 'return-out', targetHandle: 'left-in', points: [{ x: 1, y: 2 }, { x: 30, y: 2 }], label: { x: 15, y: 2, width: 40, height: 18 }, text: '调用', sourceBounds: { x: 0, y: 0, w: 100, h: 50 }, targetBounds: { x: 300, y: 0, w: 100, h: 50 } };
   base.displayRoutes = [structuredClone(route)]; local.displayRoutes = [structuredClone(route)]; incoming.displayRoutes = [structuredClone(route)];
   incoming.displayRoutes[0]!.points[1]!.x += 30;
-  const pathConflict = mergeStageContent({ base, local, incoming, targetStage: graph() });
-  assert.equal(pathConflict.ok, false);
-  if (!pathConflict.ok) assert.ok(pathConflict.conflicts.some((item) => item.entityIds.includes('link')));
+  const hints = mergeStageContent({ base, local, incoming, targetStage: graph() });
+  assert.equal(hints.ok, true);
+  if (hints.ok) assert.deepEqual(hints.content.displayRoutes![0]!.points, incoming.displayRoutes[0]!.points);
   incoming.displayRoutes = [structuredClone(route)];
   const frozen: FrozenGroupSnapshot = { id: 'frozen', rootId: 'parent', memberIds: ['child'], worldBounds: { x: 100, y: 30, w: 250, h: 120 }, boundaryPorts: [], createdAt: 'now' };
   base.frozenGroups = [structuredClone(frozen)]; local.frozenGroups = [structuredClone(frozen)]; incoming.frozenGroups = [structuredClone(frozen)];

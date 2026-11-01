@@ -5,7 +5,7 @@ import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
 import { baselineNodes, hierarchyProjection } from './hierarchy.ts';
 import { restoreFrozenGroups } from './frozen.ts';
 import { rebaseFrozenGrowth } from './frozen-growth.ts';
-import { worldRoutePoints, endpointFingerprint, reservedLockedRoutes, applyStoredRoutes } from './edge-routes.ts';
+import { worldRoutePoints, endpointFingerprint, reservedLockedRoutes, applyStoredRoutes, retainedCanonicalRoutes } from './edge-routes.ts';
 import { validateFrozenConnections } from './blackbox-routes.ts';
 import { createDiagramGeometry, pathIsClear, segmentCrossesRect } from './routing.ts';
 import { DiagramRouteCache } from './route-cache.ts';
@@ -231,20 +231,22 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
   let routeMetrics={reusedPaths:0,routedEdges:0,totalEdges:0};
   if (!conflicts.length) {
     const visibleEdges = aggregateProjectedEdges(finalProjection, target.edgeChanges);
-    const reserved = reservedLockedRoutes(activeRoutes,working);
+    const reserved = reservedLockedRoutes(activeRoutes,working,activeFrozen);
     const inputs = visibleEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text }));
-    const retained = retainedDisplayRoutes(working, finalProjection, visibleEdges, origin.displayRoutes, reserved);
+    const retained = retainedCanonicalRoutes(working, finalProjection, visibleEdges, activeRoutes, retainedDisplayRoutes(working, finalProjection, visibleEdges, origin.displayRoutes, reserved),activeFrozen);
     const cache=new DiagramRouteCache();
-    const routes = applyStoredRoutes(cache.update(working, finalProjection, inputs, reserved, retained),visibleEdges,activeRoutes,working,finalProjection,activeFrozen);
+    const boundaryFailures = new Map<string, string>();
+    const routes = applyStoredRoutes(cache.update(working, finalProjection, inputs, reserved, retained),visibleEdges,activeRoutes,working,finalProjection,activeFrozen,boundaryFailures);
+    for (const [id, message] of boundaryFailures) conflicts.push({ kind: 'locked-route', entityIds: [id], message, actions: ['unfreeze', 'cancel'] });
     routeMetrics={reusedPaths:retained.size,routedEdges:cache.lastStats.routedEdges,totalEdges:inputs.length};
     const geometry = createDiagramGeometry(working, finalProjection, reserved);
     for (const edge of inputs) {
       const route = routes.get(edge.id);
-      if (!route || !pathIsClear(route.points, geometry, edge.source, edge.target, edge.id)) {
+      if (!route || !pathIsClear(route.points, retained.has(edge.id) ? { ...geometry, reserved: [] } : geometry, edge.source, edge.target, edge.id)) {
         conflicts.push({ kind: 'locked-route', entityIds: [edge.id], message: '连接无法避开当前节点或锁定路径', actions: ['unfreeze', 'cancel'] });
       }
     }
-    displayRoutes = captureDisplayRoutes(working, finalProjection, visibleEdges, routes);
+    displayRoutes = captureDisplayRoutes(working, finalProjection, visibleEdges, routes, reserved);
   }
   const state: StageViewState = { nodes: working, edgeRoutes: activeRoutes, frozenGroups: activeFrozen, displayRoutes };
   if (conflicts.length) return { ok: false, base, candidate: state, conflicts };

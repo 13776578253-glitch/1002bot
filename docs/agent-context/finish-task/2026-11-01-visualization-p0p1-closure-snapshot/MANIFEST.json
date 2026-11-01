@@ -1,0 +1,187 @@
+[
+  {
+    "source": "current-task/2026-10-03-p0决策问题合集.md",
+    "archived": "2026-10-03-p0决策问题合集.md",
+    "sha256": "a7051a1c04aed93a12d1dd15ba01c80c4d66e0feff31f9d5dcfb8e68715f8c8b"
+  },
+  {
+    "source": "current-task/2026-10-04-m1-p1-baseline.md",
+    "archived": "2026-10-04-m1-p1-baseline.md",
+    "sha256": "d3aed970f160d5a64380ef2215735e263b3b053f091c394e376105f68c00f4e1"
+  },
+  {
+    "source": "current-task/2026-10-04-m1-p2-acceptance-cleanup.md",
+    "archived": "2026-10-04-m1-p2-acceptance-cleanup.md",
+    "sha256": "bc7a9ddd427ea998a45bd56ec75498aef6aa9e9f52adfd8eda8db7d4c3508c60"
+  },
+  {
+    "source": "current-task/2026-10-04-m1交接整理.md",
+    "archived": "2026-10-04-m1交接整理.md",
+    "sha256": "9a5f24394eb55e335b448ca34e45e8efd71df918fa7a7b722c17e3e20c92e88a"
+  },
+  {
+    "source": "current-task/2026-10-05-阶段汇报规范与文档对齐.md",
+    "archived": "2026-10-05-阶段汇报规范与文档对齐.md",
+    "sha256": "456b8b822ce85d15cb162a4ce7dd39a8bdea13ef88f55f07de5b94ddd6740942"
+  },
+  {
+    "source": "current-task/2026-10-05-注释规范与Cortico对照.md",
+    "archived": "2026-10-05-注释规范与Cortico对照.md",
+    "sha256": "f91909eee7b4f617549ef032b96f0cb7fe161aa9c71fd46a61fca38db7825d4e"
+  },
+  {
+    "source": "current-task/2026-10-05-m1复核与下一阶段规划.md",
+    "archived": "2026-10-05-m1复核与下一阶段规划.md",
+    "sha256": "5c3244a596d9e30b3e3e51b855c62980de1e4ebeb20b130ca0480b2ca4c7aa15"
+  },
+  {
+    "source": "current-task/2026-10-05-m2闭环方案设计.md",
+    "archived": "2026-10-05-m2闭环方案设计.md",
+    "sha256": "5b8b633b99445876dfd574f1e2779c7d0c37263ddc290b9bca09c92db67c976b"
+  },
+  {
+    "source": "current-task/2026-10-05-m2独立审查.md",
+    "archived": "2026-10-05-m2独立审查.md",
+    "sha256": "2684446cc4b80e587be71937b544551e1e7f3841821c7e19f63b1137e15a4c99"
+  },
+  {
+    "source": "current-task/2026-10-05-m2进度文档拆分与结构校正.md",
+    "archived": "2026-10-05-m2进度文档拆分与结构校正.md",
+    "sha256": "284e85bdced30834ef24a7ac80b8cd0cf19d8d8554676a4ee19667139a2b73d8"
+  },
+  {
+    "source": "current-task/2026-10-05-m2终端闭环实现.md",
+    "archived": "2026-10-05-m2终端闭环实现.md",
+    "sha256": "be61e9614b1453ba89eba1e4eebf26552e4bfa505d61be0dd8c03dfbb9dbbeee"
+  },
+  {
+    "source": "current-task/2026-10-06-首批验收与工作线拆分.md",
+    "archived": "2026-10-06-首批验收与工作线拆分.md",
+    "sha256": "5236986bf8a1a1c106099f324cb38cce6f6124c4b2d2f6f54f87c0db7faee585"
+  },
+  {
+    "source": "current-task/2026-10-06-agent-context目录迁移.md",
+    "archived": "2026-10-06-agent-context目录迁移.md",
+    "sha256": "a0a3abae4917648a28bfe3e3a56214c39a601eba5b1ee87259e8cbe77801e3a4"
+  },
+  {
+    "source": "current-task/2026-10-06-console全屏TUI规划.md",
+    "archived": "2026-10-06-console全屏TUI规划.md",
+    "sha256": "13d6700649e950ffdab2375030745f2a733c848d85ddb80d313255ef8627849a"
+  },
+  {
+    "source": "current-task/2026-10-06-consoleTUI首批开发.md",
+    "archived": "2026-10-06-consoleTUI首批开发.md",
+    "sha256": "784477d516a6b96c85f8a4c2574f17c7d97898e3afb7e80b374544fce522d4d4"
+  },
+  {
+    "source": "current-task/2026-10-06-git仓库初始化.md",
+    "archived": "2026-10-06-git仓库初始化.md",
+    "sha256": "2dcdb727b8394d9c22497a5df9a9431aa8442e04bd3528554cf86ff265002747"
+  },
+  {
+    "source": "current-task/2026-10-06-M2目标偏差与文档归类.md",
+    "archived": "2026-10-06-M2目标偏差与文档归类.md",
+    "sha256": "522edb99fe2379ff69aee1659fa32409a008c0bdcd4cf626d7e3e91a915078a3"
+  },
+  {
+    "source": "current-task/2026-10-06-m2修复复核.md",
+    "archived": "2026-10-06-m2修复复核.md",
+    "sha256": "3661ca6794e739011304f0dae8a095324ff97dfaddfbb97e7db1b2b610fc161f"
+  },
+  {
+    "source": "current-task/2026-10-06-m3统一触发调度.md",
+    "archived": "2026-10-06-m3统一触发调度.md",
+    "sha256": "33b481531a5cd6eda6df402b81a7ebd10e2329368b56f1985aeeb37fd796837c"
+  },
+  {
+    "source": "current-task/2026-10-08-阶段报告主线编号统一.md",
+    "archived": "2026-10-08-阶段报告主线编号统一.md",
+    "sha256": "495fc92dd60a38c0f54235ba7024fd30632fe47e224b33c799f804de5f2884d1"
+  },
+  {
+    "source": "current-task/2026-10-08-m4主线基座规划.md",
+    "archived": "2026-10-08-m4主线基座规划.md",
+    "sha256": "b8c247f426e08b2b772237b96b0e09b84cdce32e123c580aefebfd1e21b61fd6"
+  },
+  {
+    "source": "current-task/2026-10-11-qq-world.md",
+    "archived": "2026-10-11-qq-world.md",
+    "sha256": "6ce4e661db63b828457d923fe444ca986902e00fc047049ff1f0348a47a5a2ea"
+  },
+  {
+    "source": "current-task/2026-10-19-visualization-adapter.md",
+    "archived": "2026-10-19-visualization-adapter.md",
+    "sha256": "76bd8a7bed0820e67c29e9a6a64653feaab89323d7ffa0337b7cdbe7d967e68b"
+  },
+  {
+    "source": "current-task/2026-10-19-visualization-theme-cards.md",
+    "archived": "2026-10-19-visualization-theme-cards.md",
+    "sha256": "10ed6d289e142e84d7901a7b4222a305fd62a6fb8421e32d6fc12547f35481db"
+  },
+  {
+    "source": "current-task/2026-10-20-visualization-aggregate-layout.md",
+    "archived": "2026-10-20-visualization-aggregate-layout.md",
+    "sha256": "d0cc6fdf0242de43fcace18a07a4006b0ddc70ce67912e2ea647e0a461084f23"
+  },
+  {
+    "source": "current-task/2026-10-20-visualization-canvas-runtime.md",
+    "archived": "2026-10-20-visualization-canvas-runtime.md",
+    "sha256": "c6761c5ed7ec26a89a7989d054863452742de8ef418357017551830fad5a3a7e"
+  },
+  {
+    "source": "current-task/2026-10-21-visualization-wave0.md",
+    "archived": "2026-10-21-visualization-wave0.md",
+    "sha256": "5f1e58f43b484b657b6c7b77c6a3c77f324ea11c32e32c85e45bbfacc8fcc5ed"
+  },
+  {
+    "source": "current-task/2026-10-22-visualization-reconstruction.md",
+    "archived": "2026-10-22-visualization-reconstruction.md",
+    "sha256": "aec3f286b86c6cfc6ada6ceff8935b79222db79a457d48e0072faee2b345ba46"
+  },
+  {
+    "source": "current-task/2026-10-23-visualization-flat-baseline.md",
+    "archived": "2026-10-23-visualization-flat-baseline.md",
+    "sha256": "c38116f46af8f7865f1af3e7d96255578d5264eb86e89e86ba0f96b8b61e63ac"
+  },
+  {
+    "source": "current-task/2026-10-29-visualization-ui-proposal.md",
+    "archived": "2026-10-29-visualization-ui-proposal.md",
+    "sha256": "c87d91feac7ea8ea9f8034dc2d5e544c38d8b031d93dbeca3ae5075cd46f0503"
+  },
+  {
+    "source": "current-task/2026-10-30-visualization-comments.md",
+    "archived": "2026-10-30-visualization-comments.md",
+    "sha256": "6eaa6fe2163b2d73432128925ad44a3549252e515900711869ae3f9547c7e8ee"
+  },
+  {
+    "source": "current-task/2026-10-30-visualization-new-baseline.md",
+    "archived": "2026-10-30-visualization-new-baseline.md",
+    "sha256": "ad210ac101ddffb7caeba0df1e4036c7048bda32083fce7d84984d82e2ef7ef0"
+  },
+  {
+    "source": "current-task/2026-10-30-visualization-report-data.md",
+    "archived": "2026-10-30-visualization-report-data.md",
+    "sha256": "6d7adca785e5e2a00ce793237f9ab65640aa08a56cb875c0eaa9608a5fa2554b"
+  },
+  {
+    "source": "current-task/2026-10-30-visualization-stable-workspace.md",
+    "archived": "2026-10-30-visualization-stable-workspace.md",
+    "sha256": "bcfb760277939f0899603d496b5b543c413e1ca6b51899abf0322827bf27ae7d"
+  },
+  {
+    "source": "current-task/2026-10-31-visualization-incremental-stage-layout.md",
+    "archived": "2026-10-31-visualization-incremental-stage-layout.md",
+    "sha256": "892d85899a885485897da50a225309de6ca1a89708e9a560f754b374ee8224b5"
+  },
+  {
+    "source": "current-task/2026-10-31-visualization-takeover-review.md",
+    "archived": "2026-10-31-visualization-takeover-review.md",
+    "sha256": "a9021d3fbe6ec5b60b5fd470986bf998cfed773d879dd717eac4d182c146b4ed"
+  },
+  {
+    "source": "current-task/2026-11-01-visualization-p0p1-acceptance.md",
+    "archived": "2026-11-01-visualization-p0p1-acceptance.md",
+    "sha256": "9ab985668acf7a699af35ab0c5f75dc148caa5b475b57c8815418bd0589368a2"
+  }
+]

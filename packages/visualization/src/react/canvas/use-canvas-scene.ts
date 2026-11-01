@@ -8,7 +8,7 @@ import { leafMembers, selectionRoots, worldPosition, type CanvasNode } from '../
 import { nodeIsVisible } from '../model/hierarchy.ts';
 import { DiagramRouteCache } from '../model/route-cache.ts';
 import type { DisplayEdge } from '../model/display-edges.ts';
-import { applyStoredRoutes, reservedLockedRoutes } from '../model/edge-routes.ts';
+import { applyStoredRoutes, reservedLockedRoutes, retainedCanonicalRoutes } from '../model/edge-routes.ts';
 import type { EdgeRouteSnapshot } from '../model/workspace.ts';
 import type { DisplayRouteSnapshot, FrozenGroupSnapshot } from '../model/workspace.ts';
 import { captureDisplayRoutes, retainedDisplayRoutes } from '../model/display-route-snapshots.ts';
@@ -39,10 +39,16 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const selectedKey = nodes.filter((node) => node.selected).map((node) => node.id).join('|');
   const cache = useMemo(() => new DiagramRouteCache(), [baseline.id,baseline.stage.graph.revision,readOnly]);
   const routeInputs = useMemo(() => displayEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text })), [displayEdges]);
-  const reserved = useMemo(() => reservedLockedRoutes(storedRoutes, nodes), [storedRoutes, geometryKey]);
-  const retained = useMemo(() => retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved), [geometryKey, projection, displayEdges, storedDisplayRoutes, reserved]);
+  const reserved = useMemo(() => reservedLockedRoutes(storedRoutes, nodes, frozenGroups), [storedRoutes, geometryKey]);
+  const retained = useMemo(() => retainedCanonicalRoutes(nodes, projection, displayEdges, storedRoutes, retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved), frozenGroups), [geometryKey, projection, displayEdges, storedDisplayRoutes, reserved, storedRoutes]);
   const rawRoutes = useMemo(() => cache.update(nodes, projection, routeInputs, reserved, retained), [geometryKey, projection, routeInputs, reserved, retained]);
-  const routes = useMemo(() => applyStoredRoutes(rawRoutes, displayEdges, storedRoutes, nodes, projection,frozenGroups), [rawRoutes, displayEdges, storedRoutes, geometryKey, projection,frozenGroups]);
+  const resolved = useMemo(() => {
+    const started = performance.now();
+    const routes = applyStoredRoutes(rawRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
+    return { routes, durationMs: performance.now() - started };
+  }, [rawRoutes, displayEdges, storedRoutes, geometryKey, projection, frozenGroups]);
+  const routes = resolved.routes;
+  const routeStats = useMemo(() => ({ ...cache.lastStats, durationMs: cache.lastStats.durationMs + resolved.durationMs, routingMs: cache.lastStats.routingMs + resolved.durationMs }), [cache, rawRoutes, resolved, geometryKey]);
   const members = useMemo(() => {
     const counts = new Map<string, number>();
     for (const node of nodes) if (node.parentId) counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
@@ -103,12 +109,12 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   return {
     displayNodes, edges, routes, visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
     selectionLabel: roots.length > 1 ? `已选 ${roots.length} 项` : roots[0]?.data.title ?? '',
-    selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats: cache.lastStats,
+    selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats,
     snapshotRoutes: (current: CanvasNode[]) => {
-      const reserved = reservedLockedRoutes(storedRoutes, current);
-      const retained = retainedDisplayRoutes(current, projection, displayEdges, storedDisplayRoutes, reserved);
+      const reserved = reservedLockedRoutes(storedRoutes, current, frozenGroups);
+      const retained = retainedCanonicalRoutes(current, projection, displayEdges, storedRoutes, retainedDisplayRoutes(current, projection, displayEdges, storedDisplayRoutes, reserved), frozenGroups);
       const generated = cache.update(current, projection, routeInputs, reserved, retained);
-      return captureDisplayRoutes(current, projection, displayEdges, applyStoredRoutes(generated, displayEdges, storedRoutes, current, projection,frozenGroups));
+      return captureDisplayRoutes(current, projection, displayEdges, applyStoredRoutes(generated, displayEdges, storedRoutes, current, projection,frozenGroups), reserved);
     },
   };
 }
