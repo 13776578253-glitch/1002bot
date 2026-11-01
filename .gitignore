@@ -58,3 +58,6 @@ Desktop.ini
 *.temp
 *.bak
 *~
+
+.commandcode
+.claude
