@@ -1,0 +1,2910 @@
+{
+  "rootId": "system",
+  "revision": "reports-2026-10-30-v1",
+  "nodes": {
+    "system": {
+      "id": "system",
+      "parentId": null,
+      "kind": "root",
+      "label": "Agent 运行基座",
+      "summary": "按阶段报告保存的架构快照",
+      "order": 0,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/protocol/index.ts"
+      ]
+    },
+    "event-caller": {
+      "id": "event-caller",
+      "parentId": "system",
+      "kind": "actor",
+      "label": "Event 调用方",
+      "summary": "直接调用 handleEvent",
+      "order": 1,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "scripts/m1-sample.ts"
+      ],
+      "position": {
+        "x": -360,
+        "y": 0
+      }
+    },
+    "runtime": {
+      "id": "runtime",
+      "parentId": "system",
+      "kind": "group",
+      "label": "Runtime",
+      "summary": "生命周期、事件执行与写入屏障",
+      "order": 2,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ],
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "agent": {
+      "id": "agent",
+      "parentId": "system",
+      "kind": "group",
+      "label": "Agent",
+      "summary": "请求组装与会话声明",
+      "order": 3,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "tests/fixtures/test-agent.ts"
+      ],
+      "position": {
+        "x": 360,
+        "y": 0
+      }
+    },
+    "provider": {
+      "id": "provider",
+      "parentId": "system",
+      "kind": "group",
+      "label": "Provider",
+      "summary": "模型协议与传输",
+      "order": 4,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/providers/"
+      ],
+      "position": {
+        "x": 720,
+        "y": 0
+      }
+    },
+    "world": {
+      "id": "world",
+      "parentId": "system",
+      "kind": "group",
+      "label": "World",
+      "summary": "工具声明、领域校验与效果回执",
+      "order": 5,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/protocol/index.ts"
+      ],
+      "position": {
+        "x": 0,
+        "y": 360
+      }
+    },
+    "session": {
+      "id": "session",
+      "parentId": "system",
+      "kind": "group",
+      "label": "Session",
+      "summary": "串行追加并读回交互事实",
+      "order": 6,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/state/jsonl-session.ts"
+      ],
+      "position": {
+        "x": 360,
+        "y": 360
+      }
+    },
+    "state": {
+      "id": "state",
+      "parentId": "system",
+      "kind": "store",
+      "label": "State",
+      "summary": "仅装配实例内键值能力",
+      "order": 7,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/state/memory-state.ts"
+      ],
+      "position": {
+        "x": 720,
+        "y": 360
+      }
+    },
+    "assembly": {
+      "id": "assembly",
+      "parentId": "system",
+      "kind": "group",
+      "label": "组合根",
+      "summary": "选择具体实现并创建 Runtime",
+      "order": 8,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/compose.ts"
+      ],
+      "position": {
+        "x": -360,
+        "y": 720
+      }
+    },
+    "protocol": {
+      "id": "protocol",
+      "parentId": "system",
+      "kind": "group",
+      "label": "公共协议",
+      "summary": "可序列化的跨层契约",
+      "order": 9,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/protocol/index.ts"
+      ],
+      "position": {
+        "x": 0,
+        "y": 720
+      }
+    },
+    "lifecycle": {
+      "id": "lifecycle",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "生命周期",
+      "summary": "generation、lease 与停止屏障",
+      "order": 10,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "event-loop": {
+      "id": "event-loop",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "Event 工具循环",
+      "summary": "一条事件内的模型与工具续轮",
+      "order": 11,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "append": {
+      "id": "append",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "Session 写入屏障",
+      "summary": "等待已进入的写入完成",
+      "order": 12,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "trace": {
+      "id": "trace",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "Runtime trace",
+      "summary": "实例内执行观察记录",
+      "order": 13,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "history-read": {
+      "id": "history-read",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "历史读取",
+      "summary": "每次事件读取 Session 事实",
+      "order": 14,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "test-agent": {
+      "id": "test-agent",
+      "parentId": "agent",
+      "kind": "component",
+      "label": "TestAgent",
+      "summary": "测试请求组装与续轮",
+      "order": 15,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "tests/fixtures/test-agent.ts"
+      ]
+    },
+    "responses": {
+      "id": "responses",
+      "parentId": "provider",
+      "kind": "adapter",
+      "label": "Responses 适配器",
+      "summary": "complete 与原生工具结果往返",
+      "order": 16,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/providers/openai-responses-provider.ts"
+      ]
+    },
+    "scripted": {
+      "id": "scripted",
+      "parentId": "provider",
+      "kind": "adapter",
+      "label": "脚本 Provider",
+      "summary": "离线确定性模型响应",
+      "order": 17,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/providers/scripted-provider.ts"
+      ]
+    },
+    "fixture-world": {
+      "id": "fixture-world",
+      "parentId": "world",
+      "kind": "component",
+      "label": "FixtureWorld",
+      "summary": "离线 get / set / fail 工具",
+      "order": 18,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "tests/fixtures/fixture-world.ts"
+      ]
+    },
+    "jsonl": {
+      "id": "jsonl",
+      "parentId": "session",
+      "kind": "store",
+      "label": "JSONL SessionStore",
+      "summary": "追加 event、请求响应与工具回执",
+      "order": 19,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/state/jsonl-session.ts"
+      ]
+    },
+    "compose": {
+      "id": "compose",
+      "parentId": "assembly",
+      "kind": "component",
+      "label": "composeRuntime",
+      "summary": "依赖注入与实例创建",
+      "order": 20,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/runtime/compose.ts"
+      ]
+    },
+    "contracts": {
+      "id": "contracts",
+      "parentId": "protocol",
+      "kind": "component",
+      "label": "运行与工具契约",
+      "summary": "Event / Provider / World / Session",
+      "order": 21,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "src/protocol/index.ts"
+      ]
+    },
+    "runtime-m2": {
+      "id": "runtime",
+      "parentId": "system",
+      "kind": "group",
+      "label": "Runtime",
+      "summary": "输入受理、单次执行与旧 Event 路径",
+      "order": 2,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ],
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "console": {
+      "id": "console",
+      "parentId": "system",
+      "kind": "group",
+      "label": "Console",
+      "summary": "同进程文本编辑、本地命令与诊断",
+      "order": 23,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/console/terminal.ts"
+      ],
+      "position": {
+        "x": -360,
+        "y": 360
+      }
+    },
+    "line-console": {
+      "id": "line-console",
+      "parentId": "console",
+      "kind": "component",
+      "label": "行式终端",
+      "summary": "连续输入、多行提交与退出",
+      "order": 24,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/console/terminal.ts"
+      ]
+    },
+    "input-contract": {
+      "id": "input-contract",
+      "parentId": "protocol",
+      "kind": "component",
+      "label": "输入与输出契约",
+      "summary": "InputReceipt / RunResult / OutputEvent",
+      "order": 25,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/protocol/input.ts"
+      ]
+    },
+    "input-queue": {
+      "id": "input-queue",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "InputChannel",
+      "summary": "受理去重、FIFO、取消与终态缓存",
+      "order": 26,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/runtime/input-channel.ts"
+      ]
+    },
+    "input-run": {
+      "id": "input-run",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "InputRun",
+      "summary": "单输入期限、轮次和回执配对",
+      "order": 27,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/runtime/input-run.ts"
+      ]
+    },
+    "guarded": {
+      "id": "guarded",
+      "parentId": "input-run",
+      "kind": "component",
+      "label": "有界调用等待",
+      "summary": "Provider / 工具期限与取消信号",
+      "order": 28,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/runtime/input-run.ts"
+      ]
+    },
+    "output": {
+      "id": "output",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "公开诊断",
+      "summary": "有限事件、快照与 eventsSince",
+      "order": 29,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/runtime/input-channel.ts"
+      ]
+    },
+    "conversation-agent": {
+      "id": "conversation-agent",
+      "parentId": "agent",
+      "kind": "component",
+      "label": "ConversationAgent",
+      "summary": "生产指令与跨输入上下文策略",
+      "order": 30,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/agent/conversation-agent.ts"
+      ]
+    },
+    "context-selection": {
+      "id": "context-selection",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "完整轮次上下文",
+      "summary": "保留当前轮与容量内成功历史",
+      "order": 31,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/agent/conversation-agent.ts"
+      ]
+    },
+    "request-budget": {
+      "id": "request-budget",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "请求容量",
+      "summary": "按实际请求体字节裁剪完整历史轮次",
+      "order": 32,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "src/agent/conversation-agent.ts"
+      ]
+    },
+    "tui": {
+      "id": "tui",
+      "parentId": "console",
+      "kind": "group",
+      "label": "全屏 TUI",
+      "summary": "显式提交与活动展示",
+      "order": 33,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-06-M2.1进度与架构图.md#组件关系",
+        "src/console/tui/terminal.ts"
+      ]
+    },
+    "tui-terminal": {
+      "id": "tui-terminal",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "终端驱动",
+      "summary": "意图分发、接口调用与退出恢复",
+      "order": 34,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-06-M2.1进度与架构图.md#组件关系",
+        "src/console/tui/terminal.ts"
+      ]
+    },
+    "tui-input": {
+      "id": "tui-input",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "输入解码",
+      "summary": "UTF-8 分块、Escape 与粘贴",
+      "order": 35,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-06-M2.1进度与架构图.md#组件关系",
+        "src/console/tui/input.ts"
+      ]
+    },
+    "tui-editor": {
+      "id": "tui-editor",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "草稿编辑",
+      "summary": "正文、字素光标与版本",
+      "order": 36,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-06-M2.1进度与架构图.md#组件关系",
+        "src/console/tui/editor.ts"
+      ]
+    },
+    "tui-state": {
+      "id": "tui-state",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "界面状态",
+      "summary": "活动、诊断位置、焦点与回看锚点",
+      "order": 37,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-06-M2.1进度与架构图.md#组件关系",
+        "src/console/tui/state.ts"
+      ]
+    },
+    "tui-view": {
+      "id": "tui-view",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "屏幕布局",
+      "summary": "一屏文本、光标与回看",
+      "order": 38,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-06-M2.1进度与架构图.md#组件关系",
+        "src/console/tui/view.ts"
+      ]
+    },
+    "tui-text": {
+      "id": "tui-text",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "文本计算",
+      "summary": "字素、列宽、折行和截取",
+      "order": 39,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-06-M2.1进度与架构图.md#组件关系",
+        "src/console/tui/text.ts"
+      ]
+    },
+    "runtime-m3": {
+      "id": "runtime",
+      "parentId": "system",
+      "kind": "group",
+      "label": "Runtime",
+      "summary": "共享 FIFO、统一触发执行与生命周期",
+      "order": 2,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ],
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "trigger-channel": {
+      "id": "trigger-channel",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "TriggerChannel",
+      "summary": "统一受理、FIFO 与唯一终态",
+      "order": 41,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/trigger-channel.ts"
+      ]
+    },
+    "trigger-run": {
+      "id": "trigger-run",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "TriggerRun",
+      "summary": "一次触发内的模型与工具闭环",
+      "order": 42,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/trigger-run.ts"
+      ]
+    },
+    "input-facade": {
+      "id": "input-facade",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "UserInput 门面",
+      "summary": "将输入委托给共享 TriggerChannel",
+      "order": 43,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/input-channel.ts"
+      ]
+    },
+    "world-sink": {
+      "id": "world-sink",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "World 生命周期 sink",
+      "summary": "订阅事件并提交稳定来源事实",
+      "order": 44,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "heartbeat": {
+      "id": "heartbeat",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "Heartbeat",
+      "summary": "生命周期管理的周期触发源",
+      "order": 45,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "seen": {
+      "id": "seen",
+      "parentId": "trigger-channel",
+      "kind": "component",
+      "label": "触发身份集合",
+      "summary": "实例内累计标识与来源预算",
+      "order": 46,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/trigger-channel.ts"
+      ]
+    },
+    "world-events": {
+      "id": "world-events",
+      "parentId": "world",
+      "kind": "component",
+      "label": "事件订阅口",
+      "summary": "World.subscribeEvents 主动投递",
+      "order": 47,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/protocol/index.ts"
+      ]
+    },
+    "heartbeat-agent": {
+      "id": "heartbeat-agent",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "心跳判断",
+      "summary": "可请求模型或无动作；默认无周期策略",
+      "order": 48,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/agent/conversation-agent.ts"
+      ]
+    },
+    "guarded-m3": {
+      "id": "guarded",
+      "parentId": "trigger-run",
+      "kind": "component",
+      "label": "有界调用等待",
+      "summary": "Provider / 工具期限与取消信号",
+      "order": 28,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.0进度与架构图.md#组件关系",
+        "src/runtime/trigger-run.ts"
+      ]
+    },
+    "tui-package": {
+      "id": "tui",
+      "parentId": "console",
+      "kind": "group",
+      "label": "全屏 TUI",
+      "summary": "packages/apps/tui 中的可选前端",
+      "order": 33,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/apps/tui/src/"
+      ]
+    },
+    "tui-terminal-package": {
+      "id": "tui-terminal",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "终端驱动",
+      "summary": "意图分发、接口调用与退出恢复",
+      "order": 34,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/apps/tui/src/terminal.ts"
+      ],
+      "details": [
+        "实现迁移到 packages/apps/tui/src/terminal.ts"
+      ]
+    },
+    "tui-input-package": {
+      "id": "tui-input",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "输入解码",
+      "summary": "UTF-8 分块、Escape 与粘贴",
+      "order": 35,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/apps/tui/src/input.ts"
+      ],
+      "details": [
+        "实现迁移到 packages/apps/tui/src/input.ts"
+      ]
+    },
+    "tui-editor-package": {
+      "id": "tui-editor",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "草稿编辑",
+      "summary": "正文、字素光标与版本",
+      "order": 36,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/apps/tui/src/editor.ts"
+      ],
+      "details": [
+        "实现迁移到 packages/apps/tui/src/editor.ts"
+      ]
+    },
+    "tui-state-package": {
+      "id": "tui-state",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "界面状态",
+      "summary": "活动、诊断位置、焦点与回看锚点",
+      "order": 37,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/apps/tui/src/state.ts"
+      ],
+      "details": [
+        "实现迁移到 packages/apps/tui/src/state.ts"
+      ]
+    },
+    "tui-view-package": {
+      "id": "tui-view",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "屏幕布局",
+      "summary": "一屏文本、光标与回看",
+      "order": 38,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/apps/tui/src/view.ts"
+      ],
+      "details": [
+        "实现迁移到 packages/apps/tui/src/view.ts"
+      ]
+    },
+    "tui-text-package": {
+      "id": "tui-text",
+      "parentId": "tui",
+      "kind": "component",
+      "label": "文本计算",
+      "summary": "字素、列宽、折行和截取",
+      "order": 39,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/apps/tui/src/text.ts"
+      ],
+      "details": [
+        "实现迁移到 packages/apps/tui/src/text.ts"
+      ]
+    },
+    "control-api": {
+      "id": "control-api",
+      "parentId": "protocol",
+      "kind": "group",
+      "label": "control-api",
+      "summary": "共享类型与能力契约；无运行中转",
+      "order": 57,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "packages/shared/control-api/src/index.ts"
+      ]
+    },
+    "control-entry": {
+      "id": "control-entry",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "公开控制入口",
+      "summary": "面向前端的输入、查询与生命周期能力",
+      "order": 58,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "src/control/index.ts"
+      ]
+    },
+    "tui-compose": {
+      "id": "tui-compose",
+      "parentId": "assembly",
+      "kind": "component",
+      "label": "TUI 组合入口",
+      "summary": "创建 Runtime 并传入公开 control",
+      "order": 59,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-08-M3.1进度与架构图.md#组件关系",
+        "examples/tui/sample.ts"
+      ]
+    },
+    "delivery-state": {
+      "id": "delivery-state",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "WorldDeliveryState",
+      "summary": "固定流身份与连续 received / settled 前缀",
+      "order": 60,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/runtime/world-delivery-state.ts"
+      ]
+    },
+    "preflight": {
+      "id": "preflight",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "SessionPreflight",
+      "summary": "启动固定扫描与只读检查",
+      "order": 61,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/runtime/session-preflight.ts"
+      ]
+    },
+    "session-audit": {
+      "id": "session-audit",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "SessionAudit",
+      "summary": "扫描事实的身份与因果审计投影",
+      "order": 62,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/state/session-audit.ts"
+      ]
+    },
+    "history-window": {
+      "id": "history-window",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "HistoryWindow",
+      "summary": "已确认事实的有界上下文候选",
+      "order": 63,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/state/history-window.ts"
+      ]
+    },
+    "bounded-trace": {
+      "id": "bounded-trace",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "近期 trace",
+      "summary": "有界执行观察与明确旧项淘汰",
+      "order": 64,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/runtime/runtime.ts"
+      ]
+    },
+    "session-scan": {
+      "id": "session-scan",
+      "parentId": "session",
+      "kind": "component",
+      "label": "Session.scan",
+      "summary": "归档固定扫描与显式旧历史查询",
+      "order": 65,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/state/jsonl-session.ts"
+      ]
+    },
+    "identity-budget": {
+      "id": "identity-budget",
+      "parentId": "trigger-channel",
+      "kind": "component",
+      "label": "身份预算",
+      "summary": "UserInput 与 legacy Event 各自有界",
+      "order": 66,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/runtime/trigger-channel.ts"
+      ]
+    },
+    "qq-world": {
+      "id": "qq-world",
+      "parentId": "world",
+      "kind": "group",
+      "label": "QQ World",
+      "summary": "单账号、固定会话与文本事实",
+      "order": 67,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/world.ts"
+      ]
+    },
+    "qq-driver": {
+      "id": "qq-driver",
+      "parentId": "qq-world",
+      "kind": "adapter",
+      "label": "Driver",
+      "summary": "协议连接与发送确认",
+      "order": 68,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/driver.ts"
+      ]
+    },
+    "qq-normalize": {
+      "id": "qq-normalize",
+      "parentId": "qq-world",
+      "kind": "component",
+      "label": "Normalize",
+      "summary": "原生消息归一与稳定信封",
+      "order": 69,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/normalize.ts"
+      ]
+    },
+    "qq-journal": {
+      "id": "qq-journal",
+      "parentId": "qq-world",
+      "kind": "store",
+      "label": "QQJournal（磁盘）",
+      "summary": "消息、序号、保存前缀与发送事实",
+      "order": 70,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/journal.ts"
+      ]
+    },
+    "qq-pump": {
+      "id": "qq-pump",
+      "parentId": "qq-world",
+      "kind": "component",
+      "label": "投递泵",
+      "summary": "submit 原信封并等待 waitSaved",
+      "order": 71,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/world.ts"
+      ]
+    },
+    "qq-tools": {
+      "id": "qq-tools",
+      "parentId": "qq-world",
+      "kind": "component",
+      "label": "查询 / 发送工具",
+      "summary": "本地快照查询与 qq.send_text",
+      "order": 72,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/world.ts"
+      ]
+    },
+    "qq-environment": {
+      "id": "qq-environment",
+      "parentId": "system",
+      "kind": "actor",
+      "label": "QQ 环境",
+      "summary": "外部账号与会话",
+      "order": 73,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/driver.ts"
+      ],
+      "position": {
+        "x": -720,
+        "y": 360
+      }
+    },
+    "snowluma": {
+      "id": "snowluma",
+      "parentId": "system",
+      "kind": "adapter",
+      "label": "SnowLuma",
+      "summary": "部署方独立管理的协议桥",
+      "order": 74,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/driver.ts"
+      ],
+      "position": {
+        "x": -720,
+        "y": 0
+      }
+    },
+    "qq-compose": {
+      "id": "qq-compose",
+      "parentId": "assembly",
+      "kind": "component",
+      "label": "composeQQ（磁盘）",
+      "summary": "磁盘 Session 与领域 Journal 装配",
+      "order": 75,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "examples/qq/compose.ts"
+      ]
+    },
+    "tool-wire-wrapper": {
+      "id": "tool-wire-wrapper",
+      "parentId": "qq-compose",
+      "kind": "component",
+      "label": "临时工具线名包装",
+      "summary": "QQ 手动入口中的协议名称转换",
+      "order": 76,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M4.1进度与架构图.md#组件关系",
+        "examples/qq/manual.ts"
+      ]
+    },
+    "tool-registry": {
+      "id": "tool-registry",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "ToolRegistry",
+      "summary": "固定 owner：world / agent",
+      "order": 77,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/runtime/tool-registry.ts"
+      ]
+    },
+    "task-coordinator": {
+      "id": "task-coordinator",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "TaskCoordinator",
+      "summary": "授权、期望修订与串行任务提交",
+      "order": 78,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/runtime/task-coordinator.ts"
+      ]
+    },
+    "task-projection": {
+      "id": "task-projection",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "TaskProjection",
+      "summary": "有界活跃任务与一次安排消费",
+      "order": 79,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/state/task-projection.ts"
+      ]
+    },
+    "task-tools": {
+      "id": "task-tools",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "AgentTaskTools",
+      "summary": "五个 agent_task_* 工具",
+      "order": 80,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/agent/task-tools.ts"
+      ]
+    },
+    "task-due": {
+      "id": "task-due",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "到期选择与认领",
+      "summary": "跨触发读取任务并作新判断",
+      "order": 81,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/agent/conversation-agent.ts"
+      ]
+    },
+    "task-facts": {
+      "id": "task-facts",
+      "parentId": "session",
+      "kind": "store",
+      "label": "任务事实",
+      "summary": "task_changed / task_claimed",
+      "order": 82,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/protocol/task.ts"
+      ]
+    },
+    "preflight-m5": {
+      "id": "preflight",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "SessionPreflight",
+      "summary": "启动扫描重建任务与投递状态",
+      "order": 61,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/runtime/session-preflight.ts"
+      ]
+    },
+    "audit-m5": {
+      "id": "session-audit",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "SessionAudit",
+      "summary": "执行与任务事实的身份和因果审计",
+      "order": 62,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/state/session-audit.ts"
+      ]
+    },
+    "qq-chat": {
+      "id": "qq-chat",
+      "parentId": "assembly",
+      "kind": "group",
+      "label": "composeQQChat",
+      "summary": "内存模式；任务工具 / 心跳默认关闭",
+      "order": 85,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.1进度与架构图.md#组件关系",
+        "examples/qq/compose.ts"
+      ]
+    },
+    "chat-policy": {
+      "id": "chat-policy",
+      "parentId": "qq-chat",
+      "kind": "component",
+      "label": "Chat 配置",
+      "summary": "固定单会话；完整已结清失败历史",
+      "order": 86,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.1进度与架构图.md#组件关系",
+        "examples/qq/compose.ts"
+      ]
+    },
+    "memory-session": {
+      "id": "memory-session",
+      "parentId": "session",
+      "kind": "store",
+      "label": "MemorySessionStore",
+      "summary": "Chat 会话事实；进程内保存",
+      "order": 87,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.1进度与架构图.md#组件关系",
+        "src/state/memory-session.ts"
+      ]
+    },
+    "qq-memory-journal": {
+      "id": "qq-memory-journal",
+      "parentId": "qq-world",
+      "kind": "store",
+      "label": "QQJournal（内存）",
+      "summary": "Chat 模式消息 / 序号 / 发送确认",
+      "order": 88,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.1进度与架构图.md#组件关系",
+        "packages/extensions/world-qq/src/journal.ts"
+      ]
+    },
+    "tool-name-codec": {
+      "id": "tool-name-codec",
+      "parentId": "responses",
+      "kind": "component",
+      "label": "工具线名编码",
+      "summary": "合法可逆；声明、历史和原生项统一",
+      "order": 89,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.1进度与架构图.md#组件关系",
+        "src/providers/responses-tool-names.ts"
+      ]
+    },
+    "qq-message-context": {
+      "id": "qq-message-context",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "QQ 消息上下文",
+      "summary": "直读 qq.message 当前载荷",
+      "order": 90,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.1进度与架构图.md#组件关系",
+        "src/agent/conversation-agent.ts"
+      ]
+    },
+    "response-control": {
+      "id": "response-control",
+      "parentId": "trigger-channel",
+      "kind": "component",
+      "label": "ResponseControl",
+      "summary": "显式 responses.yield；受可信能力约束",
+      "order": 91,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/protocol/responsiveness.ts"
+      ]
+    },
+    "operations": {
+      "id": "operations",
+      "parentId": "runtime",
+      "kind": "group",
+      "label": "OperationRegistry",
+      "summary": "显式启用：原调用登记与独立迟到确认",
+      "order": 92,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/runtime/operation-registry.ts"
+      ]
+    },
+    "operation-running": {
+      "id": "operation-running",
+      "parentId": "operations",
+      "kind": "component",
+      "label": "Running Operations",
+      "summary": "登记 Provider 与 World 原操作",
+      "order": 93,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/runtime/operation-registry.ts"
+      ]
+    },
+    "operation-detached": {
+      "id": "operation-detached",
+      "parentId": "operations",
+      "kind": "component",
+      "label": "Detached Operations",
+      "summary": "撤销普通交付，继续持有原调用",
+      "order": 94,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/runtime/operation-registry.ts"
+      ]
+    },
+    "operation-confirming": {
+      "id": "operation-confirming",
+      "parentId": "operations",
+      "kind": "component",
+      "label": "Confirming Archives",
+      "summary": "独立迟到事实归档确认",
+      "order": 95,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/runtime/operation-registry.ts"
+      ]
+    },
+    "operation-evidence": {
+      "id": "operation-evidence",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "OperationEvidenceTool",
+      "summary": "agent_operation_evidence 显式查询",
+      "order": 96,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/agent/operation-tools.ts"
+      ]
+    },
+    "world-effects": {
+      "id": "world-effects",
+      "parentId": "world",
+      "kind": "component",
+      "label": "可信效果声明",
+      "summary": "none / external；不由模型声明",
+      "order": 97,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/protocol/responsiveness.ts"
+      ]
+    },
+    "operation-facts": {
+      "id": "operation-facts",
+      "parentId": "session",
+      "kind": "store",
+      "label": "独立操作事实",
+      "summary": "operation_detached / operation_late",
+      "order": 98,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/protocol/responsiveness.ts"
+      ]
+    },
+    "m6-compose": {
+      "id": "m6-compose",
+      "parentId": "assembly",
+      "kind": "component",
+      "label": "M6 响应装配",
+      "summary": "单独启用；QQ Chat / TUI 默认关闭",
+      "order": 99,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "scripts/m6-console.ts"
+      ]
+    },
+    "yield-operator": {
+      "id": "yield-operator",
+      "parentId": "m6-compose",
+      "kind": "actor",
+      "label": "操作者控制",
+      "summary": "明确让出当前逻辑等待",
+      "order": 100,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "scripts/m6-console.ts"
+      ]
+    },
+    "preflight-m6": {
+      "id": "preflight",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "SessionPreflight",
+      "summary": "启动检查执行、任务与操作因果记录",
+      "order": 61,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/runtime/session-preflight.ts"
+      ]
+    },
+    "audit-m6": {
+      "id": "session-audit",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "SessionAudit",
+      "summary": "执行、任务及独立迟到记录审计",
+      "order": 62,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/state/session-audit.ts"
+      ]
+    },
+    "registry-m6": {
+      "id": "tool-registry",
+      "parentId": "runtime",
+      "kind": "component",
+      "label": "ToolRegistry",
+      "summary": "固定 owner 与可信 effects 能力",
+      "order": 77,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "src/runtime/tool-registry.ts"
+      ]
+    },
+    "world-deliveries": {
+      "id": "world-events",
+      "parentId": "world",
+      "kind": "component",
+      "label": "顺序投递口",
+      "summary": "World.subscribeDeliveries 稳定来源信封",
+      "order": 47,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-09-M4.0进度与架构图.md#组件关系",
+        "src/protocol/delivery.ts"
+      ]
+    },
+    "heartbeat-agent-m5": {
+      "id": "heartbeat-agent",
+      "parentId": "conversation-agent",
+      "kind": "component",
+      "label": "心跳判断",
+      "summary": "无到期安排且无自定义策略时跳过模型",
+      "order": 48,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-11-M5.0进度与架构图.md#组件关系",
+        "src/agent/conversation-agent.ts"
+      ]
+    },
+    "response-world": {
+      "id": "response-world",
+      "parentId": "world",
+      "kind": "component",
+      "label": "ResponseWorld",
+      "summary": "M6 文件世界：只读观察与版本化动作",
+      "order": 104,
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-12-M6.0进度与架构图.md#组件关系",
+        "tests/fixtures/response-world.ts",
+        "scripts/m6-console.ts"
+      ]
+    }
+  },
+  "links": {
+    "event-entry": {
+      "id": "event-entry",
+      "source": "event-caller",
+      "target": "event-loop",
+      "label": "handleEvent",
+      "relation": "call",
+      "order": 0
+    },
+    "event-agent": {
+      "id": "event-agent",
+      "source": "event-loop",
+      "target": "test-agent",
+      "label": "初始与续轮请求",
+      "relation": "call",
+      "order": 1
+    },
+    "event-provider": {
+      "id": "event-provider",
+      "source": "event-loop",
+      "target": "responses",
+      "label": "complete",
+      "relation": "call",
+      "order": 2
+    },
+    "event-world": {
+      "id": "event-world",
+      "source": "event-loop",
+      "target": "fixture-world",
+      "label": "executeTool",
+      "relation": "call",
+      "order": 3
+    },
+    "event-save": {
+      "id": "event-save",
+      "source": "event-loop",
+      "target": "append",
+      "label": "追加执行事实",
+      "relation": "storage",
+      "order": 4
+    },
+    "append-jsonl": {
+      "id": "append-jsonl",
+      "source": "append",
+      "target": "jsonl",
+      "label": "append",
+      "relation": "storage",
+      "order": 5
+    },
+    "history-scan": {
+      "id": "history-scan",
+      "source": "history-read",
+      "target": "jsonl",
+      "label": "read",
+      "relation": "storage",
+      "order": 6
+    },
+    "history-agent": {
+      "id": "history-agent",
+      "source": "history-read",
+      "target": "test-agent",
+      "label": "历史上下文",
+      "relation": "data",
+      "order": 7
+    },
+    "lifecycle-world": {
+      "id": "lifecycle-world",
+      "source": "lifecycle",
+      "target": "world",
+      "label": "启动与有界清理",
+      "relation": "control",
+      "order": 8
+    },
+    "lifecycle-append": {
+      "id": "lifecycle-append",
+      "source": "lifecycle",
+      "target": "append",
+      "label": "停止等待",
+      "relation": "control",
+      "order": 9
+    },
+    "compose-runtime": {
+      "id": "compose-runtime",
+      "source": "compose",
+      "target": "runtime",
+      "label": "装配并启动",
+      "relation": "control",
+      "order": 10
+    },
+    "event-trace": {
+      "id": "event-trace",
+      "source": "event-loop",
+      "target": "trace",
+      "label": "观察记录",
+      "relation": "event",
+      "order": 11
+    },
+    "line-submit": {
+      "id": "line-submit",
+      "source": "line-console",
+      "target": "input-queue",
+      "label": "inputs.submit",
+      "relation": "call",
+      "order": 12
+    },
+    "queue-run": {
+      "id": "queue-run",
+      "source": "input-queue",
+      "target": "input-run",
+      "label": "FIFO 出队",
+      "relation": "control",
+      "order": 13
+    },
+    "run-context": {
+      "id": "run-context",
+      "source": "input-run",
+      "target": "context-selection",
+      "label": "构造本轮上下文",
+      "relation": "call",
+      "order": 14
+    },
+    "context-budget": {
+      "id": "context-budget",
+      "source": "context-selection",
+      "target": "request-budget",
+      "label": "完整轮次",
+      "relation": "data",
+      "order": 15
+    },
+    "run-guarded": {
+      "id": "run-guarded",
+      "source": "input-run",
+      "target": "guarded",
+      "label": "调用期限",
+      "relation": "control",
+      "order": 16
+    },
+    "guarded-provider": {
+      "id": "guarded-provider",
+      "source": "guarded",
+      "target": "responses",
+      "label": "complete",
+      "relation": "call",
+      "order": 17
+    },
+    "guarded-world": {
+      "id": "guarded-world",
+      "source": "guarded",
+      "target": "fixture-world",
+      "label": "executeTool",
+      "relation": "call",
+      "order": 18
+    },
+    "run-append": {
+      "id": "run-append",
+      "source": "input-run",
+      "target": "append",
+      "label": "请求 / 响应 / 工具 / 终态",
+      "relation": "storage",
+      "order": 19
+    },
+    "queue-output": {
+      "id": "queue-output",
+      "source": "input-queue",
+      "target": "output",
+      "label": "受理与进度",
+      "relation": "event",
+      "order": 20
+    },
+    "output-console": {
+      "id": "output-console",
+      "source": "output",
+      "target": "console",
+      "label": "订阅 / 补读",
+      "relation": "event",
+      "order": 21
+    },
+    "history-context": {
+      "id": "history-context",
+      "source": "history-read",
+      "target": "context-selection",
+      "label": "成功历史",
+      "relation": "data",
+      "order": 22
+    },
+    "event-conversation": {
+      "id": "event-conversation",
+      "source": "event-loop",
+      "target": "conversation-agent",
+      "label": "兼容 Event 请求",
+      "relation": "call",
+      "order": 23
+    },
+    "tui-submit": {
+      "id": "tui-submit",
+      "source": "tui-terminal",
+      "target": "input-queue",
+      "label": "inputs.submit",
+      "relation": "call",
+      "order": 24
+    },
+    "tui-diagnostics": {
+      "id": "tui-diagnostics",
+      "source": "output",
+      "target": "tui-state",
+      "label": "诊断更新",
+      "relation": "event",
+      "order": 25
+    },
+    "tui-decode": {
+      "id": "tui-decode",
+      "source": "tui-input",
+      "target": "tui-terminal",
+      "label": "KeyAction 回调",
+      "relation": "event",
+      "order": 26
+    },
+    "tui-create-state": {
+      "id": "tui-create-state",
+      "source": "tui-terminal",
+      "target": "tui-state",
+      "label": "receipt / event",
+      "relation": "call",
+      "order": 27
+    },
+    "tui-create-draft": {
+      "id": "tui-create-draft",
+      "source": "tui-state",
+      "target": "tui-editor",
+      "label": "持有草稿",
+      "relation": "call",
+      "order": 28
+    },
+    "tui-edit": {
+      "id": "tui-edit",
+      "source": "tui-terminal",
+      "target": "tui-editor",
+      "label": "编辑操作",
+      "relation": "call",
+      "order": 29
+    },
+    "tui-frame": {
+      "id": "tui-frame",
+      "source": "tui-terminal",
+      "target": "tui-view",
+      "label": "frame / scroll",
+      "relation": "call",
+      "order": 30
+    },
+    "tui-editor-text": {
+      "id": "tui-editor-text",
+      "source": "tui-editor",
+      "target": "tui-text",
+      "label": "字素与位置",
+      "relation": "call",
+      "order": 31
+    },
+    "tui-view-text": {
+      "id": "tui-view-text",
+      "source": "tui-view",
+      "target": "tui-text",
+      "label": "折行与列宽",
+      "relation": "call",
+      "order": 32
+    },
+    "line-facade": {
+      "id": "line-facade",
+      "source": "line-console",
+      "target": "input-facade",
+      "label": "inputs.submit",
+      "relation": "call",
+      "order": 33
+    },
+    "tui-facade": {
+      "id": "tui-facade",
+      "source": "tui-terminal",
+      "target": "input-facade",
+      "label": "inputs.submit",
+      "relation": "call",
+      "order": 34
+    },
+    "facade-channel": {
+      "id": "facade-channel",
+      "source": "input-facade",
+      "target": "trigger-channel",
+      "label": "提交 UserInput",
+      "relation": "call",
+      "order": 35
+    },
+    "legacy-channel": {
+      "id": "legacy-channel",
+      "source": "event-caller",
+      "target": "trigger-channel",
+      "label": "handleEvent 委托",
+      "relation": "call",
+      "order": 36
+    },
+    "world-subscribe": {
+      "id": "world-subscribe",
+      "source": "world-events",
+      "target": "world-sink",
+      "label": "事件信封",
+      "relation": "event",
+      "order": 37
+    },
+    "sink-channel": {
+      "id": "sink-channel",
+      "source": "world-sink",
+      "target": "trigger-channel",
+      "label": "submit",
+      "relation": "event",
+      "order": 38
+    },
+    "heartbeat-channel": {
+      "id": "heartbeat-channel",
+      "source": "heartbeat",
+      "target": "trigger-channel",
+      "label": "周期心跳",
+      "relation": "event",
+      "order": 39
+    },
+    "channel-run": {
+      "id": "channel-run",
+      "source": "trigger-channel",
+      "target": "trigger-run",
+      "label": "FIFO 出队",
+      "relation": "control",
+      "order": 40
+    },
+    "trigger-context": {
+      "id": "trigger-context",
+      "source": "trigger-run",
+      "target": "context-selection",
+      "label": "模型请求",
+      "relation": "call",
+      "order": 41
+    },
+    "trigger-heartbeat": {
+      "id": "trigger-heartbeat",
+      "source": "trigger-run",
+      "target": "heartbeat-agent",
+      "label": "心跳判断",
+      "relation": "call",
+      "order": 42
+    },
+    "trigger-guarded": {
+      "id": "trigger-guarded",
+      "source": "trigger-run",
+      "target": "guarded",
+      "label": "有界调用",
+      "relation": "control",
+      "order": 43
+    },
+    "trigger-save": {
+      "id": "trigger-save",
+      "source": "trigger-run",
+      "target": "append",
+      "label": "执行过程事实",
+      "relation": "storage",
+      "order": 44
+    },
+    "channel-save": {
+      "id": "channel-save",
+      "source": "trigger-channel",
+      "target": "append",
+      "label": "接收与唯一终态事实",
+      "relation": "storage",
+      "order": 45
+    },
+    "channel-diagnostics": {
+      "id": "channel-diagnostics",
+      "source": "trigger-channel",
+      "target": "output",
+      "label": "公开状态",
+      "relation": "event",
+      "order": 46
+    },
+    "trigger-trace": {
+      "id": "trigger-trace",
+      "source": "trigger-run",
+      "target": "trace",
+      "label": "观察记录",
+      "relation": "event",
+      "order": 47
+    },
+    "lifecycle-heartbeat": {
+      "id": "lifecycle-heartbeat",
+      "source": "lifecycle",
+      "target": "heartbeat",
+      "label": "启动 / 清理",
+      "relation": "control",
+      "order": 48
+    },
+    "channel-seen": {
+      "id": "channel-seen",
+      "source": "trigger-channel",
+      "target": "seen",
+      "label": "身份登记",
+      "relation": "call",
+      "order": 49
+    },
+    "tui-contract": {
+      "id": "tui-contract",
+      "source": "tui",
+      "target": "control-api",
+      "label": "类型依赖",
+      "relation": "control",
+      "order": 50
+    },
+    "runtime-contract": {
+      "id": "runtime-contract",
+      "source": "control-entry",
+      "target": "control-api",
+      "label": "类型依赖",
+      "relation": "control",
+      "order": 51
+    },
+    "tui-control": {
+      "id": "tui-control",
+      "source": "tui-terminal",
+      "target": "control-entry",
+      "label": "公开控制调用",
+      "relation": "call",
+      "order": 52
+    },
+    "assembly-tui": {
+      "id": "assembly-tui",
+      "source": "tui-compose",
+      "target": "tui-terminal",
+      "label": "runTui(control)",
+      "relation": "call",
+      "order": 53
+    },
+    "assembly-runtime": {
+      "id": "assembly-runtime",
+      "source": "tui-compose",
+      "target": "runtime",
+      "label": "composeRuntime / start",
+      "relation": "call",
+      "order": 54
+    },
+    "sink-delivery": {
+      "id": "sink-delivery",
+      "source": "world-sink",
+      "target": "delivery-state",
+      "label": "稳定信封登记",
+      "relation": "event",
+      "order": 55
+    },
+    "delivery-channel": {
+      "id": "delivery-channel",
+      "source": "delivery-state",
+      "target": "trigger-channel",
+      "label": "序号判断后受理",
+      "relation": "control",
+      "order": 56
+    },
+    "saved-delivery": {
+      "id": "saved-delivery",
+      "source": "append",
+      "target": "delivery-state",
+      "label": "确认后推进前缀",
+      "relation": "storage",
+      "order": 57
+    },
+    "lifecycle-preflight": {
+      "id": "lifecycle-preflight",
+      "source": "lifecycle",
+      "target": "preflight",
+      "label": "启动检查",
+      "relation": "control",
+      "order": 58
+    },
+    "preflight-scan": {
+      "id": "preflight-scan",
+      "source": "preflight",
+      "target": "session-scan",
+      "label": "固定 scan",
+      "relation": "storage",
+      "order": 59
+    },
+    "scan-audit": {
+      "id": "scan-audit",
+      "source": "session-scan",
+      "target": "session-audit",
+      "label": "审计重建",
+      "relation": "data",
+      "order": 60
+    },
+    "scan-delivery": {
+      "id": "scan-delivery",
+      "source": "session-scan",
+      "target": "delivery-state",
+      "label": "前缀重建",
+      "relation": "data",
+      "order": 61
+    },
+    "scan-history": {
+      "id": "scan-history",
+      "source": "session-scan",
+      "target": "history-window",
+      "label": "候选重建",
+      "relation": "data",
+      "order": 62
+    },
+    "saved-history": {
+      "id": "saved-history",
+      "source": "append",
+      "target": "history-window",
+      "label": "确认后增量更新",
+      "relation": "data",
+      "order": 63
+    },
+    "window-context": {
+      "id": "window-context",
+      "source": "history-window",
+      "target": "context-selection",
+      "label": "有界候选",
+      "relation": "data",
+      "order": 64
+    },
+    "explicit-history": {
+      "id": "explicit-history",
+      "source": "conversation-agent",
+      "target": "session-scan",
+      "label": "readHistory 显式查询",
+      "relation": "storage",
+      "order": 65
+    },
+    "run-recent-trace": {
+      "id": "run-recent-trace",
+      "source": "trigger-run",
+      "target": "bounded-trace",
+      "label": "近期观察",
+      "relation": "event",
+      "order": 66
+    },
+    "world-wait-saved": {
+      "id": "world-wait-saved",
+      "source": "world-events",
+      "target": "delivery-state",
+      "label": "waitSaved",
+      "relation": "call",
+      "order": 67
+    },
+    "channel-budget": {
+      "id": "channel-budget",
+      "source": "trigger-channel",
+      "target": "identity-budget",
+      "label": "受理身份预算",
+      "relation": "call",
+      "order": 68
+    },
+    "qq-bridge": {
+      "id": "qq-bridge",
+      "source": "qq-environment",
+      "target": "snowluma",
+      "label": "消息 / 显式发送",
+      "relation": "data",
+      "order": 69,
+      "direction": "bidirectional"
+    },
+    "bridge-driver": {
+      "id": "bridge-driver",
+      "source": "snowluma",
+      "target": "qq-driver",
+      "label": "原生消息 / 发送确认",
+      "relation": "data",
+      "order": 70,
+      "direction": "bidirectional"
+    },
+    "driver-normalize": {
+      "id": "driver-normalize",
+      "source": "qq-driver",
+      "target": "qq-normalize",
+      "label": "原生消息",
+      "relation": "event",
+      "order": 71
+    },
+    "normalize-journal": {
+      "id": "normalize-journal",
+      "source": "qq-normalize",
+      "target": "qq-journal",
+      "label": "保存消息与序号",
+      "relation": "storage",
+      "order": 72
+    },
+    "journal-pump": {
+      "id": "journal-pump",
+      "source": "qq-journal",
+      "target": "qq-pump",
+      "label": "待投递稳定信封",
+      "relation": "data",
+      "order": 73
+    },
+    "pump-sink": {
+      "id": "pump-sink",
+      "source": "qq-pump",
+      "target": "world-sink",
+      "label": "submit",
+      "relation": "event",
+      "order": 74
+    },
+    "pump-wait": {
+      "id": "pump-wait",
+      "source": "qq-pump",
+      "target": "delivery-state",
+      "label": "waitSaved",
+      "relation": "call",
+      "order": 75
+    },
+    "guarded-qq-tools": {
+      "id": "guarded-qq-tools",
+      "source": "guarded",
+      "target": "qq-tools",
+      "label": "qq.get_message / send_text",
+      "relation": "call",
+      "order": 77
+    },
+    "tools-journal": {
+      "id": "tools-journal",
+      "source": "qq-tools",
+      "target": "qq-journal",
+      "label": "查询 / 发送意图与确认",
+      "relation": "storage",
+      "order": 78
+    },
+    "tools-driver": {
+      "id": "tools-driver",
+      "source": "qq-tools",
+      "target": "qq-driver",
+      "label": "显式发送",
+      "relation": "call",
+      "order": 79
+    },
+    "qq-compose-world": {
+      "id": "qq-compose-world",
+      "source": "qq-compose",
+      "target": "qq-world",
+      "label": "装配 World",
+      "relation": "call",
+      "order": 80
+    },
+    "qq-compose-session": {
+      "id": "qq-compose-session",
+      "source": "qq-compose",
+      "target": "jsonl",
+      "label": "选择磁盘 Session",
+      "relation": "call",
+      "order": 81
+    },
+    "qq-wire-provider": {
+      "id": "qq-wire-provider",
+      "source": "tool-wire-wrapper",
+      "target": "responses",
+      "label": "工具线名包装",
+      "relation": "call",
+      "order": 82
+    },
+    "run-registry": {
+      "id": "run-registry",
+      "source": "trigger-run",
+      "target": "tool-registry",
+      "label": "按固定所有权分流",
+      "relation": "call",
+      "order": 83
+    },
+    "registry-world": {
+      "id": "registry-world",
+      "source": "tool-registry",
+      "target": "fixture-world",
+      "label": "owner: world",
+      "relation": "call",
+      "order": 84
+    },
+    "registry-qq": {
+      "id": "registry-qq",
+      "source": "tool-registry",
+      "target": "qq-tools",
+      "label": "owner: world",
+      "relation": "call",
+      "order": 85
+    },
+    "registry-agent": {
+      "id": "registry-agent",
+      "source": "tool-registry",
+      "target": "task-tools",
+      "label": "owner: agent",
+      "relation": "call",
+      "order": 86
+    },
+    "agent-task-change": {
+      "id": "agent-task-change",
+      "source": "task-tools",
+      "target": "task-coordinator",
+      "label": "任务读写",
+      "relation": "call",
+      "order": 87
+    },
+    "task-claim": {
+      "id": "task-claim",
+      "source": "task-due",
+      "target": "task-coordinator",
+      "label": "到期认领",
+      "relation": "call",
+      "order": 88
+    },
+    "tasks-append": {
+      "id": "tasks-append",
+      "source": "task-coordinator",
+      "target": "append",
+      "label": "串行提交",
+      "relation": "storage",
+      "order": 89
+    },
+    "append-tasks": {
+      "id": "append-tasks",
+      "source": "append",
+      "target": "task-facts",
+      "label": "确认任务事实",
+      "relation": "storage",
+      "order": 90
+    },
+    "saved-task-projection": {
+      "id": "saved-task-projection",
+      "source": "append",
+      "target": "task-projection",
+      "label": "保存后发布",
+      "relation": "data",
+      "order": 91
+    },
+    "scan-tasks": {
+      "id": "scan-tasks",
+      "source": "session-scan",
+      "target": "task-projection",
+      "label": "启动重建",
+      "relation": "data",
+      "order": 92
+    },
+    "projection-agent": {
+      "id": "projection-agent",
+      "source": "task-projection",
+      "target": "task-due",
+      "label": "活跃任务 / 待到期安排",
+      "relation": "data",
+      "order": 93
+    },
+    "chat-runtime": {
+      "id": "chat-runtime",
+      "source": "chat-policy",
+      "target": "runtime",
+      "label": "配置单会话 Runtime",
+      "relation": "call",
+      "order": 94
+    },
+    "chat-session": {
+      "id": "chat-session",
+      "source": "qq-chat",
+      "target": "memory-session",
+      "label": "选择内存 Session",
+      "relation": "call",
+      "order": 95
+    },
+    "chat-journal": {
+      "id": "chat-journal",
+      "source": "qq-chat",
+      "target": "qq-memory-journal",
+      "label": "选择内存领域记录",
+      "relation": "call",
+      "order": 96
+    },
+    "chat-world": {
+      "id": "chat-world",
+      "source": "qq-chat",
+      "target": "qq-world",
+      "label": "复用 QQ World",
+      "relation": "call",
+      "order": 97
+    },
+    "chat-history": {
+      "id": "chat-history",
+      "source": "memory-session",
+      "target": "history-window",
+      "label": "已结清历史",
+      "relation": "data",
+      "order": 98
+    },
+    "append-memory": {
+      "id": "append-memory",
+      "source": "append",
+      "target": "memory-session",
+      "label": "Chat 装配 append",
+      "relation": "storage",
+      "order": 99
+    },
+    "memory-journal-pump": {
+      "id": "memory-journal-pump",
+      "source": "qq-memory-journal",
+      "target": "qq-pump",
+      "label": "内存模式信封",
+      "relation": "data",
+      "order": 100
+    },
+    "tools-memory-journal": {
+      "id": "tools-memory-journal",
+      "source": "qq-tools",
+      "target": "qq-memory-journal",
+      "label": "内存模式查询与发送确认",
+      "relation": "storage",
+      "order": 101
+    },
+    "chat-current-context": {
+      "id": "chat-current-context",
+      "source": "trigger-run",
+      "target": "qq-message-context",
+      "label": "本轮已出队 qq.message",
+      "relation": "data",
+      "order": 102
+    },
+    "context-request": {
+      "id": "context-request",
+      "source": "qq-message-context",
+      "target": "responses",
+      "label": "当前载荷与有界历史",
+      "relation": "call",
+      "order": 103
+    },
+    "responses-codec": {
+      "id": "responses-codec",
+      "source": "responses",
+      "target": "tool-name-codec",
+      "label": "声明 / 历史 / 原生项",
+      "relation": "call",
+      "order": 104
+    },
+    "yield-control": {
+      "id": "yield-control",
+      "source": "yield-operator",
+      "target": "response-control",
+      "label": "responses.yield",
+      "relation": "control",
+      "order": 105
+    },
+    "control-channel": {
+      "id": "control-channel",
+      "source": "response-control",
+      "target": "trigger-channel",
+      "label": "逻辑让出与继续 FIFO",
+      "relation": "control",
+      "order": 106
+    },
+    "trigger-operations": {
+      "id": "trigger-operations",
+      "source": "guarded",
+      "target": "operation-running",
+      "label": "启用响应：Provider 调用占位",
+      "relation": "call",
+      "order": 107
+    },
+    "registry-operations": {
+      "id": "registry-operations",
+      "source": "tool-registry",
+      "target": "operation-running",
+      "label": "启用响应：World 调用占位",
+      "relation": "call",
+      "order": 108
+    },
+    "operations-provider": {
+      "id": "operations-provider",
+      "source": "operation-running",
+      "target": "responses",
+      "label": "启用响应：登记后 complete",
+      "relation": "call",
+      "order": 109
+    },
+    "effects-registry": {
+      "id": "effects-registry",
+      "source": "world-effects",
+      "target": "tool-registry",
+      "label": "可信 effects",
+      "relation": "data",
+      "order": 110
+    },
+    "running-detached": {
+      "id": "running-detached",
+      "source": "operation-running",
+      "target": "operation-detached",
+      "label": "让出后保留原身份",
+      "relation": "control",
+      "order": 111
+    },
+    "detached-confirming": {
+      "id": "detached-confirming",
+      "source": "operation-detached",
+      "target": "operation-confirming",
+      "label": "原操作返回",
+      "relation": "event",
+      "order": 112
+    },
+    "confirming-append": {
+      "id": "confirming-append",
+      "source": "operation-confirming",
+      "target": "append",
+      "label": "迟到确认",
+      "relation": "storage",
+      "order": 113
+    },
+    "append-operation-facts": {
+      "id": "append-operation-facts",
+      "source": "append",
+      "target": "operation-facts",
+      "label": "detached / late",
+      "relation": "storage",
+      "order": 114
+    },
+    "registry-evidence": {
+      "id": "registry-evidence",
+      "source": "tool-registry",
+      "target": "operation-evidence",
+      "label": "owner: agent",
+      "relation": "call",
+      "order": 115
+    },
+    "evidence-read": {
+      "id": "evidence-read",
+      "source": "operation-evidence",
+      "target": "operation-facts",
+      "label": "readLate 原 runId + callId",
+      "relation": "storage",
+      "order": 116
+    },
+    "evidence-context": {
+      "id": "evidence-context",
+      "source": "operation-evidence",
+      "target": "context-selection",
+      "label": "显式查询后进入当前 run",
+      "relation": "data",
+      "order": 117
+    },
+    "m6-enable": {
+      "id": "m6-enable",
+      "source": "m6-compose",
+      "target": "response-control",
+      "label": "单独装配启用",
+      "relation": "control",
+      "order": 118
+    },
+    "delivery-saved-pump": {
+      "id": "delivery-saved-pump",
+      "source": "delivery-state",
+      "target": "qq-pump",
+      "label": "保存确认",
+      "relation": "data",
+      "order": 76
+    },
+    "pump-journal-saved": {
+      "id": "pump-journal-saved",
+      "source": "qq-pump",
+      "target": "qq-journal",
+      "label": "追加保存前缀",
+      "relation": "storage",
+      "order": 119
+    },
+    "heartbeat-task-due": {
+      "id": "heartbeat-task-due",
+      "source": "heartbeat-agent",
+      "target": "task-due",
+      "label": "心跳到期判断",
+      "relation": "call",
+      "order": 120
+    },
+    "registry-world-m6": {
+      "id": "registry-world",
+      "source": "tool-registry",
+      "target": "fixture-world",
+      "label": "未启用响应：owner world",
+      "relation": "call",
+      "order": 84
+    },
+    "registry-qq-m6": {
+      "id": "registry-qq",
+      "source": "tool-registry",
+      "target": "qq-tools",
+      "label": "未启用响应：owner world",
+      "relation": "call",
+      "order": 85
+    },
+    "operations-world": {
+      "id": "operations-world",
+      "source": "operation-running",
+      "target": "response-world",
+      "label": "启用响应：登记后 World 调用",
+      "relation": "call",
+      "order": 121
+    },
+    "m6-world": {
+      "id": "m6-world",
+      "source": "m6-compose",
+      "target": "response-world",
+      "label": "选择受控响应 World",
+      "relation": "control",
+      "order": 122
+    },
+    "detached-append": {
+      "id": "detached-append",
+      "source": "operation-detached",
+      "target": "append",
+      "label": "撤权确认先于逻辑结清",
+      "relation": "storage",
+      "order": 123
+    },
+    "guarded-provider-m6": {
+      "id": "guarded-provider",
+      "source": "guarded",
+      "target": "responses",
+      "label": "未启用响应：complete",
+      "relation": "call",
+      "order": 17
+    },
+    "append-jsonl-chat": {
+      "id": "append-jsonl",
+      "source": "append",
+      "target": "jsonl",
+      "label": "磁盘装配 append",
+      "relation": "storage",
+      "order": 5
+    },
+    "normalize-memory-journal": {
+      "id": "normalize-memory-journal",
+      "source": "qq-normalize",
+      "target": "qq-memory-journal",
+      "label": "Chat 模式消息与序号",
+      "relation": "storage",
+      "order": 124
+    },
+    "pump-memory-saved": {
+      "id": "pump-memory-saved",
+      "source": "qq-pump",
+      "target": "qq-memory-journal",
+      "label": "Chat 模式保存前缀",
+      "relation": "storage",
+      "order": 125
+    },
+    "saved-history-m6": {
+      "id": "saved-history",
+      "source": "append",
+      "target": "history-window",
+      "label": "普通执行事实确认后更新",
+      "relation": "data",
+      "order": 63
+    },
+    "saved-task-projection-m6": {
+      "id": "saved-task-projection",
+      "source": "append",
+      "target": "task-projection",
+      "label": "任务事实确认后发布",
+      "relation": "data",
+      "order": 91
+    }
+  },
+  "stages": [
+    {
+      "id": "M1.0",
+      "label": "M1.0",
+      "title": "最小运行基座",
+      "subtitle": "Event → 模型 → 工具 → 会话事实",
+      "date": "2026-10-04",
+      "source": "docs/进度汇报/2026-10-04-M1.0进度与架构图.md",
+      "status": "基线实现完成；工具往返验收见报告",
+      "nodes": [
+        "system",
+        "event-caller",
+        "runtime",
+        "agent",
+        "provider",
+        "world",
+        "session",
+        "state",
+        "assembly",
+        "protocol",
+        "lifecycle",
+        "event-loop",
+        "append",
+        "trace",
+        "history-read",
+        "test-agent",
+        "responses",
+        "scripted",
+        "fixture-world",
+        "jsonl",
+        "compose",
+        "contracts"
+      ],
+      "links": [
+        "event-entry",
+        "event-agent",
+        "event-provider",
+        "event-world",
+        "event-save",
+        "append-jsonl",
+        "history-scan",
+        "history-agent",
+        "lifecycle-world",
+        "lifecycle-append",
+        "compose-runtime",
+        "event-trace"
+      ]
+    },
+    {
+      "id": "M2.0",
+      "label": "M2.0",
+      "title": "交互输入闭环",
+      "subtitle": "Console / FIFO / ConversationAgent",
+      "date": "2026-10-05",
+      "source": "docs/进度汇报/2026-10-05-M2.0进度与架构图.md",
+      "status": "首批交互闭环验收通过",
+      "nodes": [
+        "runtime-m2",
+        "console",
+        "line-console",
+        "input-contract",
+        "input-queue",
+        "input-run",
+        "guarded",
+        "output",
+        "conversation-agent",
+        "context-selection",
+        "request-budget"
+      ],
+      "links": [
+        "line-submit",
+        "queue-run",
+        "run-context",
+        "context-budget",
+        "run-guarded",
+        "guarded-provider",
+        "guarded-world",
+        "run-append",
+        "queue-output",
+        "output-console",
+        "history-context",
+        "event-conversation"
+      ],
+      "removeNodes": [
+        "test-agent"
+      ],
+      "removeLinks": [
+        "event-agent",
+        "history-agent"
+      ],
+      "replacements": {
+        "nodes": [
+          {
+            "id": "conversation-agent",
+            "previousId": "test-agent",
+            "note": "用户输入路径使用生产 ConversationAgent，替换测试请求组装"
+          }
+        ]
+      }
+    },
+    {
+      "id": "M2.1",
+      "label": "M2.1",
+      "title": "全屏终端",
+      "subtitle": "草稿编辑、活动回看与终端恢复",
+      "date": "2026-10-06",
+      "source": "docs/进度汇报/2026-10-06-M2.1进度与架构图.md",
+      "status": "同进程原型人工验收通过",
+      "nodes": [
+        "tui",
+        "tui-terminal",
+        "tui-input",
+        "tui-editor",
+        "tui-state",
+        "tui-view",
+        "tui-text"
+      ],
+      "links": [
+        "tui-submit",
+        "tui-diagnostics",
+        "tui-decode",
+        "tui-create-state",
+        "tui-create-draft",
+        "tui-edit",
+        "tui-frame",
+        "tui-editor-text",
+        "tui-view-text"
+      ]
+    },
+    {
+      "id": "M3.0",
+      "label": "M3.0",
+      "title": "统一触发调度",
+      "subtitle": "UserInput / World Event / Heartbeat",
+      "date": "2026-10-08",
+      "source": "docs/进度汇报/2026-10-08-M3.0进度与架构图.md",
+      "status": "共享队列与统一执行已实现",
+      "nodes": [
+        "runtime-m3",
+        "trigger-channel",
+        "trigger-run",
+        "input-facade",
+        "world-sink",
+        "heartbeat",
+        "seen",
+        "world-events",
+        "heartbeat-agent",
+        "guarded-m3"
+      ],
+      "links": [
+        "line-facade",
+        "tui-facade",
+        "facade-channel",
+        "legacy-channel",
+        "world-subscribe",
+        "sink-channel",
+        "heartbeat-channel",
+        "channel-run",
+        "trigger-context",
+        "trigger-heartbeat",
+        "trigger-guarded",
+        "trigger-save",
+        "channel-save",
+        "channel-diagnostics",
+        "trigger-trace",
+        "lifecycle-heartbeat",
+        "channel-seen"
+      ],
+      "removeNodes": [
+        "input-queue",
+        "input-run",
+        "event-loop"
+      ],
+      "removeLinks": [
+        "event-entry",
+        "event-provider",
+        "event-world",
+        "event-save",
+        "event-trace",
+        "event-conversation",
+        "line-submit",
+        "queue-run",
+        "run-context",
+        "run-guarded",
+        "run-append",
+        "queue-output",
+        "tui-submit"
+      ],
+      "replacements": {
+        "nodes": [
+          {
+            "id": "trigger-channel",
+            "previousId": "input-queue",
+            "note": "共享 TriggerChannel 替换 UserInput 专用 FIFO，并统一 Event 受理"
+          },
+          {
+            "id": "trigger-run",
+            "previousId": "input-run",
+            "note": "TriggerRun 替换 InputRun 与 Runtime 旧 Event 执行循环"
+          }
+        ],
+        "links": [
+          {
+            "id": "channel-run",
+            "previousId": "queue-run",
+            "note": "共享队列派发替换输入专用派发"
+          }
+        ]
+      }
+    },
+    {
+      "id": "M3.1",
+      "label": "M3.1",
+      "title": "TUI 包边界",
+      "subtitle": "独立前端包与共享控制契约",
+      "date": "2026-10-08",
+      "source": "docs/进度汇报/2026-10-08-M3.1进度与架构图.md",
+      "status": "包迁移、构建与离线验证完成",
+      "nodes": [
+        "tui-package",
+        "tui-terminal-package",
+        "tui-input-package",
+        "tui-editor-package",
+        "tui-state-package",
+        "tui-view-package",
+        "tui-text-package",
+        "control-api",
+        "control-entry",
+        "tui-compose"
+      ],
+      "links": [
+        "tui-contract",
+        "runtime-contract",
+        "tui-control",
+        "assembly-tui",
+        "assembly-runtime"
+      ]
+    },
+    {
+      "id": "M4.0",
+      "label": "M4.0",
+      "title": "投递与会话投影",
+      "subtitle": "稳定来源前缀、启动审计与有界历史",
+      "date": "2026-10-09",
+      "source": "docs/进度汇报/2026-10-09-M4.0进度与架构图.md",
+      "status": "独立验收通过",
+      "nodes": [
+        "delivery-state",
+        "preflight",
+        "session-audit",
+        "history-window",
+        "bounded-trace",
+        "session-scan",
+        "identity-budget",
+        "world-deliveries"
+      ],
+      "links": [
+        "sink-delivery",
+        "delivery-channel",
+        "saved-delivery",
+        "lifecycle-preflight",
+        "preflight-scan",
+        "scan-audit",
+        "scan-delivery",
+        "scan-history",
+        "saved-history",
+        "window-context",
+        "explicit-history",
+        "run-recent-trace",
+        "world-wait-saved",
+        "channel-budget"
+      ],
+      "removeNodes": [
+        "seen",
+        "history-read",
+        "trace"
+      ],
+      "removeLinks": [
+        "channel-seen",
+        "history-scan",
+        "history-context",
+        "trigger-trace",
+        "sink-channel"
+      ],
+      "replacements": {
+        "nodes": [
+          {
+            "id": "delivery-state",
+            "previousId": "seen",
+            "note": "有序 World 来源采用流身份与连续前缀，替换共享累计 seen 路径"
+          },
+          {
+            "id": "history-window",
+            "previousId": "history-read",
+            "note": "启动 scan 与运行期增量候选替换每次触发全文读取"
+          },
+          {
+            "id": "bounded-trace",
+            "previousId": "trace",
+            "note": "有界近期观察替换累计 trace"
+          }
+        ],
+        "links": [
+          {
+            "id": "window-context",
+            "previousId": "history-context",
+            "note": "上下文候选改由 HistoryWindow 提供"
+          }
+        ]
+      }
+    },
+    {
+      "id": "M4.1",
+      "label": "M4.1",
+      "title": "QQ World 扩展",
+      "subtitle": "消息归一、领域记录与显式发送",
+      "date": "2026-10-11",
+      "source": "docs/进度汇报/2026-10-11-M4.1进度与架构图.md",
+      "status": "真实环境两层验收通过",
+      "nodes": [
+        "qq-world",
+        "qq-driver",
+        "qq-normalize",
+        "qq-journal",
+        "qq-pump",
+        "qq-tools",
+        "qq-environment",
+        "snowluma",
+        "qq-compose",
+        "tool-wire-wrapper"
+      ],
+      "links": [
+        "qq-bridge",
+        "bridge-driver",
+        "driver-normalize",
+        "normalize-journal",
+        "journal-pump",
+        "pump-sink",
+        "pump-wait",
+        "delivery-saved-pump",
+        "pump-journal-saved",
+        "guarded-qq-tools",
+        "tools-journal",
+        "tools-driver",
+        "qq-compose-world",
+        "qq-compose-session",
+        "qq-wire-provider"
+      ]
+    },
+    {
+      "id": "M5.0",
+      "label": "M5.0",
+      "title": "跨触发任务",
+      "subtitle": "任务事实、到期认领与心跳延续",
+      "date": "2026-10-11",
+      "source": "docs/进度汇报/2026-10-11-M5.0进度与架构图.md",
+      "status": "独立审查与终端验收完成",
+      "nodes": [
+        "tool-registry",
+        "task-coordinator",
+        "task-projection",
+        "task-tools",
+        "task-due",
+        "task-facts",
+        "preflight-m5",
+        "audit-m5",
+        "heartbeat-agent-m5"
+      ],
+      "links": [
+        "run-registry",
+        "registry-world",
+        "registry-qq",
+        "registry-agent",
+        "agent-task-change",
+        "task-claim",
+        "tasks-append",
+        "append-tasks",
+        "saved-task-projection",
+        "scan-tasks",
+        "projection-agent",
+        "heartbeat-task-due"
+      ],
+      "removeLinks": [
+        "guarded-world",
+        "guarded-qq-tools"
+      ]
+    },
+    {
+      "id": "M5.1",
+      "label": "M5.1",
+      "title": "QQ 多轮对话",
+      "subtitle": "独立 Chat 装配；任务与心跳默认关闭",
+      "date": "2026-10-11",
+      "source": "docs/进度汇报/2026-10-11-M5.1进度与架构图.md",
+      "status": "QQ Chat 代码与人工验收完成",
+      "nodes": [
+        "qq-chat",
+        "chat-policy",
+        "memory-session",
+        "qq-memory-journal",
+        "tool-name-codec",
+        "qq-message-context"
+      ],
+      "links": [
+        "chat-runtime",
+        "chat-session",
+        "chat-journal",
+        "chat-world",
+        "chat-history",
+        "append-memory",
+        "memory-journal-pump",
+        "tools-memory-journal",
+        "chat-current-context",
+        "context-request",
+        "responses-codec",
+        "append-jsonl-chat",
+        "normalize-memory-journal",
+        "pump-memory-saved"
+      ],
+      "removeNodes": [
+        "tool-wire-wrapper"
+      ],
+      "removeLinks": [
+        "qq-wire-provider"
+      ],
+      "replacements": {
+        "nodes": [
+          {
+            "id": "tool-name-codec",
+            "previousId": "tool-wire-wrapper",
+            "note": "Provider 内置可逆线名编码替换手动入口临时包装"
+          }
+        ]
+      }
+    },
+    {
+      "id": "M6.0",
+      "label": "M6.0",
+      "title": "受控响应基座",
+      "subtitle": "显式让出、操作登记与迟到归档",
+      "date": "2026-10-12",
+      "source": "docs/进度汇报/2026-10-12-M6.0进度与架构图.md",
+      "status": "实现与自动验收完成；真实环境验收待做",
+      "nodes": [
+        "response-control",
+        "operations",
+        "operation-running",
+        "operation-detached",
+        "operation-confirming",
+        "operation-evidence",
+        "world-effects",
+        "operation-facts",
+        "m6-compose",
+        "yield-operator",
+        "preflight-m6",
+        "audit-m6",
+        "registry-m6",
+        "response-world"
+      ],
+      "links": [
+        "yield-control",
+        "control-channel",
+        "trigger-operations",
+        "registry-operations",
+        "operations-provider",
+        "effects-registry",
+        "running-detached",
+        "detached-confirming",
+        "confirming-append",
+        "append-operation-facts",
+        "registry-evidence",
+        "evidence-read",
+        "evidence-context",
+        "m6-enable",
+        "registry-world-m6",
+        "registry-qq-m6",
+        "operations-world",
+        "m6-world",
+        "detached-append",
+        "guarded-provider-m6",
+        "saved-history-m6",
+        "saved-task-projection-m6"
+      ]
+    }
+  ]
+}

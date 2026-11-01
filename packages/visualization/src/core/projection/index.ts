@@ -181,6 +181,9 @@ export function projectGraph(
 
   const edges: ProjectedEdge[] = [];
   for (const edge of graph.edges) {
+    const rule = snapshot.presentation?.relations[edge.id];
+    if (rule && (rule.expanded.some((id) => !expanded.has(id) || !isVisible(id, graph, expanded))
+      || rule.collapsed.some((id) => expanded.has(id)))) continue;
     const source = resolveVisibleEndpoint(edge.source, graph, expanded, edge.id, 'source');
     const target = resolveVisibleEndpoint(edge.target, graph, expanded, edge.id, 'target');
     // 折叠至同一父容器或端点不可见时剔除该连线

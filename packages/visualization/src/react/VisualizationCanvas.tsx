@@ -17,7 +17,7 @@ import { useCanvasController } from './canvas/use-canvas-controller.ts';
 import { baselineNodes } from './canvas/use-workspace-session.ts';
 import { restoreNodeViews } from './model/workspace.ts';
 import { restoreFrozenGroups } from './model/frozen.ts';
-import { prepareSourceRevision } from './model/stage-navigation.ts';
+import { rebaseSavedView } from './model/stage-navigation.ts';
 import { loadWorkspace } from './persistence/storage-session.ts';
 
 const nodeTypes = { card: Card, cluster: Cluster, structure: Structure };
@@ -82,10 +82,7 @@ function WorkspaceLoader(props: VisualizationCanvasProps) {
       if (view) for (const baseline of props.baselines) {
         let saved = view.baselines[baseline.id];
         if (saved && saved.revision !== (baseline.stage.graph.revision ?? baseline.stage.id)) {
-          const merged = prepareSourceRevision(baseline,saved);
-          if (!merged.ok) throw new Error(merged.conflicts.map((item)=>item.message).join('；'));
-          const {confirmed:_confirmed,confirmedAt:_stamp,...old}=saved;
-          saved={...old,...merged.content,revision:baseline.stage.graph.revision??baseline.stage.id,sourceStage:baseline.stage};
+          saved = rebaseSavedView(baseline, saved);
           view.baselines[baseline.id]=saved;
         }
         if (saved) {

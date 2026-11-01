@@ -1,0 +1,313 @@
+{
+  "id": "M0",
+  "label": "M0",
+  "title": "最小运行基座",
+  "subtitle": "Event → Runtime → Agent / Provider / World / Session",
+  "doc": "docs/进度汇报/2026-10-04-M1.0进度与架构图.md",
+  "upsert": {
+    "components": [
+      {
+        "id": "event-caller",
+        "kind": "actor",
+        "label": "Event 调用方",
+        "summary": "触发入口",
+        "contractIds": [
+          "event"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "runtime",
+        "kind": "component",
+        "label": "Runtime",
+        "summary": "接收并执行事件",
+        "contractIds": [
+          "event",
+          "agent",
+          "provider",
+          "world",
+          "session-store",
+          "state-store"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "agent",
+        "kind": "component",
+        "label": "Agent",
+        "summary": "请求组装与会话声明",
+        "contractIds": [
+          "agent"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "provider",
+        "kind": "component",
+        "label": "Provider",
+        "summary": "模型调用与协议传输",
+        "contractIds": [
+          "provider"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "world",
+        "kind": "component",
+        "label": "World",
+        "summary": "工具声明、执行与回执",
+        "contractIds": [
+          "world"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "session",
+        "kind": "store",
+        "label": "Session",
+        "summary": "保存并读取交互事实",
+        "contractIds": [
+          "session-store"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "state",
+        "kind": "store",
+        "label": "State",
+        "summary": "装配的实例内键值存储",
+        "contractIds": [
+          "state-store"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "assembly",
+        "kind": "component",
+        "label": "组合根",
+        "summary": "注入具体实现并创建 Runtime",
+        "contractIds": [],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "id": "event-entry",
+        "source": {
+          "nodeId": "event-caller"
+        },
+        "target": {
+          "nodeId": "runtime"
+        },
+        "label": "提交事件",
+        "relation": "call",
+        "direction": "directed",
+        "order": 0,
+        "contractIds": [
+          "event"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "runtime-agent",
+        "source": {
+          "nodeId": "runtime"
+        },
+        "target": {
+          "nodeId": "agent"
+        },
+        "label": "组装模型请求",
+        "relation": "call",
+        "direction": "directed",
+        "order": 1,
+        "contractIds": [
+          "agent"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "runtime-provider",
+        "source": {
+          "nodeId": "runtime"
+        },
+        "target": {
+          "nodeId": "provider"
+        },
+        "label": "调用模型",
+        "relation": "call",
+        "direction": "directed",
+        "order": 2,
+        "contractIds": [
+          "provider"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "runtime-world",
+        "source": {
+          "nodeId": "runtime"
+        },
+        "target": {
+          "nodeId": "world"
+        },
+        "label": "执行工具",
+        "relation": "call",
+        "direction": "directed",
+        "order": 3,
+        "contractIds": [
+          "world"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "runtime-session-append",
+        "source": {
+          "nodeId": "runtime"
+        },
+        "target": {
+          "nodeId": "session"
+        },
+        "label": "追加执行事实",
+        "relation": "storage",
+        "direction": "directed",
+        "order": 4,
+        "contractIds": [
+          "session-store"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "runtime-session-read",
+        "source": {
+          "nodeId": "runtime"
+        },
+        "target": {
+          "nodeId": "session"
+        },
+        "label": "读取历史事实",
+        "relation": "storage",
+        "direction": "directed",
+        "order": 5,
+        "contractIds": [
+          "session-store"
+        ],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      },
+      {
+        "id": "assembly-runtime",
+        "source": {
+          "nodeId": "assembly"
+        },
+        "target": {
+          "nodeId": "runtime"
+        },
+        "label": "装配 Runtime",
+        "relation": "control",
+        "direction": "directed",
+        "order": 6,
+        "contractIds": [],
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+        ]
+      }
+    ],
+    "contracts": [
+      {
+        "id": "event",
+        "label": "Event",
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围",
+          "src/protocol/index.ts"
+        ]
+      },
+      {
+        "id": "agent",
+        "label": "Agent",
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围",
+          "src/protocol/index.ts"
+        ]
+      },
+      {
+        "id": "provider",
+        "label": "Provider",
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围",
+          "src/protocol/index.ts"
+        ]
+      },
+      {
+        "id": "world",
+        "label": "World",
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围",
+          "src/protocol/index.ts"
+        ]
+      },
+      {
+        "id": "session-store",
+        "label": "SessionStore",
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围",
+          "src/protocol/index.ts"
+        ]
+      },
+      {
+        "id": "state-store",
+        "label": "StateStore",
+        "sourceRefs": [
+          "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围",
+          "src/protocol/index.ts"
+        ]
+      }
+    ]
+  },
+  "remove": {
+    "componentIds": [],
+    "relationIds": [],
+    "contractIds": []
+  }
+}

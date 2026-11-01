@@ -1,0 +1,188 @@
+{
+  "id": "M0-overview",
+  "stageId": "M0",
+  "rootId": "project-root",
+  "nodes": [
+    {
+      "id": "event-caller",
+      "componentId": "event-caller",
+      "parentId": "project-root",
+      "order": 0,
+      "frame": {
+        "x": 640,
+        "y": 40,
+        "width": 260,
+        "height": 92
+      },
+      "ports": []
+    },
+    {
+      "id": "runtime",
+      "componentId": "runtime",
+      "parentId": "project-root",
+      "order": 1,
+      "frame": {
+        "x": 640,
+        "y": 260,
+        "width": 260,
+        "height": 92
+      },
+      "ports": []
+    },
+    {
+      "id": "agent",
+      "componentId": "agent",
+      "parentId": "project-root",
+      "order": 2,
+      "frame": {
+        "x": 100,
+        "y": 560,
+        "width": 260,
+        "height": 92
+      },
+      "ports": []
+    },
+    {
+      "id": "provider",
+      "componentId": "provider",
+      "parentId": "project-root",
+      "order": 3,
+      "frame": {
+        "x": 460,
+        "y": 560,
+        "width": 260,
+        "height": 92
+      },
+      "ports": []
+    },
+    {
+      "id": "world",
+      "componentId": "world",
+      "parentId": "project-root",
+      "order": 4,
+      "frame": {
+        "x": 820,
+        "y": 560,
+        "width": 260,
+        "height": 92
+      },
+      "ports": []
+    },
+    {
+      "id": "session",
+      "componentId": "session",
+      "parentId": "project-root",
+      "order": 5,
+      "frame": {
+        "x": 1180,
+        "y": 560,
+        "width": 260,
+        "height": 92
+      },
+      "ports": []
+    }
+  ],
+  "relations": [
+    {
+      "id": "event-entry",
+      "source": {
+        "nodeId": "event-caller"
+      },
+      "target": {
+        "nodeId": "runtime"
+      },
+      "label": "提交事件",
+      "relation": "call",
+      "direction": "directed",
+      "order": 0,
+      "sourceRelationIds": [
+        "event-entry"
+      ],
+      "visibility": {
+        "expanded": [],
+        "collapsed": []
+      }
+    },
+    {
+      "id": "runtime-agent",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "agent"
+      },
+      "label": "组装模型请求",
+      "relation": "call",
+      "direction": "directed",
+      "order": 1,
+      "sourceRelationIds": [
+        "runtime-agent"
+      ],
+      "visibility": {
+        "expanded": [],
+        "collapsed": []
+      }
+    },
+    {
+      "id": "runtime-provider",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "provider"
+      },
+      "label": "调用模型",
+      "relation": "call",
+      "direction": "directed",
+      "order": 2,
+      "sourceRelationIds": [
+        "runtime-provider"
+      ],
+      "visibility": {
+        "expanded": [],
+        "collapsed": []
+      }
+    },
+    {
+      "id": "runtime-world",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "world"
+      },
+      "label": "执行工具",
+      "relation": "call",
+      "direction": "directed",
+      "order": 3,
+      "sourceRelationIds": [
+        "runtime-world"
+      ],
+      "visibility": {
+        "expanded": [],
+        "collapsed": []
+      }
+    },
+    {
+      "id": "runtime-session",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "session"
+      },
+      "label": "记录与读取事实",
+      "relation": "storage",
+      "direction": "directed",
+      "order": 4,
+      "sourceRelationIds": [
+        "runtime-session-append",
+        "runtime-session-read"
+      ],
+      "visibility": {
+        "expanded": [],
+        "collapsed": []
+      }
+    }
+  ]
+}

@@ -21,6 +21,17 @@ export interface VisualizationBaseline {
   previousStageId?: string;
   /** 节点初始坐标；根节点为画布绝对坐标，子节点为直接父节点局部坐标。缺省时自动使用网格布局。 */
   positions?: Readonly<Record<string, { x: number; y: number }>>;
+  /** Authored views require complete geometry and never invoke automatic node placement. */
+  layout?: {
+    kind: 'manual';
+    nodes: Readonly<Record<string, {
+      position: { x: number; y: number };
+      width: number;
+      height: number;
+      expandedSize?: { width: number; height: number };
+      initiallyExpanded?: boolean;
+    }>>;
+  };
   nodeChanges: Readonly<Record<string, ChangeMark>>;
   edgeChanges: Readonly<Record<string, ChangeMark>>;
 }
@@ -49,6 +60,12 @@ export function assertValidBaselines(baselines: readonly VisualizationBaseline[]
     }
     for (const [id, position] of Object.entries(baseline.positions ?? {})) {
       if (!graph.nodes.some((node) => node.id === id) || !Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error(`Invalid initial position: ${baseline.id}/${id}`);
+    }
+    if (baseline.layout) for (const node of graph.nodes.filter((item) => item.id !== graph.rootId)) {
+      const frame = baseline.layout.nodes[node.id];
+      if (!frame || !Number.isFinite(frame.position.x) || !Number.isFinite(frame.position.y) || !Number.isFinite(frame.width) || !Number.isFinite(frame.height) || frame.width <= 0 || frame.height <= 0) throw new Error(`Missing or invalid authored frame: ${baseline.id}/${node.id}`);
+      const expandable = graph.nodes.some((child) => child.parentId === node.id);
+      if (expandable && (!frame.expandedSize || !Number.isFinite(frame.expandedSize.width) || !Number.isFinite(frame.expandedSize.height) || frame.expandedSize.width <= 0 || frame.expandedSize.height <= 0)) throw new Error(`Missing or invalid authored container size: ${baseline.id}/${node.id}`);
     }
   }
 }

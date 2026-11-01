@@ -73,6 +73,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const confirmedAt = useRef(new Map<string, string>(
     Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmedAt ? [[id, view.confirmedAt] as const] : []),
   ));
+  const confirmationIds = useRef(new Map(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmationId ? [[id, view.confirmationId] as const] : [])));
   const transitions = useRef(new Map<string, StageTransitionRecord>(
     Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.transition ? [[id, view.transition] as const] : []),
   ));
@@ -136,6 +137,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
         ...(sourceStages.current.get(baseline.id) ? { sourceStage: sourceStages.current.get(baseline.id)! } : {}),
         ...(confirmed ? { confirmed } : {}),
         ...(confirmedStamp ? { confirmedAt: confirmedStamp } : {}),
+        ...(confirmationIds.current.get(baseline.id) ? { confirmationId: confirmationIds.current.get(baseline.id)! } : {}),
         ...(transition ? { transition } : {}),
         ...(viewport ? { viewport } : {}),
       };
@@ -248,6 +250,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     if (renderedRoutes) setDisplayRoutes(renderedRoutes);
     confirmedContents.current.set(idRef.current, captureCurrent());
     confirmedAt.current.set(idRef.current, new Date().toISOString());
+    confirmationIds.current.set(idRef.current, crypto.randomUUID());
     const baseline = baselines.find((item) => item.id === idRef.current)!;
     revisions.current.set(idRef.current, baseline.stage.graph.revision ?? baseline.stage.id);
     sourceStages.current.set(idRef.current, structuredClone(baseline.stage));

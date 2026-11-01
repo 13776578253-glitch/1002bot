@@ -1,0 +1,313 @@
+{
+  "version": 1,
+  "projectId": "runtime-architecture",
+  "activeStageId": "M0",
+  "stages": {
+    "M0": {
+      "revision": "project-m0-v1:M0:M0-overview",
+      "overrides": {
+        "nodeTitles": {}
+      },
+      "containerStates": {},
+      "draft": {
+        "nodes": [
+          {
+            "id": "event-caller",
+            "type": "card",
+            "position": {
+              "x": 640,
+              "y": 40
+            },
+            "width": 260,
+            "height": 92,
+            "data": {
+              "expanded": false,
+              "layoutMode": "free"
+            }
+          },
+          {
+            "id": "runtime",
+            "type": "card",
+            "position": {
+              "x": 640,
+              "y": 260
+            },
+            "width": 260,
+            "height": 92,
+            "data": {
+              "expanded": false,
+              "layoutMode": "free"
+            }
+          },
+          {
+            "id": "agent",
+            "type": "card",
+            "position": {
+              "x": 100,
+              "y": 560
+            },
+            "width": 260,
+            "height": 92,
+            "data": {
+              "expanded": false,
+              "layoutMode": "free"
+            }
+          },
+          {
+            "id": "provider",
+            "type": "card",
+            "position": {
+              "x": 460,
+              "y": 560
+            },
+            "width": 260,
+            "height": 92,
+            "data": {
+              "expanded": false,
+              "layoutMode": "free"
+            }
+          },
+          {
+            "id": "world",
+            "type": "card",
+            "position": {
+              "x": 820,
+              "y": 560
+            },
+            "width": 260,
+            "height": 92,
+            "data": {
+              "expanded": false,
+              "layoutMode": "free"
+            }
+          },
+          {
+            "id": "session",
+            "type": "card",
+            "position": {
+              "x": 1180,
+              "y": 560
+            },
+            "width": 260,
+            "height": 92,
+            "data": {
+              "expanded": false,
+              "layoutMode": "free"
+            }
+          }
+        ],
+        "edgeRoutes": [],
+        "frozenGroups": []
+      },
+      "checkpoints": [],
+      "sourceStage": {
+        "subtitle": "Event → Runtime → Agent / Provider / World / Session",
+        "doc": "docs/进度汇报/2026-10-04-M1.0进度与架构图.md",
+        "id": "M0",
+        "label": "M0",
+        "title": "最小运行基座",
+        "track": "main",
+        "order": 0,
+        "graph": {
+          "rootId": "project-root",
+          "nodes": [
+            {
+              "id": "project-root",
+              "parentId": null,
+              "kind": "root",
+              "label": "Agent 运行基座",
+              "order": 0,
+              "ports": []
+            },
+            {
+              "id": "event-caller",
+              "parentId": "project-root",
+              "kind": "actor",
+              "label": "Event 调用方",
+              "summary": "触发入口",
+              "order": 0,
+              "ports": [],
+              "sourceRefs": [
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+              ]
+            },
+            {
+              "id": "runtime",
+              "parentId": "project-root",
+              "kind": "component",
+              "label": "Runtime",
+              "summary": "接收并执行事件",
+              "order": 1,
+              "ports": [],
+              "sourceRefs": [
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+              ]
+            },
+            {
+              "id": "agent",
+              "parentId": "project-root",
+              "kind": "component",
+              "label": "Agent",
+              "summary": "请求组装与会话声明",
+              "order": 2,
+              "ports": [],
+              "sourceRefs": [
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+              ]
+            },
+            {
+              "id": "provider",
+              "parentId": "project-root",
+              "kind": "component",
+              "label": "Provider",
+              "summary": "模型调用与协议传输",
+              "order": 3,
+              "ports": [],
+              "sourceRefs": [
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+              ]
+            },
+            {
+              "id": "world",
+              "parentId": "project-root",
+              "kind": "component",
+              "label": "World",
+              "summary": "工具声明、执行与回执",
+              "order": 4,
+              "ports": [],
+              "sourceRefs": [
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+              ]
+            },
+            {
+              "id": "session",
+              "parentId": "project-root",
+              "kind": "store",
+              "label": "Session",
+              "summary": "保存并读取交互事实",
+              "order": 5,
+              "ports": [],
+              "sourceRefs": [
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#简化总图",
+                "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系"
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "id": "event-entry",
+              "source": {
+                "nodeId": "event-caller"
+              },
+              "target": {
+                "nodeId": "runtime"
+              },
+              "label": "提交事件",
+              "relation": "call",
+              "direction": "directed",
+              "order": 0
+            },
+            {
+              "id": "runtime-agent",
+              "source": {
+                "nodeId": "runtime"
+              },
+              "target": {
+                "nodeId": "agent"
+              },
+              "label": "组装模型请求",
+              "relation": "call",
+              "direction": "directed",
+              "order": 1
+            },
+            {
+              "id": "runtime-provider",
+              "source": {
+                "nodeId": "runtime"
+              },
+              "target": {
+                "nodeId": "provider"
+              },
+              "label": "调用模型",
+              "relation": "call",
+              "direction": "directed",
+              "order": 2
+            },
+            {
+              "id": "runtime-world",
+              "source": {
+                "nodeId": "runtime"
+              },
+              "target": {
+                "nodeId": "world"
+              },
+              "label": "执行工具",
+              "relation": "call",
+              "direction": "directed",
+              "order": 3
+            },
+            {
+              "id": "runtime-session",
+              "source": {
+                "nodeId": "runtime"
+              },
+              "target": {
+                "nodeId": "session"
+              },
+              "label": "记录与读取事实",
+              "relation": "storage",
+              "direction": "directed",
+              "order": 4
+            }
+          ],
+          "revision": "project-m0-v1:M0:M0-overview"
+        },
+        "presentation": {
+          "relations": {
+            "event-entry": {
+              "expanded": [],
+              "collapsed": [],
+              "sourceRelationIds": [
+                "event-entry"
+              ]
+            },
+            "runtime-agent": {
+              "expanded": [],
+              "collapsed": [],
+              "sourceRelationIds": [
+                "runtime-agent"
+              ]
+            },
+            "runtime-provider": {
+              "expanded": [],
+              "collapsed": [],
+              "sourceRelationIds": [
+                "runtime-provider"
+              ]
+            },
+            "runtime-world": {
+              "expanded": [],
+              "collapsed": [],
+              "sourceRelationIds": [
+                "runtime-world"
+              ]
+            },
+            "runtime-session": {
+              "expanded": [],
+              "collapsed": [],
+              "sourceRelationIds": [
+                "runtime-session-append",
+                "runtime-session-read"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

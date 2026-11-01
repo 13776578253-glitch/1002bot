@@ -16,6 +16,14 @@ import { captureStageInheritance, mergeStageContent, needsStageRebase, type Stag
 
 export type NavigationResult = StageTransitionResult & { inheritance?: StageInheritanceBase; reused?: boolean; resetCandidate?: Extract<StageTransitionResult, {ok:true}> };
 
+/** A changed source creates a new draft; its old confirmation remains a historical checkpoint. */
+export function rebaseSavedView(target: VisualizationBaseline, saved: CanvasBaselineView): CanvasBaselineView {
+  const merged = prepareSourceRevision(target, saved);
+  if (!merged.ok) throw new Error(merged.conflicts.map((item) => item.message).join('；'));
+  const { confirmed: _confirmed, confirmedAt: _stamp, confirmationId: _confirmationId, ...draft } = saved;
+  return { ...draft, ...merged.content, revision: target.stage.graph.revision ?? target.stage.id, sourceStage: target.stage };
+}
+
 function finalizeMerged(target: VisualizationBaseline, previous: CanvasBaselineContent, content: CanvasBaselineContent, generated: Extract<StageTransitionResult,{ok:true}>, inheritance?: StageInheritanceBase): NavigationResult {
   const nodes=restoreNodeViews(target,baselineNodes(target),content.nodes);
   const old=restoreNodeViews(target,baselineNodes(target),previous.nodes);

@@ -34,9 +34,12 @@ for (const file of files) {
 const core = await import(pathToFileURL(join(dist, 'index.js')).href);
 const react = await import(pathToFileURL(join(dist, 'react/index.js')).href);
 const reports = await import(pathToFileURL(join(dist, 'adapters/progress-reports/index.js')).href);
+const project = await import(pathToFileURL(join(dist, 'adapters/project/index.js')).href);
 assert.equal(typeof core.assertValidBaselines, 'function');
 assert.equal(typeof core.projectGraph, 'function');
 assert.equal(typeof react.VisualizationCanvas, 'function');
 assert.equal(typeof reports.adaptProgressReports, 'function');
+assert.equal(typeof project.adaptProject, 'function');
+assert.equal(typeof react.createProjectViewStorage, 'function');
 assert.ok(!('EvolutionCanvas' in react) && !('useCanvasStore' in react));
 console.log(`visualization dist verified (${files.length} JS/declaration/style artifacts)`);

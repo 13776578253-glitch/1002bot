@@ -23,6 +23,10 @@
       "types": "./dist/adapters/progress-reports/index.d.ts",
       "import": "./dist/adapters/progress-reports/index.js"
     },
+    "./adapters/project": {
+      "types": "./dist/adapters/project/index.d.ts",
+      "import": "./dist/adapters/project/index.js"
+    },
     "./styles.css": "./dist/react/styles.css"
   },
   "scripts": {

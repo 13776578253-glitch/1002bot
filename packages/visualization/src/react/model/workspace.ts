@@ -119,6 +119,7 @@ export interface CanvasNodeView {
 
 export interface CanvasBaselineView extends CanvasBaselineContent {
   revision: string;
+  confirmationId?: string;
   confirmedAt?: string;
   confirmed?: CanvasBaselineContent;
   viewport?: CanvasViewport;
@@ -145,7 +146,7 @@ export function captureNodeViews(nodes: readonly CanvasNode[]): CanvasNodeView[]
       id: node.id, type: node.type!, ...(node.parentId ? { parentId: node.parentId } : {}),
       position: node.position, width: node.width!, height: node.height!,
       data: {
-        ...(node.type === 'cluster' ? { title: node.data.title } : {}),
+        ...(node.type === 'cluster' || node.data.titleOverride !== undefined ? { title: node.data.titleOverride ?? node.data.title } : {}),
         ...(expanded !== undefined ? { expanded } : {}),
         ...(contentWidth !== undefined ? { contentWidth } : {}), ...(contentHeight !== undefined ? { contentHeight } : {}),
         ...(fitOffset ? { fitOffset } : {}), ...(reflowOrigin ? { reflowOrigin } : {}),
@@ -223,7 +224,7 @@ export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonl
       ...(parentId ? { parentId, extent: 'parent' as const } : {}),
       ...(cluster ? { dragHandle: '.cluster-drag-handle' } : expanded ? { dragHandle: '.structure-header' } : {}),
       selected: false,
-      data: { ...source?.data, ...view.data, expanded, title: cluster ? view.data.title! : source!.data.title, ...(source ? { change: baseline.nodeChanges[source.id]! } : {}) },
+      data: { ...source?.data, ...view.data, expanded, title: view.data.title ?? source!.data.title, ...(!cluster && view.data.title !== undefined ? { titleOverride: view.data.title } : {}), ...(source ? { change: baseline.nodeChanges[source.id]! } : {}) },
     };
   });
   const restoredIds = new Set(result.map((node) => node.id));

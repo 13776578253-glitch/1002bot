@@ -1,0 +1,144 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { adaptProject, type ArchitectureProject, type ProjectViewDefinition } from '../../src/adapters/project/index.ts';
+import { assertValidBaselines } from '../../src/core/schema/baseline.ts';
+import { baselineNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
+import { groupSelection, ungroup, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
+import { manualGeometryConflict, moveAuthoredNodes } from '../../src/react/model/manual-layout.ts';
+import { captureContent, restoreNodeViews } from '../../src/react/model/workspace.ts';
+import { planStageTransition } from '../../src/react/model/stage-transition.ts';
+
+function fixture() {
+  const rootView: ProjectViewDefinition = {
+    id: 'm0-view', stageId: 'M0', rootId: 'root',
+    nodes: [
+      { id: 'module', componentId: 'module', parentId: 'root', order: 1, frame: { x: 100, y: 100, width: 240, height: 80 }, expandedSize: { width: 740, height: 400 }, ports: [] },
+      { id: 'first', componentId: 'first', parentId: 'module', order: 1, frame: { x: 64, y: 140, width: 200, height: 80 }, ports: [] },
+      { id: 'second', componentId: 'second', parentId: 'module', order: 2, frame: { x: 350, y: 140, width: 200, height: 80 }, ports: [] },
+      { id: 'outside', componentId: 'outside', parentId: 'root', order: 2, frame: { x: 1200, y: 100, width: 200, height: 80 }, ports: [] },
+    ], relations: [],
+  };
+  const project: ArchitectureProject = {
+    version: 1, id: 'manual-project', title: 'Manual project', revision: 'r1',
+    source: { stages: [
+      { id: 'M0', label: 'M0', title: 'Initial', upsert: { components: [
+        { id: 'module', kind: 'group', label: 'Module', contractIds: [], sourceRefs: ['report.md#module'] },
+        ...['first', 'second', 'outside'].map((id) => ({ id, kind: 'component' as const, label: id, contractIds: [], sourceRefs: [`report.md#${id}`] })),
+      ], relations: [], contracts: [] }, remove: { componentIds: [], relationIds: [], contractIds: [] } },
+      { id: 'M1', previousId: 'M0', label: 'M1', title: 'Increment', upsert: {
+        components: [{ id: 'third', kind: 'component', label: 'third', contractIds: [], sourceRefs: ['report.md#third'] }], relations: [], contracts: [],
+      }, remove: { componentIds: [], relationIds: [], contractIds: [] } },
+    ] },
+    views: [rootView, { ...structuredClone(rootView), id: 'm1-view', stageId: 'M1', nodes: [
+      ...structuredClone(rootView.nodes),
+      { id: 'third', componentId: 'third', parentId: 'module', order: 3, frame: { x: 64, y: 270, width: 200, height: 80 }, ports: [] },
+    ] }],
+  };
+  return adaptProject(project);
+}
+
+function position(nodes: readonly CanvasNode[], id: string) {
+  return nodes.find((node) => node.id === id)!.position;
+}
+
+function propose(nodes: readonly CanvasNode[], positions: Record<string, { x: number; y: number }>): CanvasNode[] {
+  return nodes.map((node) => positions[node.id] ? { ...node, position: positions[node.id]! } : node);
+}
+
+test('manual expansion and saved view restoration preserve the authored local geometry', () => {
+  const [baseline] = fixture();
+  const initial = baselineNodes(baseline!);
+  const expanded = toggleHierarchy(initial, 'module', baseline!.stage);
+  assert.equal(expanded.find((node) => node.id === 'module')!.data.expanded, true);
+  assert.deepEqual(position(expanded, 'first'), { x: 64, y: 140 });
+  assert.deepEqual(position(expanded, 'second'), { x: 350, y: 140 });
+  const saved = captureContent(expanded);
+  const restored = restoreNodeViews(baseline!, baselineNodes(baseline!), saved.nodes);
+  assert.deepEqual(captureContent(restored).nodes, saved.nodes);
+  const collapsed = toggleHierarchy(restored, 'module', baseline!.stage);
+  const reopened = toggleHierarchy(collapsed, 'module', baseline!.stage);
+  assert.deepEqual(position(reopened, 'first'), position(expanded, 'first'));
+  assert.deepEqual(position(reopened, 'second'), position(expanded, 'second'));
+  assert.equal(reopened.find((node) => node.id === 'module')!.width, 740);
+  assert.equal(reopened.find((node) => node.id === 'module')!.height, 400);
+});
+
+test('collapsing a manually arranged container clears only selections that become hidden', () => {
+  const [baseline] = fixture();
+  const expanded = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const selected = expanded.map((node) => ({ ...node, selected: node.id === 'first' || node.id === 'outside' }));
+  const collapsed = toggleHierarchy(selected, 'module', baseline!.stage);
+  assert.equal(collapsed.find((node) => node.id === 'module')!.data.expanded, false);
+  assert.equal(collapsed.find((node) => node.id === 'first')!.selected, false);
+  assert.equal(collapsed.find((node) => node.id === 'outside')!.selected, true);
+  assert.deepEqual(position(collapsed, 'first'), position(expanded, 'first'));
+});
+
+test('manual drags move only selected roots; parent translation preserves local descendants', () => {
+  const [baseline] = fixture();
+  const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const moved = moveAuthoredNodes(nodes, propose(nodes, { first: { x: 90, y: 160 } }), ['first'], baseline!.stage);
+  assert.deepEqual(position(moved, 'first'), { x: 90, y: 160 });
+  assert.deepEqual(position(moved, 'second'), position(nodes, 'second'));
+  assert.deepEqual(position(moved, 'module'), position(nodes, 'module'));
+  assert.equal(moved.find((node) => node.id === 'module')!.width, 740);
+  const translation = moveAuthoredNodes(moved, propose(moved, { module: { x: 250, y: 130 } }), ['module'], baseline!.stage);
+  assert.deepEqual(position(translation, 'module'), { x: 250, y: 130 });
+  assert.deepEqual(position(translation, 'first'), position(moved, 'first'));
+  assert.deepEqual(position(translation, 'second'), position(moved, 'second'));
+  assert.deepEqual(position(translation, 'outside'), position(moved, 'outside'));
+});
+
+test('locked direct drags and overlaps are rejected without moving neighbors or expanding frames', () => {
+  const [baseline] = fixture();
+  const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const locked = nodes.map((node) => node.id === 'first' ? { ...node, data: { ...node.data, layoutMode: 'locked' as const } } : node);
+  const refused = moveAuthoredNodes(locked, propose(locked, { first: { x: 90, y: 160 } }), ['first'], baseline!.stage);
+  assert.deepEqual(position(refused, 'first'), position(locked, 'first'));
+  const collision = moveAuthoredNodes(nodes, propose(nodes, { first: { x: 360, y: 140 } }), ['first'], baseline!.stage);
+  assert.deepEqual(collision.map((node) => ({ id: node.id, position: node.position, width: node.width, height: node.height })), nodes.map((node) => ({ id: node.id, position: node.position, width: node.width, height: node.height })));
+  const outside = moveAuthoredNodes(nodes, propose(nodes, { first: { x: 700, y: 140 } }), ['first'], baseline!.stage);
+  assert.deepEqual(position(outside, 'first'), position(nodes, 'first'));
+  assert.equal(outside.find((node) => node.id === 'module')!.width, 740);
+});
+
+test('manual stage increment uses authored coordinates without expanding or moving the confirmed nodes', () => {
+  const [initial, target] = fixture();
+  const nodes = baselineNodes(initial!);
+  const moved = moveAuthoredNodes(nodes, propose(nodes, { outside: { x: 1300, y: 200 } }), ['outside'], initial!.stage);
+  const content = captureContent(moved);
+  const serialized = JSON.stringify(content);
+  const result = planStageTransition({ source: initial!, target: target!, sourceContent: content });
+  assert.equal(result.ok, true, !result.ok ? JSON.stringify(result.conflicts) : '');
+  assert.equal(JSON.stringify(content), serialized);
+  if (!result.ok) return;
+  assert.deepEqual(position(result.state.nodes, 'third'), { x: 64, y: 270 });
+  assert.deepEqual(position(result.state.nodes, 'outside'), { x: 1300, y: 200 });
+  assert.equal(result.state.nodes.find((node) => node.id === 'module')!.data.expanded, false);
+  assert.deepEqual(result.record.expanded, []);
+  assert.deepEqual(result.record.placements, [{ nodeId: 'third', mode: 'provided' }]);
+});
+
+test('manual groups and ungrouping preserve world positions and unrelated authored frames', () => {
+  const [baseline] = fixture();
+  const expanded = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const selected = expanded.map((node) => ({ ...node, selected: node.id === 'first' || node.id === 'second' }));
+  const before = Object.fromEntries(selected.map((node) => [node.id, worldPosition(node, selected)]));
+  const grouped = groupSelection(selected, 'group-one', true);
+  assert.ok(grouped.some((node) => node.id === 'group-one'));
+  assert.equal(manualGeometryConflict(grouped, baseline!.stage), undefined);
+  for (const id of ['module', 'first', 'second', 'outside']) assert.deepEqual(worldPosition(grouped.find((node) => node.id === id)!, grouped), before[id]);
+  const restored = ungroup(grouped, 'group-one', true);
+  for (const id of ['module', 'first', 'second', 'outside']) assert.deepEqual(worldPosition(restored.find((node) => node.id === id)!, restored), before[id]);
+  assert.equal(restored.find((node) => node.id === 'module')!.width, 740);
+});
+
+test('manual baseline validation rejects missing and invalid frames rather than generating a grid', () => {
+  const [baseline] = fixture();
+  const invalid = structuredClone(baseline!);
+  delete (invalid.layout!.nodes as Record<string, unknown>).first;
+  assert.throws(() => assertValidBaselines([invalid]), /authored frame.*first/);
+  const noContainer = structuredClone(baseline!);
+  delete (noContainer.layout!.nodes.module as { expandedSize?: unknown }).expandedSize;
+  assert.throws(() => assertValidBaselines([noContainer]), /container size.*module/);
+});

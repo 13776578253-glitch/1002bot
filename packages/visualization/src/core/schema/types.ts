@@ -102,4 +102,12 @@ export interface StageSnapshot extends StageMeta {
   order: number;
   title: string;
   graph: CanonicalGraph;
+  presentation?: {
+    relations: Readonly<Record<string, {
+      expanded: readonly string[];
+      collapsed: readonly string[];
+      sourceRelationIds: readonly string[];
+      refines?: string;
+    }>>;
+  };
 }

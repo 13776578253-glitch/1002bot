@@ -11,6 +11,7 @@ import { createDiagramGeometry, pathIsClear, segmentCrossesRect } from './routin
 import { DiagramRouteCache } from './route-cache.ts';
 import { aggregateProjectedEdges } from './display-edges.ts';
 import { placeAddedNodes } from './placement.ts';
+import { manualGeometryConflict } from './manual-layout.ts';
 import type { StageConflict } from './stage-types.ts';
 import {
   captureContent,
@@ -204,7 +205,13 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     if ((route.state === 'locked'||route.frozenBoundaries?.length) && endpointFingerprint(edge) !== route.endpointFingerprint) conflicts.push({ kind: 'locked-route', entityIds: [route.canonicalEdgeId], message: '来源更改了锁定路径的端点或端口，请先解除路径锁定', actions: ['unfreeze', 'cancel'] });
   }
   const projection = hierarchyProjection(working, target.stage);
-  const placement = placeAddedNodes({
+  const manualConflict = target.layout?.kind === 'manual' ? manualGeometryConflict(working, target.stage) : undefined;
+  const placement = target.layout?.kind === 'manual' ? {
+    nodes: working,
+    placements: addedNodeIds.map((nodeId) => ({ nodeId, mode: 'provided' as const })),
+    expanded: [] as string[],
+    conflicts: manualConflict ? [manualConflict] : [],
+  } : placeAddedNodes({
     nodes: working,
     stage: target.stage,
     projection,

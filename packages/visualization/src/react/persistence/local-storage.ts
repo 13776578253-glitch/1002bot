@@ -238,6 +238,7 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
       confirmed = checkContent(raw.confirmed);
     }
     if (raw.confirmedAt !== undefined && !isText(raw.confirmedAt)) throw new Error('阶段确认时间格式不正确');
+    if (raw.confirmationId !== undefined && !isText(raw.confirmationId)) throw new Error('阶段确认标识格式不正确');
     const viewport = checkViewport(raw.viewport);
     const transition = checkTransition(raw.transition);
     const inheritance = checkInheritance(raw.inheritance);
@@ -250,6 +251,7 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
       ...content,
       ...(confirmed ? { confirmed } : {}),
       ...(raw.confirmedAt !== undefined ? { confirmedAt: raw.confirmedAt as string } : {}),
+      ...(raw.confirmationId !== undefined ? { confirmationId: raw.confirmationId as string } : {}),
       ...(viewport ? { viewport } : {}),
       ...(transition ? { transition } : {}),
       ...(inheritance ? { inheritance } : {}),

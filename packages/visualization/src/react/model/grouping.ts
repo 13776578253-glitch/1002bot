@@ -7,6 +7,7 @@ export type LayoutMode = 'free' | 'fixed' | 'locked';
 /** 画布交互节点类型；承载展示、四向扩容边界与聚合分组账本。 */
 export type CanvasNode = Node<{
   title: string;
+  titleOverride?: string;
   summary?: string;
   change?: ChangeMark;
   planned?: boolean;
@@ -15,6 +16,7 @@ export type CanvasNode = Node<{
   childCount?: number;
   layoutMode?: LayoutMode;
   frozen?: boolean;
+  authored?: { collapsedSize: { width: number; height: number }; expandedSize?: { width: number; height: number } };
   onToggle?: () => void;
   onRename?: (title: string) => void;
   onRenameCommit?: () => void;
@@ -259,7 +261,7 @@ function encloseChildren(input: readonly CanvasNode[], parentIds: readonly strin
  * 将选中的顶层节点聚合为新的 Cluster 分组。
  * 计算成员的最近公共祖先 (LCA)，建立分组容器并在各节点记录 groupOrigins 原属父级账本。
  */
-export function groupSelection(nodes: readonly CanvasNode[], id: string): CanvasNode[] {
+export function groupSelection(nodes: readonly CanvasNode[], id: string, manual = false): CanvasNode[] {
   const roots = selectionRoots(nodes);
   if (roots.length < 2 || roots.some((node) => node.data.layoutMode === 'locked')) return nodes as CanvasNode[];
   const entries = roots.map((node) => ({ node, position: worldPosition(node, nodes) }));
@@ -287,6 +289,7 @@ export function groupSelection(nodes: readonly CanvasNode[], id: string): Canvas
   });
   const oldParents = roots.flatMap((node) => node.parentId ? [node.parentId] : []);
   let grouped = removeEmptyClusters([group, ...result]);
+  if (manual) return parentFirst(grouped);
   grouped = encloseChildren(grouped, oldParents);
   grouped = separateSiblings(grouped, id);
   grouped = encloseChildren(grouped, parentId ? [parentId] : [], true);
@@ -298,7 +301,7 @@ export function groupSelection(nodes: readonly CanvasNode[], id: string): Canvas
  * 解散聚合分组。
  * 读取 groupOrigins 账本将内部节点归还回各自原属父容器，移除空分组并重算尺寸。
  */
-export function ungroup(nodes: readonly CanvasNode[], id: string): CanvasNode[] {
+export function ungroup(nodes: readonly CanvasNode[], id: string, manual = false): CanvasNode[] {
   const parent = nodes.find((node) => node.id === id);
   if (!parent || parent.data.layoutMode === 'locked' || nodes.some((node) => node.parentId === id && node.data.layoutMode === 'locked')) return nodes as CanvasNode[];
   const result = nodes.filter((node) => node.id !== id).map((node): CanvasNode => {
@@ -315,6 +318,7 @@ export function ungroup(nodes: readonly CanvasNode[], id: string): CanvasNode[] 
       data: { ...data, ...(Object.keys(origins).length ? { groupOrigins: origins } : {}) } };
   });
   const restored = removeEmptyClusters(result);
+  if (manual) return parentFirst(restored);
   const affected = [...ancestors(parent, nodes), ...restored.filter((node) => node.selected).flatMap((node) => ancestors(node, restored))];
   const next = parentFirst(recordNaturalSizes(encloseChildren(restored, affected), affected));
   return layoutProtectionConflict(nodes, next, new Set([id])) ? nodes as CanvasNode[] : next;

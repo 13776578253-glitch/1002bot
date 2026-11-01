@@ -13,3 +13,4 @@ export type { IndexedGraph, StageDiff } from './core/graph/index.ts';
 export { projectGraph, resolveVisibleEndpoint } from './core/projection/index.ts';
 export type { ExpansionState, Projection, ProjectedEdge, VisibleEndpoint, VisibleNode } from './core/projection/index.ts';
 export type { Point, Rect, Obstacle, PortSide } from './core/layout/geometry.ts';
+export type * from './core/project/types.ts';

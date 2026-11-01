@@ -6,6 +6,7 @@ import type { VisualizationCanvasProps } from '../types.ts';
 import { groupSelection, selectionRoots, ungroup, type CanvasNode, type LayoutMode } from '../model/grouping.ts';
 import { hierarchyProjection, nodeIsVisible, toggleHierarchy, syncHierarchyExpansion } from '../model/hierarchy.ts';
 import { constrainNodeMoves, type AlignmentGuide } from '../model/constraints.ts';
+import { manualGeometryConflict, moveAuthoredNodes } from '../model/manual-layout.ts';
 import { aggregateProjectedEdges, type DisplayEdge } from '../model/display-edges.ts';
 import { freezeSelection, frozenGroupFor, toggleFrozenExpansion } from '../model/frozen.ts';
 import { removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints, reservedLockedRoutes } from '../model/edge-routes.ts';
@@ -55,6 +56,8 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     captureRendered.current();
     return session.commit((current) => {
       const next = transform(current);
+      const geometryConflict = baseline.layout?.kind === 'manual' ? manualGeometryConflict(next, baseline.stage) : undefined;
+      if (geometryConflict) { setMessage(geometryConflict.message); return current; }
       const conflict = validateStoredRoutes(current, next, session.routesRef.current, hierarchyProjection(next, baseline.stage));
       if (conflict) { setMessage(conflict); return current; }
       const connections=validateFrozenConnections(current,next,baseline.stage,session.routesRef.current,session.frozenRef.current,routesRef.current);
@@ -76,7 +79,9 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       begin();
       const visible = new Set(next.filter((node) => nodeIsVisible(node, next, projectionRef.current)).map((node) => node.id));
       const started = performance.now();
-      const result = constrainNodeMoves(current, next, moved, flow.getZoom(), visible, links);
+      const result = baseline.layout?.kind === 'manual'
+        ? { nodes: moveAuthoredNodes(current, next, moved, baseline.stage), guides: [] }
+        : constrainNodeMoves(current, next, moved, flow.getZoom(), visible, links);
       next = result.nodes;
       const grown=rebaseFrozenGrowth(current,next,session.routesRef.current,session.frozenRef.current);
       const routeConflict = validateStoredRoutes(current, next, session.routesRef.current, projectionRef.current,grown.routes);
@@ -88,7 +93,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     }
     setNodes(next);
     if (moved.length && !dragging.current && !changes.some((change) => change.type === 'position' && change.dragging)) { captureRendered.current(); finish(); }
-  }, [begin, finish, flow.getZoom, links, preview, setNodes]);
+  }, [baseline, begin, finish, flow.getZoom, links, preview, setNodes]);
 
   const toggleNode = useCallback((id: string) => {
     if (preview) return;
@@ -125,15 +130,15 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const node = nodesRef.current.find((item) => item.id === id)!;
     if (node.data.layoutMode === 'locked' || node.data.frozen) return;
     begin();
-    setNodes((current) => current.map((item) => item.id === id ? { ...item, data: { ...item.data, title } } : item));
+    setNodes((current) => current.map((item) => item.id === id ? { ...item, data: { ...item.data, title, ...(item.type !== 'cluster' ? { titleOverride: title } : {}) } } : item));
   }, [begin, preview, setNodes]);
 
   const createGroup = useCallback(() => {
     if (preview) return;
-    commit((current) => groupSelection(current, `cluster-${crypto.randomUUID()}`));
+    commit((current) => groupSelection(current, `cluster-${crypto.randomUUID()}`, baseline.layout?.kind === 'manual'));
     setSelectedEdge(undefined); setBoxMode(false);
-  }, [commit, preview]);
-  const dissolveGroup = useCallback((id: string) => { if (!preview) commit((current) => ungroup(current, id)); }, [commit, preview]);
+  }, [baseline, commit, preview]);
+  const dissolveGroup = useCallback((id: string) => { if (!preview) commit((current) => ungroup(current, id, baseline.layout?.kind === 'manual')); }, [baseline, commit, preview]);
   const setLayoutMode = useCallback((mode: LayoutMode) => {
     if (preview) return;
     commit((current) => current.map((node) => node.selected && !node.data.frozen && nodeIsVisible(node, current, projectionRef.current) ? { ...node, data: { ...node.data, layoutMode: mode } } : node));

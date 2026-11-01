@@ -12,3 +12,6 @@ export type { EdgeOverride, UserGraphOverlay } from './model/overlay.ts';
 export { createLocalStorageViewStorage } from './persistence/local-storage.ts';
 export type { LayoutMode } from './model/grouping.ts';
 export type { StageInheritanceBase } from './model/snapshot-inheritance.ts';
+export { createProjectViewStorage, normalizeProjectWorkspace } from './persistence/project-storage.ts';
+export { canvasWorkspaceToProject, projectWorkspaceToCanvas, projectSnapshot } from './model/project-workspace.ts';
+export type { ProjectWorkspace, ProjectStageWorkspace, ProjectWorkspaceSnapshot, ProjectWorkspaceCheckpoint, ProjectOverrides, ProjectContainerStates } from './model/project-workspace.ts';

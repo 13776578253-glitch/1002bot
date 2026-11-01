@@ -1,33 +1,32 @@
-Owner: `packages/visualization/src/adapters/progress-reports/types.ts`, `packages/visualization/datasets/progress-reports/architecture.json`
+Owner: `packages/visualization/src/core/project/types.ts`, `src/adapters/project/index.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
 
-# 进度汇报架构数据
+# 项目架构数据
 
-`architecture.json` 依据仓库 `docs/进度汇报` 的十份 M1.0–M6.0 报告整理。JSON 可整体复制到其他项目；路径为仓库相对引用，适配器不会读取这些路径。Markdown 语义由人工整理，报告修改后需同步相关实体和阶段并更新 `revision`。
+当前站点从 `project.json` 加载 M0。M0 采用 M1 报告的六块简化总览：Event 调用方、Runtime、Agent、Provider、World、Session，共五条展示关系。原始关系保留 Session 的追加与读取两项事实。State、组合根和公共契约保留在 Source 中。
 
-## 数据结构
+`architecture.json` 为保留的旧 M1.0–M6.0 数据集，旧报告适配器继续支持读取。当前站点不再加载它。迁移前逐字节备份在 `backups/2026-11-01-before-project-model/`，SHA-256 记录在该目录的 manifest.json。
 
-- `rootId`：所有阶段共同的根节点 ID。
-- `revision`：输入版本；变更时更新以重建画布会话。
-- `nodes`：节点目录，包含稳定 `id`、显式 `parentId`、类型、标题、摘要、顺序与 `sourceRefs`；`position` 可指定父局部坐标，顶层使用画布坐标。
-- `links`：有向或双向关系目录；`source` / `target` 引用稳定节点 ID。
-- `stages`：按报告日期排列的累计阶段。`nodes` / `links` 填目录键，作为本阶段新增或更新；`removeNodes` / `removeLinks` 填稳定 ID，显式移除。每阶段保存报告路径、日期和交付状态。
-- `replacements`：明确记录新实体 ID、上一实体 ID 与替换说明。删除独立声明；目录键不同但稳定 ID 相同可更新元数据或父层级。
+## 文件职责
 
-首阶段形成初始快照。后续阶段继承上一快照，变更标记统一生成：出现新 ID 为新增，保留 ID 为沿用，显式替换为替换。节点目录键允许 `runtime-m2` 等版本键；跨阶段身份始终由实体 `id` 决定。
+| 文件 | 职责 |
+| --- | --- |
+| `project.json` | 项目身份、版本和资源路径 |
+| `source/stages/M0.json` | 组件、原始关系、契约及报告来源，无坐标 |
+| `views/M0.json` | 总览选择、层级、人工坐标、尺寸、端口与关系映射 |
+| `workspace/initial.json` | 首次打开的工作视图种子；用户后续编辑独立保存 |
 
-阶段排列呈现仓库已交付能力的累计视图。M2.1 / M3.1 展开终端工程线，M4.1 / M5.1 展开 QQ 工程线；每阶段变化相对列表上一项。QQ Chat 的内存存储是装配选择，Core 任务能力和磁盘装配继续存在。M6 的响应能力由独立组合入口启用，QQ Chat 与 TUI 默认关闭。
+后续 Source 阶段使用显式 previousId 和 upsert/remove 增量。Views 每阶段提供一份完整展示定义；新增事实不自动变成卡片，新增卡片必须提供人工 frame。容器还需 expandedSize，内部坐标相对父容器。
 
-`sourceRefs` 第一项链接引入或更新该实体的报告章节，后续项保留报告中的实现引用，包含历史路径。关系来源为引入或更新它的 `stages[].source`，替换原因在 `replacements` 中。
+展示关系 sourceRelationIds 指向原始关系。refines 指向被细化的总览关系；visibility.expanded/collapsed 明确切换条件，细节与其总览必须互斥。容器端口保存在 View 节点的 ports 中。未声明端口的展示边仍使用现有正交路由。
 
-## 接入与迁移
+## 加载与持久化
 
-```ts
-import { adaptProgressReports, type ReportDataset } from '@1002bot/visualization/adapters/progress-reports';
+`adaptProject(project)` 为无 IO 的纯适配器，输出现有 VisualizationBaseline 合同，并标记 layout.kind=manual。加载方负责解析 manifest、读取分离文件和装配工作空间。Vite 将 JSON 发布为独立资源，业务事实不内联到应用脚本。
 
-const source: ReportDataset = await response.json();
-const baselines = adaptProgressReports(source);
-```
+人工模式使用明确坐标：初始化不补网格；展开切换到保存或声明的尺寸；拖动只移动选中根；阶段新增使用目标 View 中的位置。重叠、越界或受保护路径冲突返回提示或保持原布局，不触发邻居重排和容器自动扩容。连线仍可自动路由或由用户固定／锁定。
 
-加载由组合根负责，适配器无文件系统、浏览器或 React 依赖。完整快照进入公共画布时使用现有输入校验。新数据源可实现自己的纯适配器，直接输出 `VisualizationBaseline[]`。
+项目工作空间使用独立项目 ID 和键。每阶段包含 overrides、containerStates、draft、confirmed 和 checkpoints，另保存视口及来源继承基准。draft 为当前内容权威；overrides 与 containerStates 是由内容派生并核验的一致性索引。确认快照和每个检查点保留各自独立的覆盖与容器状态。点击确认阶段生成检查点；自动保存只更新草稿。检查点目前由持久化合同保存，未增加历史列表或恢复按钮。
 
-数据集不随通用库构建嵌入 `dist`；独立适配器随库发布。站点将 JSON 发布为独立静态资源，由 Playground 通过 URL 加载，业务数据不内联到应用 JS。`examples/baselines.ts` 仅供原交互回归使用。
+旧 `visualization:progress-reports:workspace` 不参与新项目读写。当前键为调用方提供的 `visualization:project:runtime-architecture:workspace:v1`。不同项目误用同一键会报错并保留原记录。
+
+本轮仅编排 M0。M1 及后续细节将在此基线上逐项补充；旧阶段数据不自动导入新项目。

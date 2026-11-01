@@ -12,6 +12,7 @@ export default defineConfig({
     strictPort: true,
   },
   build: {
+    assetsInlineLimit: 0,
     rolldownOptions: {
       input: fileURLToPath(new URL('./index.html', import.meta.url)),
       output: {

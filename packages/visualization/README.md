@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`
+Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
 
 # Visualization
 
@@ -41,18 +41,22 @@ pnpm check:dist
 | `src/react/components` | 节点、关系和控制组件 |
 | `src/react/styles` | 画布作用域内的主题、节点、连线和控制样式 |
 | `src/adapters/progress-reports` | 将可序列化的报告目录与阶段增量转换为完整基线；无 IO 或 UI 依赖 |
-| `datasets/progress-reports/architecture.json` | 依据进度汇报整理的 M1.0–M6.0 架构事实与来源 |
+| `src/adapters/project` | Source 增量、View 语义与人工几何的纯适配 |
+| `src/react/model/manual-layout.ts` | 人工坐标与边界检查，保持未操作节点和容器几何 |
+| `src/react/model/project-workspace.ts`、`persistence/project-storage.ts` | 项目工作空间与画布合同桥接、独立确认检查点 |
+| `datasets/progress-reports/project.json` | 当前 M0 项目清单，Source / Views / Workspace 分离资源 |
+| `datasets/progress-reports/architecture.json` | 保留的旧 M1.0–M6.0 数据集 |
 | `examples/baselines.ts` | 独立 M1/M2 样例输入 |
-| `playground/src/baselines.ts` | 通过 URL 加载独立 JSON 资源，调用报告适配器 |
-| `playground/src/main.tsx` | 公共画布与报告基线的装配入口 |
+| `playground/src/baselines.ts` | 加载项目清单、Source / Views / Workspace 独立 JSON 资源 |
+| `playground/src/main.tsx` | 公共画布、M0 项目及项目存储桥接的装配入口 |
 
 Core 不依赖 React；库源码不导入示例、数据集或 Playground。测试按模型单元、模块协作、输入合同和架构边界划分。
 
-## 进度汇报数据
+## 项目数据
 
-当前站点消费 `datasets/progress-reports/architecture.json`，覆盖进度目录的十份阶段报告。每个节点保留报告与实现文件的仓库相对引用。数据是按报告整理的历史架构，阶段状态保存在 `stage.status`。
+当前站点从 `datasets/progress-reports/project.json` 加载 M0 六块总览，使用人工编排模式。Source 保存事实、契约、来源和阶段增量；Views 保存展示选择、总览／详情关系映射、容器端口和人工几何；Workspace 保存分阶段用户草稿、确认快照及历史检查点。布局不会由展开、阶段切换或拖动自动重排。缺少位置、重叠和越界须显式处理。
 
-报告适配器通过 `@1002bot/visualization/adapters/progress-reports` 独立导出，接收 `ReportDataset`，返回 `VisualizationBaseline[]`。调用方负责文件、HTTP 或其他加载方式；适配器只处理实体目录、累计阶段和变化标记。数据维护与迁移约定见 [数据说明](datasets/progress-reports/README.md)。
+项目适配器通过 `@1002bot/visualization/adapters/project` 导出。旧报告适配器和 architecture.json 保留用于旧数据；当前站点使用独立项目存储键。详细合同、备份和迁移约定见 [数据说明](datasets/progress-reports/README.md)。
 
 ## React 接入
 
@@ -76,7 +80,7 @@ export function Architecture({ baselines }: { baselines: readonly VisualizationB
 
 报告模块折叠后，按可见端点、方向和关系类型聚合外部连线；点击数量标签查看原始关系及端点路径。定位仅展开所需祖先并聚焦目标。新增和替换保留文字及数量；空间不足时保持布局并提示相关约束。
 
-`persistence` 为可选配置。Playground 已启用本机自动恢复；其他调用方可注入同步或异步 `CanvasViewStorage`：
+`persistence` 为可选配置。Playground 通过 createProjectViewStorage 启用项目工作空间自动恢复与确认检查点；通用调用方可注入同步或异步 `CanvasViewStorage`：
 
 ```tsx
 import { VisualizationCanvas, createLocalStorageViewStorage } from '@1002bot/visualization/react';
@@ -123,7 +127,9 @@ const persistence = {
 - `stage`：完整 `StageSnapshot`，其中 `graph` 使用稳定 node/edge ID、显式 `parentId` 与 canonical 端点。
 - `previousStageId`：可选阶段父级；缺省时按数组前一项推导。
 - `nodeChanges`、`edgeChanges`：按实体 ID 提供 `ChangeMark`，覆盖所有非根节点及关系。`replaced` 标记可带 `previousId`，增量布局据此继承旧实体位置。
-- `positions`：可选初始坐标。根层节点是画布坐标；子节点是父容器局部坐标。缺省使用有序网格，节点输入顺序不影响父子组织。
+- `positions`：可选初始坐标。根层节点是画布坐标；子节点是父容器局部坐标。默认模式缺省时使用有序网格。
+- `layout`：人工模式指定 kind=manual 和每个节点的完整位置及尺寸，容器还指定 expandedSize。用户保存几何优先于这些初始值。
+- `stage.presentation`：展示关系的展开条件、原始关系映射和细化关系。总览和细节按条件互斥。
 
 `ChangeMark.kind` 为 `baseline`、`inherited`、`added` 或 `replaced`，`label` 是相应文字，`note` 可记录替换前后关系。界面仅显示新增、替换注释，分别使用绿色、琥珀色；其余关系保留名称。
 
