@@ -71,6 +71,7 @@ export interface PortRequest {
   idealFraction?: number;
   trunk?: { id: string };
   allowPacked?: boolean;
+  reserveExisting?: boolean;
 }
 
 export interface PortFailure {
@@ -270,11 +271,11 @@ export function createNodePortAllocator(input: {
     const node = current().nodes.get(value.nodeId);
     if (!node) return fail(value, 'capacity-exhausted', `unknown node ${value.nodeId}`);
     const parsed = parseHandle(value.storedHandle);
-    if (parsed && (value.priority === 'locked' || value.priority === 'frozen')) {
+    if (parsed && (value.priority === 'locked' || value.priority === 'frozen' || value.reserveExisting)) {
       if (parsed.role !== value.role) return fail(value, 'handle-missing', `slot ${value.storedHandle} belongs to another role`);
       const stored = node.byKey.get(`${parsed.side}:${parsed.index}`);
       if (!stored) return fail(value, 'handle-missing', `slot ${value.storedHandle} is no longer available`);
-      if (stored.occupants.length >= stored.slot.capacity) return fail(value, 'capacity-exhausted', `slot ${value.storedHandle} has no capacity`);
+      if (!value.reserveExisting && stored.occupants.length >= stored.slot.capacity) return fail(value, 'capacity-exhausted', `slot ${value.storedHandle} has no capacity`);
       return grantChoice(node, { slot: stored, mode: 'single' }, value);
     }
     const trunk = value.trunk ? choose(value, 'trunk') : undefined;

@@ -386,9 +386,9 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
       const source = parseSlotHandle(sourceHandle);
       const target = parseSlotHandle(targetHandle);
       if (!source || !target || source.role !== 'source' || target.role !== 'target') throw new Error(`fixed route ${edge.id} requires logical slot handles`);
-      const sourceGrant = allocator.request({ edgeId: edge.id, nodeId: edge.source, role: 'source', priority, storedHandle: sourceHandle });
+      const sourceGrant = allocator.request({ edgeId: edge.id, nodeId: edge.source, role: 'source', priority, storedHandle: sourceHandle, reserveExisting: true });
       if (!sourceGrant || sourceGrant.slot.handleId !== sourceHandle) throw new Error(`fixed route ${edge.id} cannot reserve ${sourceHandle}`);
-      const targetGrant = allocator.request({ edgeId: edge.id, nodeId: edge.target, role: 'target', priority, storedHandle: targetHandle });
+      const targetGrant = allocator.request({ edgeId: edge.id, nodeId: edge.target, role: 'target', priority, storedHandle: targetHandle, reserveExisting: true });
       if (!targetGrant || targetGrant.slot.handleId !== targetHandle) {
         allocator.release(edge.id);
         throw new Error(`fixed route ${edge.id} cannot reserve ${targetHandle}`);

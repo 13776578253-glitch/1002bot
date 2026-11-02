@@ -72,6 +72,16 @@ test('packed overflow is explicit and bounded', () => {
   allocator.commit();
 });
 
+test('reserveExisting keeps already allocated fixed slots while new requests respect capacity', () => {
+  const allocator = createNodePortAllocator({ nodes: [geometry()], rules: { maxPerSide: 1, minStep: 200, slotCapacity: 1 } });
+  allocator.begin();
+  const handle = allocator.slots('n').find((slot) => slot.side === 'bottom' && slot.role === 'source')!.handleId;
+  assert.ok(allocator.request({ edgeId: 'first', nodeId: 'n', role: 'source', priority: 'pinned', storedHandle: handle, reserveExisting: true }));
+  assert.ok(allocator.request({ edgeId: 'second', nodeId: 'n', role: 'source', priority: 'pinned', storedHandle: handle, reserveExisting: true }));
+  assert.equal(allocator.request({ edgeId: 'new', nodeId: 'n', role: 'source', priority: 'auto', requiredSide: 'bottom' }), undefined);
+  allocator.commit();
+});
+
 test('reconcile keeps pinned slots and rejects a lost locked slot', () => {
   const wide = createNodePortAllocator({ nodes: [geometry('n', 400, 100)], rules: { maxPerSide: 4, minStep: 80, slotCapacity: 1 } });
   wide.begin();
