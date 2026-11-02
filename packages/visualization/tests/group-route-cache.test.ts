@@ -121,7 +121,7 @@ test('a revision bump forces a full optimization', () => {
   assert.equal(revised.stats.solvedGroups, revised.stats.groups);
 });
 
-test('groups sharing a node are invalidated with their dirty neighbor', () => {
+test('spatial gating keeps a shared-node group clean when its actual bounds are unaffected', () => {
   const hubNodes = [card('hubA', 0, 0), card('a1', -300, 400, 120, 60), card('a2', 100, 400, 120, 60)];
   const hubEdges: GroupEdgeInput[] = [
     { id: 'hubA-a1', source: 'hubA', target: 'a1', text: 'A one' },
@@ -133,6 +133,24 @@ test('groups sharing a node are invalidated with their dirty neighbor', () => {
   const moved = hubNodes.map((node) => node.id === 'a1' ? { ...node, position: { x: -280, y: 430 } } : node);
   const second = cache.update(fixture(moved, hubEdges, 1));
   assert.equal(second.stats.mode, 'incremental');
-  assert.equal(second.stats.solvedGroups, 2);
-  assert.equal(second.stats.reusedGroups, 0);
+  assert.equal(second.stats.solvedGroups, 1);
+  assert.equal(second.stats.reusedGroups, 1);
+});
+
+test('a moved leaf reuses unaffected routes and its cached mode inside the dirty group', () => {
+  const cache = new GroupRouteCache();
+  const first = cache.update(fixture(nodes, edges));
+  assert.equal(first.outcome?.ok, true);
+  if (!first.outcome?.ok) return;
+  const moved = nodes.map((node) => node.id === 'a1' ? { ...node, position: { x: -280, y: 430 } } : node);
+  const second = cache.update(fixture(moved, edges));
+  assert.equal(second.stats.mode, 'incremental');
+  assert.equal(second.stats.solvedGroups, 1);
+  assert.equal(second.stats.reusedRoutes, 1);
+  assert.equal(second.stats.modeReuse, 1);
+  assert.equal(second.outcome?.ok, true);
+  if (!second.outcome?.ok) return;
+  assert.equal(second.outcome.routes.get('hubA-a2'), first.outcome.routes.get('hubA-a2'));
+  assert.equal(second.outcome.routes.get('hubB-b1'), first.outcome.routes.get('hubB-b1'));
+  assert.notEqual(second.outcome.routes.get('hubA-a1'), first.outcome.routes.get('hubA-a1'));
 });

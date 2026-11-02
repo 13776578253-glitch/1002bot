@@ -10,7 +10,9 @@ import {
   type GroupSolveInput, type GroupSolveOutcome, type GroupSolveSuccess, type RouteGroup,
 } from './route-groups.ts';
 import type { CachedRoute } from './route-cache.ts';
-import type { ReservedRoute } from './routing.ts';
+import { coordinateLabels } from './label-coordinator.ts';
+import { fallbackLabel } from './labels.ts';
+import { createDiagramGeometry, pathIsClear, type DiagramGeometry, type ReservedRoute } from './routing.ts';
 
 export interface GroupRouteCacheInput {
   nodes: readonly CanvasNode[];
@@ -35,6 +37,11 @@ export interface GroupRouteCacheStats {
   solvedGroups: number;
   durationMs: number;
   fullReason?: GroupFullReason;
+  modeReuse?: number;
+  reusedRoutes?: number;
+  budgetFailures?: number;
+  labelReselected?: number;
+  labelHidden?: number;
 }
 
 export interface GroupRouteCacheUpdate {
@@ -163,34 +170,41 @@ export class GroupRouteCache {
       return { outcome: this.outcome, stats: { mode: 'hit', groups: groups.length, reusedGroups: groups.length, solvedGroups: 0, durationMs: performance.now() - started } };
     }
 
-    const groupNodeSets = new Map(groups.map((group) => [group.id, groupNodes(group, edgeById)]));
-    for (let round = 0; round < 2; round += 1) {
-      let added = false;
-      for (const group of groups) {
-        if (dirty.has(group.id)) continue;
-        const members = groupNodeSets.get(group.id)!;
-        if ([...dirty].some((id) => [...(groupNodeSets.get(id) ?? [])].some((node) => members.has(node)))) {
-          dirty.add(group.id);
-          added = true;
-        }
-      }
-      if (!added) break;
-    }
-
     const dirtyIds = new Set([...dirty]);
     const dirtyGroups = groups.filter((group) => dirtyIds.has(group.id));
+    let geometry: DiagramGeometry | undefined;
+    const reusable = new Set<string>();
+    for (const group of dirtyGroups) {
+      const record = this.records.get(group.id);
+      if (!record) continue;
+      geometry ??= createDiagramGeometry(input.nodes, input.projection);
+      for (const [edgeId, route] of record.routes) {
+        const edge = edgeById.get(edgeId);
+        if (!edge) continue;
+        const oldSource = this.nodeRects.get(edge.source), oldTarget = this.nodeRects.get(edge.target);
+        const source = rects.get(edge.source), target = rects.get(edge.target);
+        if (!oldSource || !oldTarget || !source || !target) continue;
+        if (!sameRect(oldSource, source) || !sameRect(oldTarget, target)) continue;
+        if (pathIsClear(route.points, geometry, edge.source, edge.target, edge.id)) reusable.add(edgeId);
+      }
+    }
     const edgeGroup = new Map<string, RouteGroup>();
     for (const group of groups) for (const id of group.edges) edgeGroup.set(id, group);
     const solverEdges: GroupEdgeInput[] = input.edges.map((edge) => {
       const group = edgeGroup.get(edge.id);
-      const cached = group && !dirtyIds.has(group.id) ? this.outcome!.routes.get(edge.id) : undefined;
+      const cached = group && !dirtyIds.has(group.id)
+        ? this.outcome!.routes.get(edge.id)
+        : reusable.has(edge.id) ? this.records.get(edgeGroup.get(edge.id)!.id)?.routes.get(edge.id) : undefined;
       return cached ? { ...edge, fixed: cached, priority: 'pinned' as const } : edge;
     });
     const reserved: ReservedRoute[] = [];
-    for (const group of groups) {
-      if (dirtyIds.has(group.id)) continue;
+    const modeHints: Record<string, GroupMode> = {};
+    const portHints: Record<string, { sourceHandle: string; targetHandle: string }> = {};
+    for (const group of dirtyGroups) {
       const record = this.records.get(group.id);
-      if (record) for (const [edgeId, route] of record.routes) reserved.push({ edgeId, points: route.points });
+      if (!record?.plan) continue;
+      modeHints[group.id] = record.plan.mode;
+      for (const [edgeId, route] of record.routes) portHints[edgeId] = { sourceHandle: route.sourceHandle, targetHandle: route.targetHandle };
     }
 
     let incremental: GroupSolveOutcome;
@@ -200,6 +214,8 @@ export class GroupRouteCache {
         edges: solverEdges,
         groups: dirtyGroups,
         reserved,
+        modeHints,
+        portHints,
         transactional: true,
       });
     } catch (error) {
@@ -221,6 +237,7 @@ export class GroupRouteCache {
       return record?.plan ? [record.plan] : [];
     });
     const merged: GroupSolveSuccess = { ...incremental, groups, plans, elapsedMs: performance.now() - started };
+    const labelChange = this.coordinateOutcomeLabels(merged, input);
     this.outcome = merged;
     this.records.clear();
     for (const group of groups) {
@@ -242,10 +259,89 @@ export class GroupRouteCache {
     this.nodeRects = rects;
     this.nodeIds = nodeIds;
     this.lastRevision = input.revision;
+    const modeReuse = dirtyGroups.filter((group) => {
+      const hint = modeHints[group.id];
+      return hint && merged.plans.some((plan) => plan.groupId === group.id && plan.mode === hint);
+    }).length;
     return {
       outcome: merged,
-      stats: { mode: 'incremental', groups: groups.length, reusedGroups: groups.length - dirtyGroups.length, solvedGroups: dirtyGroups.length, durationMs: performance.now() - started },
+      stats: {
+        mode: 'incremental', groups: groups.length, reusedGroups: groups.length - dirtyGroups.length, solvedGroups: dirtyGroups.length,
+        durationMs: performance.now() - started, ...(modeReuse ? { modeReuse } : {}), ...(reusable.size ? { reusedRoutes: reusable.size } : {}),
+        ...(labelChange.reselected ? { labelReselected: labelChange.reselected } : {}), ...(labelChange.hidden ? { labelHidden: labelChange.hidden } : {}),
+        ...(merged.failures.some((failure) => failure.reason === 'budget') ? { budgetFailures: merged.failures.filter((failure) => failure.reason === 'budget').length } : {}),
+      },
     };
+  }
+
+  private hasLabelConflict(labels: readonly Rect[], fixed: readonly Rect[]): boolean {
+    const all = [...fixed, ...labels];
+    for (let i = 0; i < all.length; i += 1) for (let j = i + 1; j < all.length; j += 1) {
+      if (rectIntersects(all[i]!, all[j]!)) return true;
+    }
+    return false;
+  }
+
+  private coordinateOutcomeLabels(outcome: GroupSolveSuccess, input: GroupRouteCacheInput): { reselected: number; hidden: number } {
+    const fixed: Rect[] = input.edges.flatMap((edge) => edge.fixed ? [{
+      x: edge.fixed.label.x - edge.fixed.label.width / 2, y: edge.fixed.label.y - edge.fixed.label.height / 2,
+      w: edge.fixed.label.width, h: edge.fixed.label.height,
+    }] : []);
+    const visible = outcome.plans.flatMap((plan) => plan.routes.flatMap((route) => route.label ? [route.label.rect] : []));
+    if (!this.hasLabelConflict(visible, fixed)) return { reselected: 0, hidden: 0 };
+    const placements = coordinateLabels(outcome.plans.flatMap((plan) => plan.routes.map((route) => ({
+      edgeId: route.edgeId, candidates: route.labelCandidates, required: route.labelRequired,
+    }))), fixed);
+    let reselected = 0, hidden = 0;
+    for (const plan of outcome.plans) for (const route of plan.routes) {
+      const candidate = placements.get(route.edgeId);
+      const previous = route.label;
+      const hide = (cached: CachedRoute): CachedRoute => {
+        const midpoint = route.points[Math.floor(route.points.length / 2)] ?? { x: 0, y: 0 };
+        return {
+          ...cached, label: { x: midpoint.x, y: midpoint.y, width: 0, height: 0 }, labelState: 'space-exhausted',
+          ...(cached.text.trim() ? { labelFallback: fallbackLabel(cached.text, midpoint) } : {}),
+        };
+      };
+      if (candidate) {
+        route.label = candidate;
+        route.labelState = candidate.state;
+        if (!previous || previous.anchor.x !== candidate.anchor.x || previous.anchor.y !== candidate.anchor.y
+          || previous.rect.w !== candidate.rect.w || previous.rect.h !== candidate.rect.h) reselected += 1;
+      } else {
+        delete route.label;
+        route.labelState = 'space-exhausted';
+        hidden += route.labelRequired ? 1 : 0;
+      }
+      const cached = outcome.routes.get(route.edgeId);
+      if (!cached) continue;
+      if (candidate) {
+        const label = { x: candidate.anchor.x, y: candidate.anchor.y, width: candidate.rect.w, height: candidate.rect.h };
+        if (cached.label.x !== label.x || cached.label.y !== label.y || cached.label.width !== label.width || cached.label.height !== label.height || cached.labelState !== candidate.state) {
+          outcome.routes.set(route.edgeId, { ...cached, label, labelState: candidate.state, labelFallback: undefined });
+        }
+      } else if (cached.labelState !== 'space-exhausted' || cached.label.width !== 0 || cached.label.height !== 0) {
+        outcome.routes.set(route.edgeId, hide(cached));
+      }
+    }
+
+    // Safety gate over the complete route map, including routes outside plans
+    // (for example a reused route inside a dirty group). This guarantees the
+    // renderer never receives two overlapping visible labels.
+    const occupied = [...fixed];
+    for (const [edgeId, route] of [...outcome.routes].sort(([a], [b]) => a.localeCompare(b))) {
+      if (route.label.width <= 0 || route.label.height <= 0) continue;
+      const rect = { x: route.label.x - route.label.width / 2, y: route.label.y - route.label.height / 2, w: route.label.width, h: route.label.height };
+      if (occupied.some((other) => rectIntersects(rect, other))) {
+        const midpoint = route.points[Math.floor(route.points.length / 2)] ?? { x: 0, y: 0 };
+        outcome.routes.set(edgeId, {
+          ...route, label: { x: midpoint.x, y: midpoint.y, width: 0, height: 0 }, labelState: 'space-exhausted',
+          ...(route.text.trim() ? { labelFallback: fallbackLabel(route.text, midpoint) } : {}),
+        });
+        hidden += 1;
+      } else occupied.push(rect);
+    }
+    return { reselected, hidden };
   }
 
   private base(input: GroupRouteCacheInput) {
@@ -281,6 +377,7 @@ export class GroupRouteCache {
       return { outcome, stats: { mode: 'full', groups: groups.length, reusedGroups: 0, solvedGroups: 0, durationMs: performance.now() - started, fullReason } };
     }
     this.outcome = outcome;
+    this.coordinateOutcomeLabels(outcome, input);
     this.records.clear();
     for (const group of outcome.groups) {
       const routes = new Map<string, CachedRoute>();

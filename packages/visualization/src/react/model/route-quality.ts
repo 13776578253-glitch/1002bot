@@ -112,11 +112,13 @@ export function measureRoutes(routes: readonly QualityRoute[]): RouteQualityMetr
     length: 0, bends: 0, crossings: 0, intentionalTrunkLength: 0, unintendedOverlap: 0, portCrowding: 0, channelStability: 0,
     labelScore: 0, labelOverlaps: 0, labelHidden: 0, labelOwnerMisses: 0,
   };
+  const renderedLabel = (route: QualityRoute): route is QualityRoute & { label: QualityLabel } =>
+    Boolean(route.label && route.labelState !== 'space-exhausted' && route.label.width > 0 && route.label.height > 0);
   for (const route of routes) {
     metrics.length += route.points.slice(1).reduce((sum, point, index) => sum + distance(route.points[index]!, point), 0);
     metrics.bends += bends(route.points);
     if (route.labelRequired !== false && (route.labelState === 'space-exhausted' || !route.label)) metrics.labelHidden += 1;
-    if (route.label) {
+    if (renderedLabel(route)) {
       metrics.labelScore += route.label.score ?? (route.label.segmentKind === 'trunk' ? 30 : 0) + (route.label.distanceToTarget ?? 0) * 0.25;
       if (distanceToPath({ x: route.label.x, y: route.label.y }, route.points) > 24) metrics.labelOwnerMisses += 1;
     }
@@ -135,7 +137,7 @@ export function measureRoutes(routes: readonly QualityRoute[]): RouteQualityMetr
       || (a.sourceSlot && b.targetSlot && key(a.sourceSlot) === key(b.targetSlot))
       || (a.targetSlot && b.sourceSlot && key(a.targetSlot) === key(b.sourceSlot))
       || (a.targetSlot && b.targetSlot && key(a.targetSlot) === key(b.targetSlot))) metrics.portCrowding += sharedTrunk ? 0 : 1;
-    if (a.label && b.label && rectIntersects(
+    if (renderedLabel(a) && renderedLabel(b) && rectIntersects(
       { x: a.label.x - a.label.width / 2, y: a.label.y - a.label.height / 2, w: a.label.width, h: a.label.height },
       { x: b.label.x - b.label.width / 2, y: b.label.y - b.label.height / 2, w: b.label.width, h: b.label.height },
     )) metrics.labelOverlaps += 1;

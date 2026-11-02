@@ -80,6 +80,11 @@ export interface GroupFailure {
   reason: 'no-candidate' | 'budget' | 'port-capacity' | 'fixed-conflict';
 }
 
+export interface PortHint {
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
 export interface GroupSolveInput {
   nodes: readonly CanvasNode[];
   projection: Projection;
@@ -91,6 +96,8 @@ export interface GroupSolveInput {
   transactional?: boolean;
   modes?: readonly GroupMode[];
   groups?: RouteGroup[];
+  modeHints?: Readonly<Record<string, GroupMode>>;
+  portHints?: Readonly<Record<string, PortHint>>;
   maxEdgesPerGroup?: number;
   laneStep?: number;
   trunkLength?: number;
@@ -157,19 +164,21 @@ function parseSlotHandle(handle: string | undefined): { side: PortSide; role: 's
 export function allocateEdgePortsAtomic(
   allocator: NodePortAllocator,
   edge: { id: string; source: string; target: string },
-  sourcePlan: { side: PortSide; idealFraction?: number; strict?: boolean },
-  targetPlan: { side: PortSide; idealFraction?: number; strict?: boolean },
+  sourcePlan: { side: PortSide; idealFraction?: number; strict?: boolean; storedHandle?: string },
+  targetPlan: { side: PortSide; idealFraction?: number; strict?: boolean; storedHandle?: string },
 ): { success: true; source: SlotGrant; target: SlotGrant } | { success: false; reason: string } {
   const source = allocator.request({
     edgeId: edge.id, nodeId: edge.source, role: 'source', priority: 'auto',
     ...(sourcePlan.strict ? { requiredSide: sourcePlan.side } : { preferredSides: [sourcePlan.side] }),
     ...(sourcePlan.idealFraction === undefined ? {} : { idealFraction: sourcePlan.idealFraction }),
+    ...(sourcePlan.storedHandle ? { storedHandle: sourcePlan.storedHandle } : {}),
   });
   if (!source) return { success: false, reason: `source_failed: ${allocator.failure(edge.id)?.reason ?? 'unknown'}` };
   const target = allocator.request({
     edgeId: edge.id, nodeId: edge.target, role: 'target', priority: 'auto',
     ...(targetPlan.strict ? { requiredSide: targetPlan.side } : { preferredSides: [targetPlan.side] }),
     ...(targetPlan.idealFraction === undefined ? {} : { idealFraction: targetPlan.idealFraction }),
+    ...(targetPlan.storedHandle ? { storedHandle: targetPlan.storedHandle } : {}),
   });
   if (!target) {
     allocator.release(edge.id);
@@ -239,17 +248,19 @@ function planMode(
   policy: PortPolicy,
   laneStep: number,
   trunkLength: number,
+  portHints: Readonly<Record<string, PortHint>>,
 ): { planned: PlannedEdge[]; failures: GroupFailure[] } {
   const failures: GroupFailure[] = [];
   const byId = new Map(edges.map((edge) => [edge.id, edge]));
+  const planEdges = group.edges.filter((id) => !byId.get(id)?.fixed);
   const preferred = new Map<string, { source: PortSide; target: PortSide }>();
-  for (const id of group.edges) {
+  for (const id of planEdges) {
     const edge = byId.get(id)!;
     preferred.set(id, preferredPair(geometry.bounds.get(edge.source)!, geometry.bounds.get(edge.target)!, policy));
   }
   const bundles = new Map<string, string[]>();
   if (mode === 'trunk' || mode === 'mixed') {
-    for (const id of group.edges) {
+    for (const id of planEdges) {
       const edge = byId.get(id)!, sides = preferred.get(id)!;
       const target = geometry.bounds.get(edge.target)!, source = geometry.bounds.get(edge.source)!;
       const key = `${sides.source}|${sides.target}|${target.x + target.w / 2 > source.x + source.w / 2 ? 'r' : 'l'}`;
@@ -266,7 +277,7 @@ function planMode(
   const laneMeta = new Map<string, { index: number; count: number }>();
   if (mode === 'lanes') {
     const bySide = new Map<PortSide, string[]>();
-    for (const id of group.edges) {
+    for (const id of planEdges) {
       const side = preferred.get(id)!.source;
       bySide.set(side, [...(bySide.get(side) ?? []), id]);
     }
@@ -282,18 +293,19 @@ function planMode(
     }
   }
   const planned: PlannedEdge[] = [];
-  for (const id of group.edges) {
+  for (const id of planEdges) {
     const edge = byId.get(id)!, sides = preferred.get(id)!;
     const meta = laneMeta.get(id);
     const laneFraction = meta && meta.count > 1 ? 0.2 + 0.6 * (meta.index / (meta.count - 1)) : 0.5;
     const trunk = trunkIds.has(id) ? { id: `${group.id}:trunk:${sides.source}:${sides.target}` } : undefined;
+    const hint = portHints[id];
     if (trunk) {
-      const source = allocator.request({ edgeId: id, nodeId: edge.source, role: 'source', priority: 'auto', preferredSides: [sides.source], idealFraction: laneFraction, trunk });
+      const source = allocator.request({ edgeId: id, nodeId: edge.source, role: 'source', priority: 'auto', preferredSides: [sides.source], idealFraction: laneFraction, trunk, ...(hint?.sourceHandle ? { storedHandle: hint.sourceHandle } : {}) });
       if (!source) {
         failures.push({ edgeId: id, reason: 'port-capacity' });
         continue;
       }
-      const target = allocator.request({ edgeId: id, nodeId: edge.target, role: 'target', priority: 'auto', preferredSides: [sides.target], idealFraction: 0.5 });
+      const target = allocator.request({ edgeId: id, nodeId: edge.target, role: 'target', priority: 'auto', preferredSides: [sides.target], idealFraction: 0.5, ...(hint?.targetHandle ? { storedHandle: hint.targetHandle } : {}) });
       if (!target) {
         allocator.release(id);
         failures.push({ edgeId: id, reason: 'port-capacity' });
@@ -302,7 +314,7 @@ function planMode(
       planned.push({ edge, source, target, ...(meta ? { lane: meta.index, laneCount: meta.count } : {}) });
       continue;
     }
-    const grants = allocateEdgePortsAtomic(allocator, edge, { side: sides.source, idealFraction: laneFraction }, { side: sides.target, idealFraction: 0.5 });
+    const grants = allocateEdgePortsAtomic(allocator, edge, { side: sides.source, idealFraction: laneFraction, ...(hint?.sourceHandle ? { storedHandle: hint.sourceHandle } : {}) }, { side: sides.target, idealFraction: 0.5, ...(hint?.targetHandle ? { storedHandle: hint.targetHandle } : {}) });
     if (!grants.success) {
       failures.push({ edgeId: id, reason: 'port-capacity' });
       continue;
@@ -414,11 +426,14 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
       const edge = byId.get(id)!;
       preferred.set(id, preferredPair(geometry.bounds.get(edge.source)!, geometry.bounds.get(edge.target)!, policy));
     }
-    for (const mode of modes) {
+    const hintMode = input.modeHints?.[group.id];
+    const planEdgeCount = group.edges.filter((id) => !byId.get(id)?.fixed).length;
+    const orderedModes = hintMode && modes.includes(hintMode) ? [hintMode, ...modes.filter((mode) => mode !== hintMode)] : modes;
+    for (const mode of orderedModes) {
       const modeStarted = performance.now();
       const budget = createSolveBudget({ ...input.budget, groupMs: plannerGroupMs });
       allocator.begin();
-      const planned = planMode(mode, group, input.edges, geometry, allocator, policy, laneStep, trunkLength);
+      const planned = planMode(mode, group, input.edges, geometry, allocator, policy, laneStep, trunkLength, input.portHints ?? {});
       const groupRoutes: GroupCandidate[] = [];
       const modeFailures: GroupFailure[] = [...planned.failures];
       for (const item of planned.planned) {
@@ -483,15 +498,16 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
         labelRequired: route.labelRequired,
         labelState: route.labelState,
       })), { preferred });
-      const isComplete = groupRoutes.length === group.edges.length;
+      const isComplete = groupRoutes.length === planEdgeCount;
       const score = isComplete ? quality.score : Infinity;
       attempts.push({
         evaluation: {
-          mode, isComplete, totalEdges: group.edges.length, successCount: groupRoutes.length,
+          mode, isComplete, totalEdges: planEdgeCount, successCount: groupRoutes.length,
           routes: groupRoutes, failures: modeFailures, score, durationMs: performance.now() - modeStarted,
         },
       });
       allocator.rollback();
+      if (hintMode && mode === hintMode && attempts[0]?.evaluation.isComplete) break;
     }
     evaluations.push(...attempts.map((item) => item.evaluation));
     const winner = selectModeResult(attempts.map((item) => item.evaluation), input.transactional ?? false);
@@ -502,7 +518,7 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
       continue;
     }
     allocator.begin();
-    planMode(winner.mode, group, input.edges, geometry, allocator, policy, laneStep, trunkLength);
+    planMode(winner.mode, group, input.edges, geometry, allocator, policy, laneStep, trunkLength, input.portHints ?? {});
     allocator.commit();
     plans.push({ groupId: group.id, ownerNodeId: group.ownerNodeId, mode: winner.mode, routes: winner.routes, score: winner.score });
     failures.push(...winner.failures);

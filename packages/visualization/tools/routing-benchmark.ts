@@ -65,9 +65,10 @@ function buildScale(edgeCount: number, crossed: boolean): ScaleFixture {
   return { edges: edgeCount, nodes, edgesInput: selected, projection: projectGraph(stage, new Set()) };
 }
 
-function samples<T>(count: number, run: () => T): { value: T; ms: number[] } {
+function samples<T>(count: number, run: () => T, warmup = 3): { value: T; ms: number[] } {
   const ms: number[] = [];
   let value: T | undefined;
+  for (let index = 0; index < warmup; index += 1) value = run();
   for (let index = 0; index < count; index += 1) {
     const started = performance.now();
     value = run();
@@ -97,30 +98,37 @@ function runScale(edgeCount: number, crossed: boolean): Record<string, unknown> 
     policy: { direction: 'top-down' }, maxEdgesPerGroup: 12,
   };
   const legacyInputs = fixture.edgesInput.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text }));
-  const coldGroup = samples(5, () => solveRouteGroups(input));
-  const coldCache = samples(5, () => new GroupRouteCache().update({ ...input }));
-  const coldLegacy = samples(5, () => new DiagramRouteCache().update(fixture.nodes, fixture.projection, legacyInputs));
+  const coldGroup = samples(30, () => solveRouteGroups(input));
+  const coldCache = samples(30, () => new GroupRouteCache().update({ ...input }));
+  const coldLegacy = samples(30, () => new DiagramRouteCache().update(fixture.nodes, fixture.projection, legacyInputs));
   const groupCache = new GroupRouteCache();
   const warmGroup = groupCache.update({ ...input });
   const groupIncrementalMs: number[] = [];
   let groupIncrementalStats = warmGroup.stats;
-  for (let index = 0; index < 9; index += 1) {
-    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x + 12 + index * 4, y: node.position.y + 8 } } : node);
+  let lastMoved = fixture.nodes;
+  for (let index = -3; index < 30; index += 1) {
+    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x + 12 + Math.max(0, index) * 4, y: node.position.y + 8 } } : node);
+    lastMoved = moved;
     const started = performance.now();
-    groupIncrementalStats = groupCache.update({ ...input, nodes: moved }).stats;
-    groupIncrementalMs.push(performance.now() - started);
+    const update = groupCache.update({ ...input, nodes: moved });
+    const elapsed = performance.now() - started;
+    groupIncrementalStats = update.stats;
+    if (index >= 0) groupIncrementalMs.push(elapsed);
   }
   const legacyCache = new DiagramRouteCache();
   legacyCache.update(fixture.nodes, fixture.projection, legacyInputs);
   const legacyIncrementalMs: number[] = [];
-  for (let index = 0; index < 9; index += 1) {
-    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x + 12 + index * 4, y: node.position.y + 8 } } : node);
+  for (let index = -3; index < 30; index += 1) {
+    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x + 12 + Math.max(0, index) * 4, y: node.position.y + 8 } } : node);
     const started = performance.now();
     legacyCache.update(moved, fixture.projection, legacyInputs);
-    legacyIncrementalMs.push(performance.now() - started);
+    if (index >= 0) legacyIncrementalMs.push(performance.now() - started);
   }
+  const commitGroup = samples(30, () => new GroupRouteCache().update({ ...input, nodes: lastMoved, revision: 1 }));
+  const commitLegacy = samples(30, () => new DiagramRouteCache().update(lastMoved, fixture.projection, legacyInputs));
   const cold = coldGroup.value;
-  const groupRoutes = cold.ok ? cold.routes : new Map<string, CachedRoute>();
+  const coldCacheOutcome = coldCache.value.outcome;
+  const groupRoutes = coldCacheOutcome?.ok ? coldCacheOutcome.routes : cold.ok ? cold.routes : new Map<string, CachedRoute>();
   const legacyRoutes = coldLegacy.value;
   return {
     variant: crossed ? 'crossed' : 'stars',
@@ -131,6 +139,8 @@ function runScale(edgeCount: number, crossed: boolean): Record<string, unknown> 
     coldLegacyMs: { p50: percentile(coldLegacy.ms, 0.5), p95: percentile(coldLegacy.ms, 0.95), samples: coldLegacy.ms },
     localGroupMs: { p50: percentile(groupIncrementalMs, 0.5), p95: percentile(groupIncrementalMs, 0.95), samples: groupIncrementalMs },
     localLegacyMs: { p50: percentile(legacyIncrementalMs, 0.5), p95: percentile(legacyIncrementalMs, 0.95), samples: legacyIncrementalMs },
+    commitGroupMs: { p50: percentile(commitGroup.ms, 0.5), p95: percentile(commitGroup.ms, 0.95) },
+    commitLegacyMs: { p50: percentile(commitLegacy.ms, 0.5), p95: percentile(commitLegacy.ms, 0.95) },
     warmGroups: warmGroup.stats,
     localGroups: groupIncrementalStats,
     quality: { group: quality(groupRoutes), legacy: quality(legacyRoutes) },
