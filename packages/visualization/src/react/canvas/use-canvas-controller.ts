@@ -50,6 +50,8 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const [message, setMessage] = useState('');
   const [zoom, setZoom] = useState(Math.round((session.initialViewport?.zoom ?? 1) * 100));
   const [alignment, setAlignment] = useState<AlignmentGuide[]>([]);
+  const [engine] = useState<'legacy' | 'group'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('routing') === 'group' ? 'group' : 'legacy');
+  const [routingDragging, setRoutingDragging] = useState(false);
   const flow = useReactFlow<CanvasNode>();
   const previewViewport = useRef<{ x: number; y: number; zoom: number } | undefined>(undefined);
   const commit = useCallback((transform: (current: CanvasNode[]) => CanvasNode[]) => {
@@ -341,7 +343,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   }, [createGroup, preview, redo, setNodes, undo]);
 
   const scene = useCanvasScene({
-    nodes: activeNodes, baseline: activeBaseline, projection, displayEdges, selectedEdge, alignment, zoom,
+    nodes: activeNodes, baseline: activeBaseline, projection, displayEdges, selectedEdge, alignment, zoom, engine, dragging: routingDragging,
     ...(preview ? { readOnly: true } : {}),
     storedRoutes: preview?.state.edgeRoutes ?? session.edgeRoutes,
     storedDisplayRoutes: preview?.state.displayRoutes ?? session.displayRoutes,
@@ -355,8 +357,8 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const selectedRouteState = selectedCanonicalEdgeId ? routeStateFor(session.edgeRoutes, selectedCanonicalEdgeId) : undefined;
   const dragProfile = useDragProfile(scene.routeStats);
   recordConstraint.current = dragProfile.recordConstraint;
-  const beginDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=true; begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
-  const finishDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=false; finish(); dragProfile.stop(); setAlignment([]); } }, [dragProfile.stop, finish, preview]);
+  const beginDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=true; setRoutingDragging(true); begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
+  const finishDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=false; setRoutingDragging(false); finish(); dragProfile.stop(); setAlignment([]); } }, [dragProfile.stop, finish, preview]);
   const saveViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => { if (!preview) session.saveViewport(viewport); }, [preview, session.saveViewport]);
   return {
     ...scene, ...session, saveViewport, undo, redo, baselines: props.baselines, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom,

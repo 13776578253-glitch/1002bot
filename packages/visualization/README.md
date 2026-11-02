@@ -36,6 +36,7 @@ pnpm check:snapshots
 | `src/react/model/route-groups.ts` | 离线星形组求解、四种模式与跨组端口协调 |
 | `src/react/model/label-candidates.ts` | 路径的多标签候选与分支偏好 |
 | `src/react/model/route-quality.ts` | 组级统一质量度量与路径-标签评分 |
+| `src/react/model/route-selection.ts` | 组解完整性与旧路由回退选择 |
 | `src/react/canvas` | 受控交互状态与场景派生 |
 | `src/react/model/workspace.ts` | 可序列化工作视图、草稿/已确认快照与有界事务历史 |
 | `src/react/model/stage-transition.ts` | 阶段差异、原子安置流水线与结构化冲突 |
@@ -166,3 +167,7 @@ const persistence = {
 ## Port policy
 
 The authored overview uses `portPolicy: { "direction": "top-down" }`. Views without a direction preference use geometric endpoint direction. Candidate routing and snapshot compatibility are described in [the route model](src/react/model/README.md).
+
+## Routing engine switch
+
+The default remains the incremental candidate router. `?routing=group` enables the experimental offline group solver; omitting the parameter or using `?routing=legacy` keeps the old path. The group engine only takes over when the solution covers every expected edge and there are no stored pinned/locked paths, frozen groups, aggregated display edges or preview state. While dragging, the old cache keeps the low-cost path; on release the group solver runs again. Any incomplete or illegal group transaction falls back to the last legal legacy routes, so no edge disappears. Labels with `space-exhausted` are not rendered.

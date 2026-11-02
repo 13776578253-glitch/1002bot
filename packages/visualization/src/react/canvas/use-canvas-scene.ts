@@ -7,6 +7,8 @@ import type { LinkData } from '../components/relation-edge.tsx';
 import { leafMembers, selectionRoots, worldPosition, type CanvasNode } from '../model/grouping.ts';
 import { nodeIsVisible } from '../model/hierarchy.ts';
 import { DiagramRouteCache } from '../model/route-cache.ts';
+import { solveRouteGroups } from '../model/route-groups.ts';
+import { selectCanvasRoutes } from '../model/route-selection.ts';
 import type { DisplayEdge } from '../model/display-edges.ts';
 import { applyStoredRoutes, reservedLockedRoutes, retainedCanonicalRoutes } from '../model/edge-routes.ts';
 import type { EdgeRouteSnapshot } from '../model/workspace.ts';
@@ -24,6 +26,8 @@ interface SceneState {
   alignment: AlignmentGuide[];
   zoom: number;
   readOnly?: boolean;
+  engine?: 'legacy' | 'group';
+  dragging?: boolean;
   storedRoutes?: readonly EdgeRouteSnapshot[];
   storedDisplayRoutes?: readonly DisplayRouteSnapshot[];
   frozenGroups?: readonly FrozenGroupSnapshot[];
@@ -33,7 +37,7 @@ interface SceneState {
   commitRename(): void;
 }
 
-export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, chooseEdge, renameNode, commitRename, readOnly = false, storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[] }: SceneState) {
+export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, chooseEdge, renameNode, commitRename, readOnly = false, engine = 'legacy', dragging = false, storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[] }: SceneState) {
   const geometryKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}:${node.type}:${node.position.x},${node.position.y},${node.width},${node.height}`).join('|');
   const parentKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}`).join('|');
   const selectedKey = nodes.filter((node) => node.selected).map((node) => node.id).join('|');
@@ -48,7 +52,19 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
     const routes = applyStoredRoutes(rawRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
     return { routes, durationMs: performance.now() - started };
   }, [rawRoutes, displayEdges, storedRoutes, geometryKey, projection, frozenGroups]);
-  const routes = resolved.routes;
+  const groupEligible = engine === 'group' && !dragging && !readOnly && storedRoutes.length === 0
+    && frozenGroups.length === 0 && displayEdges.every((edge) => !edge.aggregated);
+  const groupSolution = useMemo(() => {
+    if (!groupEligible) return undefined;
+    try {
+      return solveRouteGroups({ nodes, projection, edges: routeInputs, ...(portPolicy ? { policy: portPolicy } : {}) });
+    } catch {
+      return undefined;
+    }
+  }, [groupEligible, geometryKey, projection, routeInputs, portPolicy]);
+  const selectedRoutes = selectCanvasRoutes(resolved.routes, groupSolution, routeInputs.map((edge) => edge.id));
+  const routes = selectedRoutes.routes;
+  const routingEngine = selectedRoutes.engine;
   const routeStats = useMemo(() => ({ ...cache.lastStats, durationMs: cache.lastStats.durationMs + resolved.durationMs, routingMs: cache.lastStats.routingMs + resolved.durationMs }), [cache, rawRoutes, resolved, geometryKey]);
   const members = useMemo(() => {
     const counts = new Map<string, number>();
@@ -69,7 +85,7 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
     const value: Edge<LinkData> = {
       id: edge.id, source: edge.source, target: edge.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle,
       type: 'link', label: edge.text, selected, zIndex: 50,
-      data: { active, relation: edge.relation, change: edge.change, points: route.points, label: route.label, onSelect: chooseEdge, ...(edge.aggregated ? { counts: { added: edge.added, replaced: edge.replaced, title: edge.text.split(' · ')[0]! } } : {}) },
+      data: { active, relation: edge.relation, change: edge.change, points: route.points, label: route.label, labelState: route.labelState, onSelect: chooseEdge, ...(edge.aggregated ? { counts: { added: edge.added, replaced: edge.replaced, title: edge.text.split(' · ')[0]! } } : {}) },
       style: { stroke: `var(--change-${edge.change.kind})`, strokeWidth: active ? 2.3 : 1.5, ...(edge.relation === 'event' ? { strokeDasharray: '5 5' } : {}) },
       markerEnd: marker, ...(edge.direction === 'bidirectional' ? { markerStart: marker } : {}),
     };
@@ -108,10 +124,18 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const guideBlockers = alignment.length ? displayNodes.filter((node) => !node.hidden).map((node) => ({ ...worldPosition(node, nodes), w: node.width!, h: node.type === 'card' ? node.height! : node.type === 'structure' ? 68 : 54 })) : [];
   if (alignment.length) for (const { label } of routes.values()) guideBlockers.push({ x: label.x - label.width / 2, y: label.y - label.height / 2, w: label.width, h: label.height });
   return {
-    displayNodes, edges, routes, blockedRoutes: [...routes].filter(([, route]) => route.feasible === false).map(([id]) => id), visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
+    displayNodes, edges, routes, routingEngine, blockedRoutes: [...routes].filter(([, route]) => route.feasible === false).map(([id]) => id), visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
     selectionLabel: roots.length > 1 ? `已选 ${roots.length} 项` : roots[0]?.data.title ?? '',
     selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats,
     snapshotRoutes: (current: CanvasNode[]) => {
+      if (engine === 'group' && !readOnly && storedRoutes.length === 0 && frozenGroups.length === 0 && displayEdges.every((edge) => !edge.aggregated)) {
+        try {
+          const result = solveRouteGroups({ nodes: current, projection, edges: routeInputs, ...(portPolicy ? { policy: portPolicy } : {}) });
+          if (result.ok && routeInputs.every((edge) => result.routes.has(edge.id))) return captureDisplayRoutes(current, projection, displayEdges, result.routes, [], portPolicy);
+        } catch {
+          // fall back to the legacy snapshot below
+        }
+      }
       const reserved = reservedLockedRoutes(storedRoutes, current, frozenGroups);
       const retained = retainedCanonicalRoutes(current, projection, displayEdges, storedRoutes, retainedDisplayRoutes(current, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups);
       const generated = cache.update(current, projection, routeInputs, reserved, retained, portPolicy);
