@@ -7,6 +7,22 @@ import { containerGrowthCeiling, fitMovedContainers, MIN_EDGE_GAP, SNAP_SCREEN_D
 export interface AlignmentGuide { axis: 'x' | 'y'; value: number; start: number; end: number; }
 export interface VisibleLink { source: string; target: string; }
 
+/** Snap matching edges and centres within a zoom-independent screen distance. */
+export function alignNodeRect(anchor: Rect, peers: readonly Rect[], zoom: number): { dx: number; dy: number; guides: AlignmentGuide[] } {
+  const threshold = SNAP_SCREEN_DISTANCE / zoom;
+  let dx = 0, dy = 0, bestX = threshold + 1, bestY = threshold + 1;
+  let xGuide: AlignmentGuide | undefined, yGuide: AlignmentGuide | undefined;
+  for (const other of peers) {
+    for (const t of [0.5, 0, 1]) {
+      const x = other.x + other.w * t - anchor.x - anchor.w * t;
+      const y = other.y + other.h * t - anchor.y - anchor.h * t;
+      if (Math.abs(x) <= threshold && Math.abs(x) < bestX) { dx = x; bestX = Math.abs(x); xGuide = { axis: 'x', value: other.x + other.w * t, start: Math.min(anchor.y, other.y) - 12, end: Math.max(anchor.y + anchor.h, other.y + other.h) + 12 }; }
+      if (Math.abs(y) <= threshold && Math.abs(y) < bestY) { dy = y; bestY = Math.abs(y); yGuide = { axis: 'y', value: other.y + other.h * t, start: Math.min(anchor.x, other.x) - 12, end: Math.max(anchor.x + anchor.w, other.x + other.w) + 12 }; }
+    }
+  }
+  return { dx, dy, guides: [xGuide, yGuide].filter((guide): guide is AlignmentGuide => guide !== undefined) };
+}
+
 function geometryLookup() {
   const arrays = new WeakMap<readonly CanvasNode[], Map<string, CanvasNode>>();
   const origins = new WeakMap<readonly CanvasNode[], Map<string, Point>>();
@@ -65,20 +81,8 @@ export function constrainNodeMoves(
   if (!primary) return { nodes: [...proposed], guides: [] as AlignmentGuide[] };
   const peers = proposed.filter((node) => visibleIds.has(node.id) && !moved.has(node.id) && !roots.some((item) => related(node, item.id, proposed) || related(item, node.id, proposed)));
   const anchor = rect(primary, proposed);
-  const threshold = SNAP_SCREEN_DISTANCE / zoom;
-  let dx = 0, dy = 0, bestX = threshold + 1, bestY = threshold + 1;
-  let xGuide: AlignmentGuide | undefined, yGuide: AlignmentGuide | undefined;
-
-  // 计算与同级卡片的中心 (0.5) 及两侧边缘 (0, 1) 的吸附偏移
-  for (const peer of peers.filter((item) => item.type === primary.type || item.type === 'card' && primary.type === 'card')) {
-    const other = rect(peer, proposed);
-    for (const t of [0.5, 0, 1]) {
-      const x = other.x + other.w * t - anchor.x - anchor.w * t;
-      const y = other.y + other.h * t - anchor.y - anchor.h * t;
-      if (Math.abs(x) <= threshold && Math.abs(x) < bestX) { dx = x; bestX = Math.abs(x); xGuide = { axis: 'x', value: other.x + other.w * t, start: Math.min(anchor.y, other.y) - 12, end: Math.max(anchor.y + anchor.h, other.y + other.h) + 12 }; }
-      if (Math.abs(y) <= threshold && Math.abs(y) < bestY) { dy = y; bestY = Math.abs(y); yGuide = { axis: 'y', value: other.y + other.h * t, start: Math.min(anchor.x, other.x) - 12, end: Math.max(anchor.x + anchor.w, other.x + other.w) + 12 }; }
-    }
-  }
+  const { dx, dy, guides: snapGuides } = alignNodeRect(anchor, peers.filter((item) => item.type === primary.type).map((peer) => rect(peer, proposed)), zoom);
+  const xGuide = snapGuides.find((guide) => guide.axis === 'x'), yGuide = snapGuides.find((guide) => guide.axis === 'y');
 
   const candidate = (node: CanvasNode, xDelta: number, yDelta: number): Point => {
     return { x: node.position.x + xDelta, y: node.position.y + yDelta };

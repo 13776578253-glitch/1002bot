@@ -3,6 +3,7 @@ import type { StageSnapshot } from '../../core/schema/types.ts';
 import { worldPosition, type CanvasNode } from './grouping.ts';
 import { projectGraph } from '../../core/projection/index.ts';
 import type { StageConflict } from './stage-types.ts';
+import { alignNodeRect, type AlignmentGuide } from './constraints.ts';
 
 export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: StageSnapshot): StageConflict | undefined {
   const projection = projectGraph(stage, new Set(nodes.filter((node) => node.data.expanded).map((node) => node.id)));
@@ -31,6 +32,14 @@ export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: Stag
 }
 
 export function moveAuthoredNodes(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot): CanvasNode[] {
+  return moveAuthoredSelection(before, proposed, movedIds, stage).nodes;
+}
+
+export function moveAlignedAuthoredNodes(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot, zoom: number, visible: ReadonlySet<string>): { nodes: CanvasNode[]; guides: AlignmentGuide[] } {
+  return moveAuthoredSelection(before, proposed, movedIds, stage, { zoom, visible });
+}
+
+function moveAuthoredSelection(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot, alignment?: { zoom: number; visible: ReadonlySet<string> }): { nodes: CanvasNode[]; guides: AlignmentGuide[] } {
   const previous = new Map(before.map((node) => [node.id, node]));
   const movable = new Set(movedIds.filter((id) => previous.get(id)!.data.layoutMode !== 'locked'));
   const roots = before.filter((node) => movable.has(node.id) && !(() => {
@@ -39,7 +48,7 @@ export function moveAuthoredNodes(before: readonly CanvasNode[], proposed: reado
     return false;
   })());
   const primary = roots[0];
-  if (!primary) return proposed.map((node) => ({ ...node, position: previous.get(node.id)!.position }));
+  if (!primary) return { nodes: proposed.map((node) => ({ ...node, position: previous.get(node.id)!.position })), guides: [] };
   const requested = proposed.find((node) => node.id === primary.id)!;
   const delta = { x: requested.position.x - primary.position.x, y: requested.position.y - primary.position.y };
   const rootIds = new Set(roots.map((node) => node.id));
@@ -48,5 +57,23 @@ export function moveAuthoredNodes(before: readonly CanvasNode[], proposed: reado
     const position = rootIds.has(node.id) ? { x: old.position.x + delta.x, y: old.position.y + delta.y } : old.position;
     return position.x === node.position.x && position.y === node.position.y ? node : { ...node, position };
   });
-  return manualGeometryConflict(next, stage) ? before as CanvasNode[] : next;
+  if (alignment) {
+    const hasMovingAncestor = (node: CanvasNode): boolean => {
+      let parent = node.parentId;
+      while (parent) { if (rootIds.has(parent)) return true; parent = previous.get(parent)?.parentId; }
+      return false;
+    };
+    const ancestors = new Set<string>();
+    for (const root of roots) {
+      let parent = root.parentId;
+      while (parent) { ancestors.add(parent); parent = previous.get(parent)?.parentId; }
+    }
+    const rect = (node: CanvasNode) => ({ ...worldPosition(node, next), w: node.width!, h: node.height! });
+    const anchor = next.find((node) => node.id === primary.id)!;
+    const peers = next.filter((node) => alignment.visible.has(node.id) && node.type === primary.type && !rootIds.has(node.id) && !ancestors.has(node.id) && !hasMovingAncestor(node));
+    const snap = alignNodeRect(rect(anchor), peers.map(rect), alignment.zoom);
+    const snapped = next.map((node) => rootIds.has(node.id) ? { ...node, position: { x: node.position.x + snap.dx, y: node.position.y + snap.dy } } : node);
+    if (!manualGeometryConflict(snapped, stage)) return { nodes: snapped, guides: snap.guides };
+  }
+  return { nodes: manualGeometryConflict(next, stage) ? before as CanvasNode[] : next, guides: [] };
 }

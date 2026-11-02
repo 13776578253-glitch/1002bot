@@ -4,7 +4,7 @@ import { adaptProject, type ArchitectureProject, type ProjectViewDefinition } fr
 import { assertValidBaselines } from '../../src/core/schema/baseline.ts';
 import { baselineNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
 import { groupSelection, ungroup, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { manualGeometryConflict, moveAuthoredNodes } from '../../src/react/model/manual-layout.ts';
+import { manualGeometryConflict, moveAuthoredNodes, moveAlignedAuthoredNodes } from '../../src/react/model/manual-layout.ts';
 import { captureContent, restoreNodeViews } from '../../src/react/model/workspace.ts';
 import { planStageTransition } from '../../src/react/model/stage-transition.ts';
 
@@ -44,6 +44,59 @@ function position(nodes: readonly CanvasNode[], id: string) {
 function propose(nodes: readonly CanvasNode[], positions: Record<string, { x: number; y: number }>): CanvasNode[] {
   return nodes.map((node) => positions[node.id] ? { ...node, position: positions[node.id]! } : node);
 }
+
+test('authored cards snap within six screen pixels without resizing or moving neighbours', () => {
+  const [baseline] = fixture();
+  const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const visible = new Set(nodes.map((node) => node.id));
+  const proposed = propose(nodes, { first: { x: 90, y: 135 } });
+  const aligned = moveAlignedAuthoredNodes(nodes, proposed, ['first'], baseline!.stage, 1, visible);
+  assert.deepEqual(position(aligned.nodes, 'first'), { x: 90, y: 140 });
+  const peer = aligned.nodes.find((node) => node.id === 'second')!;
+  assert.ok(aligned.guides.some((guide) => guide.axis === 'y' && guide.value === worldPosition(peer, aligned.nodes).y + peer.height! / 2));
+  for (const node of nodes.filter((node) => node.id !== 'first')) assert.equal(aligned.nodes.find((item) => item.id === node.id), node);
+  const far = moveAlignedAuthoredNodes(nodes, proposed, ['first'], baseline!.stage, 2, visible);
+  assert.equal(position(far.nodes, 'first').y, 135);
+  assert.deepEqual(far.guides, []);
+  const restored = restoreNodeViews(baseline!, baselineNodes(baseline!), captureContent(aligned.nodes).nodes);
+  assert.deepEqual(position(restored, 'first'), position(aligned.nodes, 'first'));
+});
+
+test('authored alignment uses visible cards in world coordinates across containers', () => {
+  const [baseline] = fixture();
+  const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const proposed = propose(nodes, { outside: { x: 1200, y: 236 } });
+  const visible = new Set(nodes.map((node) => node.id));
+  const result = moveAlignedAuthoredNodes(nodes, proposed, ['outside'], baseline!.stage, 1, visible);
+  assert.equal(position(result.nodes, 'outside').y, 240);
+  const hidden = moveAlignedAuthoredNodes(nodes, proposed, ['outside'], baseline!.stage, 1, new Set(['outside', 'module']));
+  assert.equal(position(hidden.nodes, 'outside').y, 236);
+  assert.deepEqual(hidden.guides, []);
+});
+
+test('authored multi-selection alignment preserves one displacement and locked anchors', () => {
+  const [baseline] = fixture();
+  const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const visible = new Set(nodes.map((node) => node.id));
+  const result = moveAlignedAuthoredNodes(nodes, propose(nodes, { first: { x: 90, y: 135 }, outside: { x: 1500, y: 400 } }), ['first', 'outside'], baseline!.stage, 1, visible);
+  assert.deepEqual(position(result.nodes, 'first'), { x: 90, y: 140 });
+  assert.deepEqual(position(result.nodes, 'outside'), { x: 1226, y: 100 });
+  const locked = nodes.map((node) => node.id === 'first' ? { ...node, data: { ...node.data, layoutMode: 'locked' as const } } : node);
+  const protectedMove = moveAlignedAuthoredNodes(locked, propose(locked, { first: { x: 90, y: 135 } }), ['first'], baseline!.stage, 1, visible);
+  assert.deepEqual(position(protectedMove.nodes, 'first'), position(locked, 'first'));
+  assert.deepEqual(protectedMove.guides, []);
+});
+
+test('authored alignment rejects overlap and container escape without displaying false guides', () => {
+  const [baseline] = fixture();
+  const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
+  const visible = new Set(nodes.map((node) => node.id));
+  for (const point of [{ x: 360, y: 136 }, { x: 700, y: 136 }]) {
+    const result = moveAlignedAuthoredNodes(nodes, propose(nodes, { first: point }), ['first'], baseline!.stage, 1, visible);
+    assert.equal(result.nodes, nodes);
+    assert.deepEqual(result.guides, []);
+  }
+});
 
 test('manual expansion and saved view restoration preserve the authored local geometry', () => {
   const [baseline] = fixture();

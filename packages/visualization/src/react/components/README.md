@@ -1,4 +1,4 @@
-Owner: `../VisualizationCanvas.tsx`, `top-actions.tsx`, `snapshot-menu.tsx`, `snapshot-dialog.tsx`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`, `../styles/canvas.css`
+Owner: `../VisualizationCanvas.tsx`, `top-actions.tsx`, `snapshot-menu.tsx`, `snapshot-dialog.tsx`, `ports.tsx`, `../styles/nodes.css`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`, `../styles/canvas.css`
 
 # Canvas controls
 
@@ -11,5 +11,7 @@ Tab and note state stay local to the dialog and are discarded on close. Stage se
 Status notices are centered at the bottom, above the toolbar on narrower screens. The notice icon is neutral for general messages; save errors use a warning icon and retain the retry action. Message lifetime follows the controller. Group routing fallbacks explain protected/frozen/aggregated/incomplete states; the transient dragging and preview cases stay silent.
 
 Canvas chrome has scoped light/dark tokens. Node geometry, routing, persistence and project sources are independent of these controls.
+
+Routing handles stay transparent during hover and selection. Their mounted geometry remains available to both routing engines; selecting a card uses its border highlight.
 
 Edges with no feasible obstacle-free route are omitted and reported by the canvas notice. The edge renderer consumes the selected geometry; port policy and cost comparison belong to the route model.

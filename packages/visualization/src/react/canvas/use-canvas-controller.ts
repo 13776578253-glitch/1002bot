@@ -6,7 +6,7 @@ import type { VisualizationCanvasProps } from '../types.ts';
 import { groupSelection, selectionRoots, ungroup, type CanvasNode, type LayoutMode } from '../model/grouping.ts';
 import { hierarchyProjection, nodeIsVisible, toggleHierarchy, syncHierarchyExpansion } from '../model/hierarchy.ts';
 import { constrainNodeMoves, type AlignmentGuide } from '../model/constraints.ts';
-import { manualGeometryConflict, moveAuthoredNodes } from '../model/manual-layout.ts';
+import { manualGeometryConflict, moveAlignedAuthoredNodes } from '../model/manual-layout.ts';
 import { aggregateProjectedEdges, type DisplayEdge } from '../model/display-edges.ts';
 import { freezeSelection, frozenGroupFor, toggleFrozenExpansion } from '../model/frozen.ts';
 import { removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints, reservedLockedRoutes } from '../model/edge-routes.ts';
@@ -81,7 +81,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       const visible = new Set(next.filter((node) => nodeIsVisible(node, next, projectionRef.current)).map((node) => node.id));
       const started = performance.now();
       const result = baseline.layout?.kind === 'manual'
-        ? { nodes: moveAuthoredNodes(current, next, moved, baseline.stage), guides: [] }
+        ? moveAlignedAuthoredNodes(current, next, moved, baseline.stage, flow.getZoom(), visible)
         : constrainNodeMoves(current, next, moved, flow.getZoom(), visible, links);
       next = result.nodes;
       const grown=rebaseFrozenGrowth(current,next,session.routesRef.current,session.frozenRef.current);
@@ -89,7 +89,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       const connections=routeConflict?[]:validateFrozenConnections(current,next,baseline.stage,grown.routes,grown.groups,routesRef.current);
       if (routeConflict||connections.length) { next = current; setMessage(routeConflict??connections[0]!.message); }
       else {if(grown.routes!==session.routesRef.current)session.setRoutes(grown.routes);if(grown.groups!==session.frozenRef.current)session.setFrozenGroups(grown.groups);}
-      setAlignment(changes.some((change) => change.type === 'position' && change.dragging) ? result.guides : []);
+      setAlignment(next !== current && changes.some((change) => change.type === 'position' && change.dragging) ? result.guides : []);
       recordConstraint.current(performance.now() - started);
     }
     setNodes(next);
