@@ -2,6 +2,7 @@
 import type { Projection } from '../../core/projection/index.ts';
 import { obstacleFromRect, rectIntersects, routeOrthogonal, simplifyPoints, type Point, type PortSide, type Rect } from '../../core/layout/geometry.ts';
 import { labelCandidatesForRoute, type LabelCandidate } from './label-candidates.ts';
+import { fallbackLabel } from './labels.ts';
 import { scoreRoutes } from './route-quality.ts';
 import { validateRoute } from '../../core/layout/legality.ts';
 import {
@@ -89,6 +90,7 @@ export interface GroupSolveInput {
   budget?: SolveBudgetLimits;
   transactional?: boolean;
   modes?: readonly GroupMode[];
+  groups?: RouteGroup[];
   maxEdgesPerGroup?: number;
   laneStep?: number;
   trunkLength?: number;
@@ -193,7 +195,7 @@ export function classifyFailure(input: {
   return 'incomplete';
 }
 
-function buildGroups(edges: readonly GroupEdgeInput[], projection: Projection, maxEdges: number): RouteGroup[] {
+export function buildRouteGroups(edges: readonly GroupEdgeInput[], projection: Projection, maxEdges: number): RouteGroup[] {
   const visible = new Set(projection.nodeById.keys());
   const auto = edges.filter((edge) => !edge.fixed && (edge.priority ?? 'auto') === 'auto' && visible.has(edge.source) && visible.has(edge.target));
   const degree = new Map<string, number>();
@@ -366,7 +368,7 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
   }
   const geometry = createDiagramGeometry(input.nodes, input.projection, [...(input.reserved ?? []), ...fixedReserved]);
   const allocator = createNodePortAllocator({ nodes: geometryNodes(geometry), rules });
-  const groups = buildGroups(input.edges, input.projection, Math.max(1, input.maxEdgesPerGroup ?? 12));
+  const groups = input.groups ?? buildRouteGroups(input.edges, input.projection, Math.max(1, input.maxEdgesPerGroup ?? 12));
   const byId = new Map(input.edges.map((edge) => [edge.id, edge]));
   const routes = new Map<string, CachedRoute>();
   const fixedPorts = new Map<string, SlotGrant[]>();
@@ -506,14 +508,16 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
     failures.push(...winner.failures);
     for (const route of winner.routes) {
       const midpoint = route.points[Math.floor(route.points.length / 2)]!;
+      const text = byId.get(route.edgeId)?.text ?? '';
       routes.set(route.edgeId, {
         sourceHandle: route.sourceHandle, targetHandle: route.targetHandle,
         points: route.points,
         label: route.label
           ? { x: route.label.anchor.x, y: route.label.anchor.y, width: route.label.rect.w, height: route.label.rect.h }
           : { x: midpoint.x, y: midpoint.y, width: 0, height: 0 },
+        ...(route.labelState === 'space-exhausted' && text.trim() ? { labelFallback: fallbackLabel(text, midpoint) } : {}),
         labelState: route.labelState,
-        text: byId.get(route.edgeId)?.text ?? '',
+        text,
       });
     }
   }

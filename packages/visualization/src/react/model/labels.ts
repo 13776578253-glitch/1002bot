@@ -46,6 +46,16 @@ export function measureLabel(text: string): { width: number; height: number } {
   return { width: Math.max(44, Array.from(text).reduce((sum, character) => sum + (/[^\u0000-\u007f]/.test(character) ? 12 : 7), 0) + 16), height: 24 };
 }
 
+/** A space-exhausted label stays hidden until its edge is hovered. */
+export function labelIsVisible(state: 'normal' | 'adjusted' | 'space-exhausted' | undefined, hovered = false): boolean {
+  return state !== 'space-exhausted' || hovered;
+}
+
+/** Keep a placeable box for a hidden label so hover can reveal its text. */
+export function fallbackLabel(text: string, point: Point): EdgeLabelPlacement {
+  return { x: point.x, y: point.y, ...measureLabel(text) };
+}
+
 export function placeEdgeLabel(
   points: readonly Point[],
   text: string,

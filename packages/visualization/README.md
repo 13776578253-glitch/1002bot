@@ -37,6 +37,8 @@ pnpm check:snapshots
 | `src/react/model/label-candidates.ts` | 路径的多标签候选与分支偏好 |
 | `src/react/model/route-quality.ts` | 组级统一质量度量与路径-标签评分 |
 | `src/react/model/route-selection.ts` | 组解完整性与旧路由回退选择 |
+| `src/react/model/group-route-cache.ts` | 组级增量缓存、路径保留与邻居失效 |
+| `src/react/model/routing-status.ts` | 组解回退原因与提示文案 |
 | `src/react/canvas` | 受控交互状态与场景派生 |
 | `src/react/model/workspace.ts` | 可序列化工作视图、草稿/已确认快照与有界事务历史 |
 | `src/react/model/stage-transition.ts` | 阶段差异、原子安置流水线与结构化冲突 |
@@ -170,4 +172,6 @@ The authored overview uses `portPolicy: { "direction": "top-down" }`. Views with
 
 ## Routing engine switch
 
-The default remains the incremental candidate router. `?routing=group` enables the experimental offline group solver; omitting the parameter or using `?routing=legacy` keeps the old path. The group engine only takes over when the solution covers every expected edge and there are no stored pinned/locked paths, frozen groups, aggregated display edges or preview state. While dragging, the old cache keeps the low-cost path; on release the group solver runs again. Any incomplete or illegal group transaction falls back to the last legal legacy routes, so no edge disappears. Labels with `space-exhausted` are not rendered.
+The default remains the incremental candidate router. `?routing=group` enables the experimental offline group solver; omitting the parameter or using `?routing=legacy` keeps the old path. The group engine only takes over when the solution covers every expected edge and there are no stored pinned/locked paths, frozen groups, aggregated display edges or preview state. While dragging, the old cache keeps the low-cost path; on release the group solver runs again. Any incomplete or illegal group transaction falls back to the last legal legacy routes, so no edge disappears.
+
+The group solver keeps a group-level cache. Unchanged groups reuse their route objects; only dirty groups and groups sharing a node with a dirty group re-solve. Their previous paths remain reserved, and a release bumps `routingRevision` for a full optimization. Labels with `space-exhausted` stay hidden until their edge is hovered, then use the stored fallback box. When group mode is requested but cannot take over, a bottom notice explains why; drag and preview fallbacks stay silent.

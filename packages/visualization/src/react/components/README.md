@@ -8,7 +8,7 @@ The snapshot entry opens a two-column detail dialog inside its canvas host. Its 
 
 Tab and note state stay local to the dialog and are discarded on close. Stage selection calls the canvas navigation path and closes the dialog; selecting the current stage is a no-op. Refusals, missing confirmations and read-only transition previews appear on the canvas, and the dialog writes no workspace record itself. The three tab panels stay mounted with inactive ones hidden. Tab arrows, Home and End navigate sections. Keyboard focus stays inside the dialog, and Escape or backdrop click closes it and restores trigger focus. Narrow screens stack the two columns and scroll inside the dialog. Node geometry and persistence remain independent.
 
-Status notices are centered at the bottom, above the toolbar on narrower screens. The notice icon is neutral for general messages; save errors use a warning icon and retain the retry action. Message lifetime follows the controller.
+Status notices are centered at the bottom, above the toolbar on narrower screens. The notice icon is neutral for general messages; save errors use a warning icon and retain the retry action. Message lifetime follows the controller. Group routing fallbacks explain protected/frozen/aggregated/incomplete states; the transient dragging and preview cases stay silent.
 
 Canvas chrome has scoped light/dark tokens. Node geometry, routing, persistence and project sources are independent of these controls.
 

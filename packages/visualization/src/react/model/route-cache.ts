@@ -21,6 +21,7 @@ export interface CachedRoute {
   targetHandle: string;
   points: Point[];
   label: EdgeLabelPlacement;
+  labelFallback?: EdgeLabelPlacement | undefined;
   labelState?: 'normal' | 'adjusted' | 'space-exhausted';
   text: string;
 }
