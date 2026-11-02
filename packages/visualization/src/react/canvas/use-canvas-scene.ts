@@ -6,8 +6,8 @@ import type { Projection } from '../../core/projection/index.ts';
 import type { LinkData } from '../components/relation-edge.tsx';
 import { leafMembers, selectionRoots, worldPosition, type CanvasNode } from '../model/grouping.ts';
 import { nodeIsVisible } from '../model/hierarchy.ts';
-import { DiagramRouteCache } from '../model/route-cache.ts';
-import { solveRouteGroups, type GroupSolveOutcome } from '../model/route-groups.ts';
+import { DiagramRouteCache, type CachedRoute } from '../model/route-cache.ts';
+import type { GroupSolveOutcome } from '../model/route-groups.ts';
 import { selectCanvasRoutes } from '../model/route-selection.ts';
 import { GroupRouteCache, type GroupRouteCacheStats } from '../model/group-route-cache.ts';
 import { routingFallback, type RoutingFallbackReason, type RoutingStatus } from '../model/routing-status.ts';
@@ -29,8 +29,6 @@ interface SceneState {
   zoom: number;
   readOnly?: boolean;
   engine?: 'legacy' | 'group';
-  dragging?: boolean;
-  routingRevision?: number;
   storedRoutes?: readonly EdgeRouteSnapshot[];
   storedDisplayRoutes?: readonly DisplayRouteSnapshot[];
   frozenGroups?: readonly FrozenGroupSnapshot[];
@@ -40,21 +38,17 @@ interface SceneState {
   commitRename(): void;
 }
 
-export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, chooseEdge, renameNode, commitRename, readOnly = false, engine = 'legacy', dragging = false, routingRevision = 0, storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[] }: SceneState) {
+export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, chooseEdge, renameNode, commitRename, readOnly = false, engine = 'legacy', storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[] }: SceneState) {
   const geometryKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}:${node.type}:${node.position.x},${node.position.y},${node.width},${node.height}`).join('|');
   const parentKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}`).join('|');
   const selectedKey = nodes.filter((node) => node.selected).map((node) => node.id).join('|');
   const portPolicy = baseline.stage.presentation?.portPolicy;
   const cache = useMemo(() => new DiagramRouteCache(), [baseline.id,baseline.stage.graph.revision,readOnly]);
+  const lastRenderedEngine = useRef<'legacy' | 'group'>('legacy');
+  const lastVisibleRoutes = useRef<ReadonlyMap<string, CachedRoute>>(new Map());
   const routeInputs = useMemo(() => displayEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text })), [displayEdges]);
   const reserved = useMemo(() => reservedLockedRoutes(storedRoutes, nodes, frozenGroups), [storedRoutes, geometryKey]);
   const retained = useMemo(() => retainedCanonicalRoutes(nodes, projection, displayEdges, storedRoutes, retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups), [geometryKey, projection, displayEdges, storedDisplayRoutes, reserved, storedRoutes, portPolicy]);
-  const rawRoutes = useMemo(() => cache.update(nodes, projection, routeInputs, reserved, retained, portPolicy), [geometryKey, projection, routeInputs, reserved, retained, portPolicy]);
-  const resolved = useMemo(() => {
-    const started = performance.now();
-    const routes = applyStoredRoutes(rawRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
-    return { routes, durationMs: performance.now() - started };
-  }, [rawRoutes, displayEdges, storedRoutes, geometryKey, projection, frozenGroups]);
   type GroupAttempt =
     | { status: 'disabled' }
     | { status: 'ineligible'; reason: Exclude<RoutingFallbackReason, 'incomplete' | 'error'> }
@@ -63,7 +57,6 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const groupCache = useMemo(() => new GroupRouteCache(), [baseline.id, baseline.stage.graph.revision, engine]);
   const groupAttempt = useMemo((): GroupAttempt => {
     if (engine !== 'group') return { status: 'disabled' };
-    if (dragging) return { status: 'ineligible', reason: 'dragging' };
     if (readOnly) return { status: 'ineligible', reason: 'preview' };
     if (storedRoutes.length) return { status: 'ineligible', reason: 'protected-routes' };
     if (frozenGroups.length) return { status: 'ineligible', reason: 'frozen-groups' };
@@ -72,18 +65,28 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
       const update = groupCache.update({
         nodes, projection, edges: routeInputs,
         ...(portPolicy ? { policy: portPolicy } : {}),
-        revision: routingRevision,
       });
       if (!update.outcome) return { status: 'failed', stats: update.stats, ...(update.error ? { error: update.error } : {}) };
       return { status: 'result', outcome: update.outcome, stats: update.stats };
     } catch (error) {
       return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
     }
-  }, [engine, dragging, readOnly, storedRoutes, frozenGroups, displayEdges, geometryKey, projection, routeInputs, portPolicy, routingRevision, groupCache]);
+  }, [engine, readOnly, storedRoutes, frozenGroups, displayEdges, geometryKey, projection, routeInputs, portPolicy, groupCache]);
+  const expectedIds = routeInputs.map((edge) => edge.id);
   const groupOutcome = groupAttempt.status === 'result' ? groupAttempt.outcome : undefined;
-  const selectedRoutes = selectCanvasRoutes(resolved.routes, groupOutcome, routeInputs.map((edge) => edge.id));
+  const groupComplete = Boolean(groupOutcome?.ok && expectedIds.every((id) => groupOutcome.routes.has(id)));
+  const seed = lastRenderedEngine.current === 'group' && !groupComplete ? lastVisibleRoutes.current : undefined;
+  const rawRoutes = useMemo(() => cache.update(nodes, projection, routeInputs, reserved, retained, portPolicy, seed), [geometryKey, projection, routeInputs, reserved, retained, portPolicy, seed]);
+  const resolved = useMemo(() => {
+    const started = performance.now();
+    const routes = applyStoredRoutes(rawRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
+    return { routes, durationMs: performance.now() - started };
+  }, [rawRoutes, displayEdges, storedRoutes, geometryKey, projection, frozenGroups]);
+  const selectedRoutes = selectCanvasRoutes(resolved.routes, groupOutcome, expectedIds);
   const routes = selectedRoutes.routes;
   const routingEngine = selectedRoutes.engine;
+  lastRenderedEngine.current = routingEngine;
+  lastVisibleRoutes.current = routes;
   const routingStatus = useMemo((): RoutingStatus => {
     if (engine !== 'group') return { requested: false, engine: 'legacy' };
     if (routingEngine === 'group') return { requested: true, engine: 'group', cache: groupAttempt.status === 'result' ? groupAttempt.stats : undefined };
@@ -163,19 +166,6 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
     displayNodes, edges, routes, routingEngine, routingStatus, blockedRoutes: [...routes].filter(([, route]) => route.feasible === false).map(([id]) => id), visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
     selectionLabel: roots.length > 1 ? `已选 ${roots.length} 项` : roots[0]?.data.title ?? '',
     selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats,
-    snapshotRoutes: (current: CanvasNode[]) => {
-      if (engine === 'group' && !readOnly && storedRoutes.length === 0 && frozenGroups.length === 0 && displayEdges.every((edge) => !edge.aggregated)) {
-        try {
-          const result = solveRouteGroups({ nodes: current, projection, edges: routeInputs, ...(portPolicy ? { policy: portPolicy } : {}) });
-          if (result.ok && routeInputs.every((edge) => result.routes.has(edge.id))) return captureDisplayRoutes(current, projection, displayEdges, result.routes, [], portPolicy);
-        } catch {
-          // fall back to the legacy snapshot below
-        }
-      }
-      const reserved = reservedLockedRoutes(storedRoutes, current, frozenGroups);
-      const retained = retainedCanonicalRoutes(current, projection, displayEdges, storedRoutes, retainedDisplayRoutes(current, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups);
-      const generated = cache.update(current, projection, routeInputs, reserved, retained, portPolicy);
-      return captureDisplayRoutes(current, projection, displayEdges, applyStoredRoutes(generated, displayEdges, storedRoutes, current, projection,frozenGroups), reserved, portPolicy);
-    },
+    snapshotRoutes: (_current: CanvasNode[]) => captureDisplayRoutes(nodes, projection, displayEdges, routes, reserved, portPolicy),
   };
 }

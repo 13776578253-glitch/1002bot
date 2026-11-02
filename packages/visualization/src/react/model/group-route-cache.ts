@@ -7,7 +7,7 @@ import type { CanvasNode } from './grouping.ts';
 import { worldPosition } from './grouping.ts';
 import {
   buildRouteGroups, solveRouteGroups, type GroupEdgeInput, type GroupMode, type GroupPlan,
-  type GroupSolveOutcome, type GroupSolveSuccess, type RouteGroup,
+  type GroupSolveInput, type GroupSolveOutcome, type GroupSolveSuccess, type RouteGroup,
 } from './route-groups.ts';
 import type { CachedRoute } from './route-cache.ts';
 import type { ReservedRoute } from './routing.ts';
@@ -26,7 +26,7 @@ export interface GroupRouteCacheInput {
 }
 
 export type GroupCacheMode = 'hit' | 'incremental' | 'full' | 'failed';
-export type GroupFullReason = 'cold' | 'revision' | 'node-set' | 'incremental-failure';
+export type GroupFullReason = 'cold' | 'revision' | 'node-set';
 
 export interface GroupRouteCacheStats {
   mode: GroupCacheMode;
@@ -115,7 +115,11 @@ function groupSignature(group: RouteGroup, input: GroupRouteCacheInput, edges: M
   });
 }
 
+export type GroupSolver = (input: GroupSolveInput) => GroupSolveOutcome;
+
 export class GroupRouteCache {
+  private readonly solve: GroupSolver;
+  constructor(solve: GroupSolver = solveRouteGroups) { this.solve = solve; }
   private outcome: GroupSolveSuccess | undefined;
   private records = new Map<string, GroupRecord>();
   private nodeRects = new Map<string, Rect>();
@@ -191,17 +195,25 @@ export class GroupRouteCache {
 
     let incremental: GroupSolveOutcome;
     try {
-      incremental = solveRouteGroups({
+      incremental = this.solve({
         ...this.base(input),
         edges: solverEdges,
         groups: dirtyGroups,
         reserved,
         transactional: true,
       });
-    } catch {
-      return this.full(input, groups, rects, nodeIds, started, 'incremental-failure');
+    } catch (error) {
+      return {
+        stats: { mode: 'failed', groups: groups.length, reusedGroups: groups.length - dirtyGroups.length, solvedGroups: dirtyGroups.length, durationMs: performance.now() - started },
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
-    if (!incremental.ok) return this.full(input, groups, rects, nodeIds, started, 'incremental-failure');
+    if (!incremental.ok) {
+      return {
+        outcome: incremental,
+        stats: { mode: 'failed', groups: groups.length, reusedGroups: groups.length - dirtyGroups.length, solvedGroups: dirtyGroups.length, durationMs: performance.now() - started },
+      };
+    }
 
     const plans = groups.flatMap((group) => {
       if (dirtyIds.has(group.id)) return incremental.plans.filter((plan) => plan.groupId === group.id);
@@ -254,7 +266,7 @@ export class GroupRouteCache {
     const nodesById = new Map(input.nodes.map((node) => [node.id, node]));
     let outcome: GroupSolveOutcome;
     try {
-      outcome = solveRouteGroups({ ...this.base(input), edges: input.edges });
+      outcome = this.solve({ ...this.base(input), edges: input.edges });
     } catch (error) {
       this.outcome = undefined;
       this.records.clear();

@@ -21,6 +21,11 @@
 - Browser `?routing=group`: initial `group / full:0/1`; during drag `legacy / dragging` with no notice; release returns `group / full:0/1`; pinning a path switches to `legacy / protected-routes` and shows "存在固定/锁定路径，组求解暂不接管。"; no console exceptions.
 - Package tests 291/291; typecheck green at the time of writing.
 
+## P4 follow-up
+
+- Release no longer bumps `routingRevision`; the group engine stays active through drag and the cache decides dirty-group work.
+- `snapshotRoutes` now captures the visible route map instead of solving again; group-to-legacy transitions seed the legacy cache once.
+
 ## Limitations
 
 - The group cache re-solves dirty groups and their shared-node neighbors; a path crossing a changed group without sharing a node relies on reserved paths and can fall back to full.

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
 import type { CanvasNode } from '../src/react/model/grouping.ts';
-import type { GroupEdgeInput } from '../src/react/model/route-groups.ts';
+import { solveRouteGroups, type GroupEdgeInput, type GroupSolveInput } from '../src/react/model/route-groups.ts';
 import { GroupRouteCache, type GroupRouteCacheInput } from '../src/react/model/group-route-cache.ts';
 
 const card = (id: string, x: number, y: number, width = 260, height = 92): CanvasNode => ({ id, type: 'card', position: { x, y }, width, height, data: { title: id } });
@@ -64,6 +64,51 @@ test('moving one star leaf re-solves only its group and keeps the other route ob
   assert.equal(second.outcome.routes.get('hubB-b1'), first.outcome.routes.get('hubB-b1'));
   assert.equal(second.outcome.routes.get('hubB-b2'), first.outcome.routes.get('hubB-b2'));
   assert.notEqual(second.outcome.routes.get('hubA-a1'), first.outcome.routes.get('hubA-a1'));
+});
+
+test('successive drag positions stay incremental without a revision bump', () => {
+  const cache = new GroupRouteCache();
+  const first = cache.update(fixture(nodes, edges));
+  assert.equal(first.outcome?.ok, true);
+  if (!first.outcome?.ok) return;
+  const stepOne = nodes.map((node) => node.id === 'a1' ? { ...node, position: { x: -280, y: 430 } } : node);
+  const second = cache.update(fixture(stepOne, edges));
+  const stepTwo = stepOne.map((node) => node.id === 'a1' ? { ...node, position: { x: -260, y: 460 } } : node);
+  const third = cache.update(fixture(stepTwo, edges));
+  assert.equal(second.stats.mode, 'incremental');
+  assert.equal(third.stats.mode, 'incremental');
+  assert.equal(third.stats.solvedGroups, 1);
+  assert.equal(third.stats.reusedGroups, 1);
+  assert.equal(third.stats.fullReason, undefined);
+  assert.equal(third.outcome?.ok, true);
+  if (!third.outcome?.ok) return;
+  assert.equal(third.outcome.routes.get('hubB-b1'), first.outcome.routes.get('hubB-b1'));
+  assert.equal(third.outcome.routes.get('hubB-b2'), first.outcome.routes.get('hubB-b2'));
+});
+
+test('a failed incremental solve does not trigger a full reallocation or commit', () => {
+  let failIncremental = false, fullCalls = 0;
+  const cache = new GroupRouteCache((input: GroupSolveInput) => {
+    if (input.groups) {
+      if (failIncremental) return { ok: false, reason: 'NO_COMPLETE_FEASIBLE_MODE', groups: input.groups, failures: [] };
+      return solveRouteGroups(input);
+    }
+    fullCalls += 1;
+    return solveRouteGroups(input);
+  });
+  const first = cache.update(fixture(nodes, edges));
+  assert.equal(first.stats.mode, 'full');
+  failIncremental = true;
+  const moved = nodes.map((node) => node.id === 'a1' ? { ...node, position: { x: -280, y: 430 } } : node);
+  const failed = cache.update(fixture(moved, edges));
+  assert.equal(failed.stats.mode, 'failed');
+  assert.equal(failed.outcome?.ok, false);
+  assert.equal(fullCalls, 1, 'incremental failure must not call the full solver');
+  failIncremental = false;
+  const recovered = cache.update(fixture(moved, edges));
+  assert.equal(recovered.stats.mode, 'incremental');
+  assert.equal(recovered.outcome?.ok, true);
+  assert.equal(fullCalls, 1);
 });
 
 test('a revision bump forces a full optimization', () => {

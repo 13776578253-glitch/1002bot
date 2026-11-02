@@ -116,7 +116,7 @@ export class DiagramRouteCache {
     this.partKeys.set(id, keys);
   }
 
-  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = [], retained: ReadonlyMap<string, CachedRoute> = new Map(), policy: PortPolicy = {}): Map<string, CachedRoute> {
+  update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = [], retained: ReadonlyMap<string, CachedRoute> = new Map(), policy: PortPolicy = {}, seed?: ReadonlyMap<string, CachedRoute>): Map<string, CachedRoute> {
     const start = performance.now();
     const geometryStarted = performance.now();
     const geometry = createDiagramGeometry(nodes, projection, reserved);
@@ -197,12 +197,12 @@ export class DiagramRouteCache {
     const nextRoutes = new Map<string, CachedRoute>();
     const translated = new Set<string>();
     const occupancy = new Map(edges.flatMap(edge => {
-      const route = retained.get(edge.id) ?? (!routeDirty.has(edge.id) ? this.routes.get(edge.id) : undefined);
+      const route = seed?.get(edge.id) ?? retained.get(edge.id) ?? (!routeDirty.has(edge.id) ? this.routes.get(edge.id) : undefined);
       return route && route.feasible !== false ? [[edge.id, { ...route, id: edge.id, source: edge.source, target: edge.target }] as const] : [];
     }));
     for (const edge of edges) {
-      const previous = this.routes.get(edge.id);
-      const saved = retained.get(edge.id);
+      const previous = seed?.get(edge.id) ?? this.routes.get(edge.id);
+      const saved = seed ? undefined : retained.get(edge.id);
       if (saved && (!previous || routeDirty.has(edge.id))) {
         nextRoutes.set(edge.id, saved);
         if (saved.text === edge.text) labelDirty.delete(edge.id);
@@ -242,7 +242,7 @@ export class DiagramRouteCache {
       if (!labelDirty.has(edge.id)) continue;
       const route = nextRoutes.get(edge.id)!;
       if (route.feasible === false) continue;
-      const previous = this.routes.get(edge.id);
+      const previous = seed?.get(edge.id) ?? this.routes.get(edge.id);
       const candidate = translated.has(edge.id) ? route.label : previous ? transportLabel(previous, route.points) : undefined;
       if (candidate && edge.text === this.inputs.get(edge.id)?.text && labelIsClear(candidate, geometry, occupied, route.points.at(-1)!, edge.id)) {
         if (candidate !== route.label) nextRoutes.set(edge.id, { ...route, label: candidate });
@@ -254,11 +254,14 @@ export class DiagramRouteCache {
       occupied.push(labelRect(nextRoutes.get(edge.id)!.label));
     }
     stats.labelMs = performance.now() - labelStarted;
-    for (const edge of edges) if (routeDirty.has(edge.id) || labelDirty.has(edge.id)) this.index(edge.id, nextRoutes.get(edge.id)!);
+    for (const edge of edges) {
+      const next = nextRoutes.get(edge.id)!;
+      if (seed ? next !== this.routes.get(edge.id) : routeDirty.has(edge.id) || labelDirty.has(edge.id)) this.index(edge.id, next);
+    }
 
     this.geometry = geometry;
     this.inputs = inputs;
-    if (routeDirty.size || labelDirty.size || inputs.size !== this.routes.size) this.routes = nextRoutes;
+    if (seed || routeDirty.size || labelDirty.size || inputs.size !== this.routes.size) this.routes = nextRoutes;
     stats.durationMs = performance.now() - start;
     this.lastStats = stats;
     return this.routes;
