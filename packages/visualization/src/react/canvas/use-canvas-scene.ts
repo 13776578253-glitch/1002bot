@@ -1,5 +1,5 @@
 /** Cached geometry and stable render entities; selection and viewport have no routing dependencies. */
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { MarkerType, type Edge } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { Projection } from '../../core/projection/index.ts';
@@ -48,7 +48,6 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const lastVisibleRoutes = useRef<ReadonlyMap<string, CachedRoute>>(new Map());
   const routeInputs = useMemo(() => displayEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text })), [displayEdges]);
   const reserved = useMemo(() => reservedLockedRoutes(storedRoutes, nodes, frozenGroups), [storedRoutes, geometryKey]);
-  const retained = useMemo(() => retainedCanonicalRoutes(nodes, projection, displayEdges, storedRoutes, retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups), [geometryKey, projection, displayEdges, storedDisplayRoutes, reserved, storedRoutes, portPolicy]);
   type GroupAttempt =
     | { status: 'disabled' }
     | { status: 'ineligible'; reason: Exclude<RoutingFallbackReason, 'incomplete' | 'error'> }
@@ -75,18 +74,22 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const expectedIds = routeInputs.map((edge) => edge.id);
   const groupOutcome = groupAttempt.status === 'result' ? groupAttempt.outcome : undefined;
   const groupComplete = Boolean(groupOutcome?.ok && expectedIds.every((id) => groupOutcome.routes.has(id)));
+  const retained = useMemo(() => groupComplete ? new Map<string, CachedRoute>() : retainedCanonicalRoutes(nodes, projection, displayEdges, storedRoutes, retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups), [groupComplete, geometryKey, projection, displayEdges, storedDisplayRoutes, reserved, storedRoutes, portPolicy]);
   const seed = lastRenderedEngine.current === 'group' && !groupComplete ? lastVisibleRoutes.current : undefined;
-  const rawRoutes = useMemo(() => cache.update(nodes, projection, routeInputs, reserved, retained, portPolicy, seed), [geometryKey, projection, routeInputs, reserved, retained, portPolicy, seed]);
+  const legacyRoutes = useMemo(() => groupComplete ? undefined : cache.update(nodes, projection, routeInputs, reserved, retained, portPolicy, seed), [groupComplete, geometryKey, projection, routeInputs, reserved, retained, portPolicy, seed]);
   const resolved = useMemo(() => {
+    if (!legacyRoutes) return { routes: undefined, durationMs: 0 };
     const started = performance.now();
-    const routes = applyStoredRoutes(rawRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
+    const routes = applyStoredRoutes(legacyRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
     return { routes, durationMs: performance.now() - started };
-  }, [rawRoutes, displayEdges, storedRoutes, geometryKey, projection, frozenGroups]);
-  const selectedRoutes = selectCanvasRoutes(resolved.routes, groupOutcome, expectedIds);
+  }, [legacyRoutes, displayEdges, storedRoutes, geometryKey, projection, frozenGroups]);
+  const selectedRoutes = selectCanvasRoutes(resolved.routes ?? new Map(), groupOutcome, expectedIds);
   const routes = selectedRoutes.routes;
   const routingEngine = selectedRoutes.engine;
-  lastRenderedEngine.current = routingEngine;
-  lastVisibleRoutes.current = routes;
+  useLayoutEffect(() => {
+    lastRenderedEngine.current = routingEngine;
+    lastVisibleRoutes.current = routes;
+  }, [routingEngine, routes]);
   const routingStatus = useMemo((): RoutingStatus => {
     if (engine !== 'group') return { requested: false, engine: 'legacy' };
     if (routingEngine === 'group') return { requested: true, engine: 'group', cache: groupAttempt.status === 'result' ? groupAttempt.stats : undefined };
@@ -100,11 +103,22 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
       fallback: routingFallback(reason, failures),
     };
   }, [engine, routingEngine, groupAttempt]);
-  const routeStats = useMemo(() => ({
-    ...cache.lastStats, durationMs: cache.lastStats.durationMs + resolved.durationMs, routingMs: cache.lastStats.routingMs + resolved.durationMs,
-    groupMs: groupAttempt.status === 'result' ? groupAttempt.stats.durationMs : 0,
-    groupCacheMode: groupAttempt.status === 'result' ? groupAttempt.stats.mode : 'legacy',
-  }), [cache, rawRoutes, resolved, geometryKey, groupAttempt]);
+  const routeStats = useMemo(() => {
+    const groupMs = groupAttempt.status === 'result' ? groupAttempt.stats.durationMs : 0;
+    const groupCacheMode = groupAttempt.status === 'result' ? groupAttempt.stats.mode : 'legacy';
+    if (groupComplete && groupOutcome?.ok) {
+      return {
+        routedEdges: groupOutcome.routes.size,
+        placedLabels: [...groupOutcome.routes.values()].filter((route) => route.label.width > 0).length,
+        translatedEdges: 0, durationMs: groupMs, totalEdges: routeInputs.length,
+        routingMs: 0, labelMs: 0, geometryMs: 0, groupMs, groupCacheMode,
+      };
+    }
+    return {
+      ...cache.lastStats, durationMs: cache.lastStats.durationMs + resolved.durationMs, routingMs: cache.lastStats.routingMs + resolved.durationMs,
+      groupMs, groupCacheMode,
+    };
+  }, [cache, legacyRoutes, resolved, geometryKey, groupAttempt, groupComplete, groupOutcome, routeInputs.length]);
   const members = useMemo(() => {
     const counts = new Map<string, number>();
     for (const node of nodes) if (node.parentId) counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);

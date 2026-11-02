@@ -24,6 +24,15 @@ const stage: StageSnapshot = {
 };
 const projection = projectGraph(stage, new Set());
 
+test('a cold legacy cache consumes a seed without re-solving different paths', () => {
+  const source = new DiagramRouteCache().update(nodes, projection, inputs);
+  const cold = new DiagramRouteCache().update(nodes, projection, inputs, [], new Map(), {}, new Map(source));
+  for (const edge of inputs) {
+    assert.deepEqual(cold.get(edge.id)!.points, source.get(edge.id)!.points, `${edge.id} points`);
+    assert.deepEqual(cold.get(edge.id)!.label, source.get(edge.id)!.label, `${edge.id} label`);
+  }
+});
+
 test('a seed replaces the legacy cache routes once and keeps their object identity afterwards', () => {
   const cache = new DiagramRouteCache();
   const first = cache.update(nodes, projection, inputs);

@@ -201,7 +201,8 @@ export class DiagramRouteCache {
       return route && route.feasible !== false ? [[edge.id, { ...route, id: edge.id, source: edge.source, target: edge.target }] as const] : [];
     }));
     for (const edge of edges) {
-      const previous = seed?.get(edge.id) ?? this.routes.get(edge.id);
+      const seeded = seed?.get(edge.id);
+      const previous = seeded ?? this.routes.get(edge.id);
       const saved = seed ? undefined : retained.get(edge.id);
       if (saved && (!previous || routeDirty.has(edge.id))) {
         nextRoutes.set(edge.id, saved);
@@ -212,10 +213,11 @@ export class DiagramRouteCache {
         nextRoutes.set(edge.id, previous!);
         continue;
       }
-      const old = this.inputs.get(edge.id);
-      const a = this.geometry?.bounds.get(edge.source), b = this.geometry?.bounds.get(edge.target);
+      const old = this.inputs.get(edge.id) ?? inputs.get(edge.id);
+      const a = this.geometry?.bounds.get(edge.source) ?? geometry.bounds.get(edge.source);
+      const b = this.geometry?.bounds.get(edge.target) ?? geometry.bounds.get(edge.target);
       const source = geometry.bounds.get(edge.source)!, target = geometry.bounds.get(edge.target)!;
-      if (!policyChanged && previous && previous.feasible !== false && old?.source === edge.source && old.target === edge.target && a && b
+      if ((!policyChanged || seeded) && previous && previous.feasible !== false && old?.source === edge.source && old.target === edge.target && a && b
         && source.w === a.w && source.h === a.h && target.w === b.w && target.h === b.h
         && source.x - a.x === target.x - b.x && source.y - a.y === target.y - b.y) {
         const dx = source.x - a.x, dy = source.y - a.y;
