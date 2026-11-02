@@ -39,7 +39,7 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
   const onSelectionEnd = useCallback(() => { if (!canvas.preview) setNodes((current) => normalizeMarqueeSelection(current)); }, [canvas.preview, setNodes]);
   const onMove = useCallback((_event: unknown, viewport: { zoom: number }) => setZoom(Math.round(viewport.zoom * 100)), [setZoom]);
   const onMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => { if (!canvas.preview) canvas.saveViewport(viewport); }, [canvas.preview, canvas.saveViewport]);
-  return <main className="canvas-app" data-theme={theme} aria-label="架构画布" data-transition={JSON.stringify(canvas.transition)} data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
+  return <main className="canvas-app" data-theme={theme} aria-label="架构画布" data-transition={JSON.stringify(canvas.transition)} data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-route-geometry-ms={canvas.routeStats.geometryMs.toFixed(3)} data-route-routing-ms={canvas.routeStats.routingMs.toFixed(3)} data-route-label-ms={canvas.routeStats.labelMs.toFixed(3)} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
     <ReactFlow<CanvasNode, Edge<LinkData>>
       nodes={displayNodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodesChange={onNodesChange} nodesConnectable={false} deleteKeyCode={null}

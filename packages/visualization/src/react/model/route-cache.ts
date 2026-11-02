@@ -21,6 +21,7 @@ export interface CachedRoute {
   targetHandle: string;
   points: Point[];
   label: EdgeLabelPlacement;
+  labelState?: 'normal' | 'adjusted' | 'space-exhausted';
   text: string;
 }
 
@@ -32,6 +33,7 @@ export interface RouteCacheStats {
   totalEdges: number;
   routingMs: number;
   labelMs: number;
+  geometryMs: number;
 }
 
 type IndexedPart = { edgeId: string; kind: 'segment'; from: Point; to: Point } | { edgeId: string; kind: 'label' };
@@ -90,7 +92,7 @@ export class DiagramRouteCache {
   private parts = new SpatialIndex<IndexedPart>();
   private partKeys = new Map<string, string[]>();
   private adjacent = new Map<string, Set<string>>();
-  lastStats: RouteCacheStats = { routedEdges: 0, placedLabels: 0, translatedEdges: 0, durationMs: 0, totalEdges: 0, routingMs: 0, labelMs: 0 };
+  lastStats: RouteCacheStats = { routedEdges: 0, placedLabels: 0, translatedEdges: 0, durationMs: 0, totalEdges: 0, routingMs: 0, labelMs: 0, geometryMs: 0 };
 
   private unindex(id: string): void {
     for (const key of this.partKeys.get(id) ?? []) this.parts.delete(key);
@@ -115,7 +117,9 @@ export class DiagramRouteCache {
 
   update(nodes: readonly CanvasNode[], projection: Projection, edges: readonly RouteInput[], reserved: readonly ReservedRoute[] = [], retained: ReadonlyMap<string, CachedRoute> = new Map(), policy: PortPolicy = {}): Map<string, CachedRoute> {
     const start = performance.now();
+    const geometryStarted = performance.now();
     const geometry = createDiagramGeometry(nodes, projection, reserved);
+    const geometryMs = performance.now() - geometryStarted;
     const reservedKey = JSON.stringify(reserved.map((route) => [route.edgeId, route.points.map((point) => [point.x, point.y])]));
     const reservedChanged = reservedKey !== this.reservedKey;
     this.reservedKey = reservedKey;
@@ -125,7 +129,7 @@ export class DiagramRouteCache {
     const inputs = new Map(edges.map((edge) => [edge.id, edge]));
     const routeDirty = new Set<string>(), labelDirty = new Set<string>();
     const changed = new Set<string>();
-    const stats: RouteCacheStats = { routedEdges: 0, placedLabels: 0, translatedEdges: 0, durationMs: 0, totalEdges: edges.length, routingMs: 0, labelMs: 0 };
+    const stats: RouteCacheStats = { routedEdges: 0, placedLabels: 0, translatedEdges: 0, durationMs: 0, totalEdges: edges.length, routingMs: 0, labelMs: 0, geometryMs };
 
     for (const [id, obstacle] of geometry.obstacles) {
       const old = this.geometry?.obstacles.get(id);

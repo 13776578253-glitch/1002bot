@@ -5,7 +5,7 @@ import type { CanvasNode } from './grouping.ts';
 import type { DisplayEdge } from './display-edges.ts';
 import type { CachedRoute } from './route-cache.ts';
 import type { DisplayRouteSnapshot } from './workspace.ts';
-import { createDiagramGeometry, pathIsClear, type ReservedRoute } from './routing.ts';
+import { createDiagramGeometry, pathIsClear, withReservedRoutes, type ReservedRoute } from './routing.ts';
 
 export function routeBarrierKey(reserved: readonly ReservedRoute[]): string {
   let hash = 2166136261;
@@ -42,7 +42,7 @@ export function retainedDisplayRoutes(nodes: readonly CanvasNode[], projection: 
     const obstacles = protectedParts.length ? geometry.reserved.filter(part => !protectedParts.some(own =>
       part.rect.x >= own.rect.x && part.rect.y >= own.rect.y
       && part.rect.x + part.rect.w <= own.rect.x + own.rect.w && part.rect.y + part.rect.h <= own.rect.y + own.rect.h)) : geometry.reserved;
-    if (!pathIsClear(route.points, { ...geometry, reserved: obstacles }, edge.source, edge.target, edge.id)) continue;
+    if (!pathIsClear(route.points, withReservedRoutes(geometry, obstacles), edge.source, edge.target, edge.id)) continue;
     result.set(edge.id, { policyKey: route.policyKey, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, points: route.points, label: route.label, text: route.text });
   }
   return result;

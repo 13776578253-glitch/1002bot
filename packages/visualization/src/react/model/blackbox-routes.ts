@@ -4,7 +4,7 @@ import { projectGraph } from '../../core/projection/index.ts';
 import type { StageSnapshot } from '../../core/schema/types.ts';
 import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
 import { MAX_CONTAINER_EXTRA } from './spacing.ts';
-import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, segmentCrossesRect, type DiagramGeometry } from './routing.ts';
+import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, segmentCrossesRect, withReservedRoutes, type DiagramGeometry } from './routing.ts';
 import { placeEdgeLabel } from './labels.ts';
 import { endpointFingerprint, routeSnapshotForEdge, storedRouteAttached, worldRoutePoints, reservedLockedRoutes } from './edge-routes.ts';
 import { hierarchyProjection } from './hierarchy.ts';
@@ -141,7 +141,7 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
   });
   const internal = (rect: Rect) => ownerRects.some(owner => rect.x >= owner.x - 4 && rect.y >= owner.y - 4 && rect.x + rect.w <= owner.x + owner.w + 4 && rect.y + rect.h <= owner.y + owner.h + 4);
   const externalReserved = geometry.reserved.filter(item => !internal(item.rect));
-  const connectorGeometry = { ...geometry, reserved: externalReserved };
+  const connectorGeometry = withReservedRoutes(geometry, externalReserved);
   const matches = (part: FrozenBoundarySegment | undefined) => {
     if (!part) return true;
     const owner = nodes.find(node => node.id === part.ownerId)!;
@@ -152,7 +152,7 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
     const expected = boundaryWorldPoints(part, nodes), observed = boundaryWorldPoints(actual, nodes).map(point => ({ x: point.x + frame.x, y: point.y + frame.y }));
     return expected.length === observed.length && expected.every((point, index) => samePoint(point, observed[index]!));
   };
-  if (matches(source) && matches(target) && pathIsClear(fallback.points, preserveConnector ? { ...geometry, reserved: [] } : geometry, sourceId, targetId, edgeId)) {
+  if (matches(source) && matches(target) && pathIsClear(fallback.points, preserveConnector ? withReservedRoutes(geometry, []) : geometry, sourceId, targetId, edgeId)) {
     let points = fallback.points;
     for (const point of [sourceFragment.at(-1)!, targetFragment.at(-1)!]) {
       if (points.some(existing => samePoint(existing, point))) continue;

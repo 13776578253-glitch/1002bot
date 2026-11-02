@@ -28,7 +28,14 @@ pnpm check:snapshots
 | `src/core/graph` | 稳定 ID 索引、父引用、GraphPatch 与阶段差异 |
 | `src/core/projection` | 按展开状态投影节点、折叠端点和跨层关系 |
 | `src/core/layout/geometry.ts` | 正交避障、矩形与路径运算 |
+| `src/core/layout/node-port-allocator.ts` | 物理端口槽位、容量退化与事务分配 |
+| `src/core/layout/input-fingerprint.ts` | 布线输入指纹、保护路径与跨组依赖 |
+| `src/core/layout/legality.ts` | 统一硬合法性校验 |
+| `src/core/layout/search-limits.ts` | A* 与拼接循环的搜索上限 |
 | `src/react/model` | 初始位置、递归显隐、分组、吸附、四向有限扩缩、路由与标签 |
+| `src/react/model/route-groups.ts` | 离线星形组求解、四种模式与跨组端口协调 |
+| `src/react/model/label-candidates.ts` | 路径的多标签候选与分支偏好 |
+| `src/react/model/route-quality.ts` | 组级统一质量度量与路径-标签评分 |
 | `src/react/canvas` | 受控交互状态与场景派生 |
 | `src/react/model/workspace.ts` | 可序列化工作视图、草稿/已确认快照与有界事务历史 |
 | `src/react/model/stage-transition.ts` | 阶段差异、原子安置流水线与结构化冲突 |

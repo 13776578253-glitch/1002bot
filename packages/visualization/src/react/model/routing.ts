@@ -2,9 +2,11 @@
 import { compareRouteCost, type PortPolicy, type RouteCost } from '../../core/layout/port-policy.ts';
 import type { Projection } from '../../core/projection/index.ts';
 import {
-  midpointOfPoints, obstacleFromRect, portAnchor, routeOrthogonal, simplifyPoints,
+  midpointOfPoints, obstacleFromRect, portAnchor, routeOrthogonal, segmentBounds, segmentCrossesRect, simplifyPoints,
   type Point, type PortSide, type Rect,
 } from '../../core/layout/geometry.ts';
+import { validateRoute } from '../../core/layout/legality.ts';
+import { DEFAULT_SEARCH_LIMITS } from '../../core/layout/search-limits.ts';
 import { CARD_SIZE, type CanvasNode } from './grouping.ts';
 import { nodeIsVisible } from './hierarchy.ts';
 import { SpatialIndex, expandBounds } from './spatial-index.ts';
@@ -31,6 +33,7 @@ export interface DiagramGeometry {
   obstacles: Map<string, DiagramObstacle>;
   obstacleIndex: SpatialIndex<DiagramObstacle>;
   reserved: { edgeId: string; rect: Rect }[];
+  reservedIndex: SpatialIndex<{ edgeId: string; rect: Rect }>;
 }
 
 function reservedRects(reserved: readonly ReservedRoute[]): { edgeId: string; rect: Rect }[] {
@@ -66,31 +69,31 @@ export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: 
     blockers.push(obstacle);
     if (!card) frames.push(full);
   }
-  return { bounds, blockers, frames, obstacles, obstacleIndex, reserved: reservedRects(reserved) };
+  const reservedParts = reservedRects(reserved);
+  const reservedIndex = new SpatialIndex<{ edgeId: string; rect: Rect }>();
+  reservedParts.forEach((entry, index) => reservedIndex.set(String(index), entry.rect, entry));
+  return { bounds, blockers, frames, obstacles, obstacleIndex, reserved: reservedParts, reservedIndex };
 }
 
-export function segmentBounds(from: Point, to: Point): Rect {
-  return { x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), w: Math.abs(to.x - from.x), h: Math.abs(to.y - from.y) };
+/** Rebuilds the reserved spatial index when a caller narrows or drops protected paths. */
+export function withReservedRoutes(geometry: DiagramGeometry, reserved: readonly { edgeId: string; rect: Rect }[]): DiagramGeometry {
+  const reservedIndex = new SpatialIndex<{ edgeId: string; rect: Rect }>();
+  reserved.forEach((entry, index) => reservedIndex.set(String(index), entry.rect, entry));
+  return { ...geometry, reserved: [...reserved], reservedIndex };
 }
 
-export function segmentCrossesRect(from: Point, to: Point, rect: Rect): boolean {
-  if (from.y === to.y) return from.y > rect.y && from.y < rect.y + rect.h && Math.max(from.x, to.x) > rect.x && Math.min(from.x, to.x) < rect.x + rect.w;
-  return from.x > rect.x && from.x < rect.x + rect.w && Math.max(from.y, to.y) > rect.y && Math.min(from.y, to.y) < rect.y + rect.h;
-}
+export { segmentBounds, segmentCrossesRect };
 
 export function pathIsClear(points: readonly Point[], geometry: DiagramGeometry, sourceId: string, targetId: string, ignoreEdgeId?: string): boolean {
-  if (points.length < 2) return false;
-  for (let index = 1; index < points.length; index++) {
-    const from = points[index - 1]!, to = points[index]!;
-    for (const obstacle of geometry.obstacleIndex.query(segmentBounds(from, to))) {
-      const bounds = obstacle.id === sourceId || obstacle.id === targetId ? obstacle.endpointBounds ?? obstacle.bounds : obstacle.padded;
-      if (segmentCrossesRect(from, to, bounds)) return false;
-    }
-    for (const reserved of geometry.reserved) {
-      if (reserved.edgeId !== ignoreEdgeId && segmentCrossesRect(from, to, reserved.rect)) return false;
-    }
-  }
-  return true;
+  return validateRoute({
+    points,
+    sourceId,
+    targetId,
+    obstaclesAt: (rect) => geometry.obstacleIndex.query(rect),
+    reservedAt: (rect) => geometry.reservedIndex.query(rect),
+    requireOrthogonal: false,
+    ...(ignoreEdgeId === undefined ? {} : { ignoreEdgeId }),
+  }).length === 0;
 }
 
 /**
@@ -172,7 +175,8 @@ function routeWithHandles(geometry: DiagramGeometry, sourceId: string, targetId:
   selected.set(sourceId, geometry.obstacles.get(sourceId)!);
   selected.set(targetId, geometry.obstacles.get(targetId)!);
   const obstacleBounds = (entry: DiagramObstacle) => entry.id === sourceId || entry.id === targetId ? entry.endpointBounds ?? entry.bounds : entry.padded;
-  const reservedObstacles = geometry.reserved.filter((entry) => entry.edgeId !== edgeId).map((entry) => obstacleFromRect(entry.rect, 2));
+  const corridor = expandBounds(segmentBounds(start, end), 66);
+  const reservedObstacles = geometry.reservedIndex.query(corridor).filter((entry) => entry.edgeId !== edgeId).map((entry) => obstacleFromRect(entry.rect, 2));
   const obstacleList = () => [...selected.values()].map((entry) => obstacleFromRect(obstacleBounds(entry))).concat(reservedObstacles);
   let obstacles = obstacleList();
 
@@ -190,8 +194,8 @@ function routeWithHandles(geometry: DiagramGeometry, sourceId: string, targetId:
   };
 
   const startStub = extend(start, sourceSide), endStub = extend(end, targetSide);
-  let points: Point[];
-  while (true) {
+  let points: Point[] = [];
+  for (let iteration = 0; iteration < DEFAULT_SEARCH_LIMITS.maxStitchIterations; iteration += 1) {
     const middle = routeOrthogonal({ ...startStub, w: 0, h: 0 }, { ...endStub, w: 0, h: 0 }, obstacles, { offset: 0, padding: 10, startAxis: sourceSide === 'top' || sourceSide === 'bottom' ? 1 : 0, endAxis: targetSide === 'top' || targetSide === 'bottom' ? 1 : 0 });
     points = simplifyPoints([start, ...middle, end]);
     const additions = new Map<string, DiagramObstacle>();

@@ -7,7 +7,7 @@ import { hierarchyProjection, nodeIsVisible } from './hierarchy.ts';
 import { worldPosition } from './grouping.ts';
 import { aggregateProjectedEdges } from './display-edges.ts';
 import { DiagramRouteCache } from './route-cache.ts';
-import { createDiagramGeometry, pathIsClear } from './routing.ts';
+import { createDiagramGeometry, pathIsClear, withReservedRoutes } from './routing.ts';
 import { reservedLockedRoutes, validateStoredRoutes, retainedCanonicalRoutes, applyStoredRoutes } from './edge-routes.ts';
 import { captureDisplayRoutes, retainedDisplayRoutes } from './display-route-snapshots.ts';
 import { restoreFrozenGroups } from './frozen.ts';
@@ -50,7 +50,7 @@ function finalizeMerged(target: VisualizationBaseline, previous: CanvasBaselineC
   const routes=applyStoredRoutes(new DiagramRouteCache().update(nodes,projection,edges.map(e=>({id:e.id,source:e.source,target:e.target,text:e.text})),reserved,retained),edges,content.edgeRoutes,nodes,projection,content.frozenGroups,boundaryFailures);
   for(const [id,message] of boundaryFailures)issues.push({kind:'merge-conflict' as const,entityIds:[id],message,actions:['cancel' as const]});
   const geometry=createDiagramGeometry(nodes,projection,reserved);
-  for(const edge of edges)if(!pathIsClear(routes.get(edge.id)!.points,retained.has(edge.id)?{...geometry,reserved:[]}:geometry,edge.source,edge.target,edge.id))issues.push({kind:'merge-conflict' as const,entityIds:[edge.id],message:'合并后的连接无法满足路径约束',actions:['cancel' as const]});
+  for(const edge of edges)if(!pathIsClear(routes.get(edge.id)!.points,retained.has(edge.id)?withReservedRoutes(geometry,[]):geometry,edge.source,edge.target,edge.id))issues.push({kind:'merge-conflict' as const,entityIds:[edge.id],message:'合并后的连接无法满足路径约束',actions:['cancel' as const]});
   const snapshots=captureDisplayRoutes(nodes,projection,edges,routes,reserved);
   const merged={...content,displayRoutes:snapshots};
   const state={nodes:frozen.nodes,edgeRoutes:merged.edgeRoutes,frozenGroups:frozen.groups,...(merged.overlay?{overlay:merged.overlay}:{}),displayRoutes:snapshots};

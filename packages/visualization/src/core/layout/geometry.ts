@@ -5,6 +5,8 @@
  * frames without cutting across cards.
  */
 
+import { createSearchBudget, DEFAULT_SEARCH_LIMITS, type SearchLimits } from './search-limits.ts';
+
 export interface Point {
   x: number;
   y: number;
@@ -58,6 +60,17 @@ export function rectContains(outer: Rect, inner: Rect, tolerance = 0): boolean {
 
 export function rectIntersects(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/** Axis-aligned bounds of a segment, used for spatial queries. */
+export function segmentBounds(from: Point, to: Point): Rect {
+  return { x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), w: Math.abs(to.x - from.x), h: Math.abs(to.y - from.y) };
+}
+
+/** Strict-interior crossing test shared by routing, legality and collision checks. */
+export function segmentCrossesRect(from: Point, to: Point, rect: Rect): boolean {
+  if (from.y === to.y) return from.y > rect.y && from.y < rect.y + rect.h && Math.max(from.x, to.x) > rect.x && Math.min(from.x, to.x) < rect.x + rect.w;
+  return from.x > rect.x && from.x < rect.x + rect.w && Math.max(from.y, to.y) > rect.y && Math.min(from.y, to.y) < rect.y + rect.h;
 }
 
 /** 按节点包围盒与连接侧计算吸附锚点；fraction 为沿该侧的比例位置（默认 0.5 居中）。 */
@@ -189,9 +202,10 @@ export function routeOrthogonal(
   fromRect: Rect,
   toRect: Rect,
   obstacles: readonly Obstacle[],
-  options: { offset?: number; padding?: number; startAxis?: 0 | 1; endAxis?: 0 | 1 } = {},
+  options: { offset?: number; padding?: number; startAxis?: 0 | 1; endAxis?: 0 | 1; limits?: SearchLimits } = {},
 ): Point[] {
   const pad = options.padding ?? 14;
+  const budget = createSearchBudget({ ...DEFAULT_SEARCH_LIMITS, ...options.limits });
   const isRight = toRect.x + toRect.w / 2 >= fromRect.x + fromRect.w / 2;
 
   const start: Point = isRight
@@ -346,6 +360,7 @@ export function routeOrthogonal(
 
   let finishId: number | undefined;
   while (heap.length > 0) {
+    if (!budget.consume(1)) break;
     const cur = pop()!;
     if (cur.g > (costs.get(cur.id) ?? Infinity)) continue;
     if (cur.ix === gx && cur.iy === gy) {

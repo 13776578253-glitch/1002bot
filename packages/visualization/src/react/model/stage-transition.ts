@@ -7,7 +7,7 @@ import { restoreFrozenGroups } from './frozen.ts';
 import { rebaseFrozenGrowth } from './frozen-growth.ts';
 import { worldRoutePoints, endpointFingerprint, reservedLockedRoutes, applyStoredRoutes, retainedCanonicalRoutes } from './edge-routes.ts';
 import { validateFrozenConnections } from './blackbox-routes.ts';
-import { createDiagramGeometry, pathIsClear, segmentCrossesRect } from './routing.ts';
+import { createDiagramGeometry, pathIsClear, segmentCrossesRect, withReservedRoutes } from './routing.ts';
 import { DiagramRouteCache } from './route-cache.ts';
 import { aggregateProjectedEdges } from './display-edges.ts';
 import { placeAddedNodes } from './placement.ts';
@@ -249,7 +249,7 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     const geometry = createDiagramGeometry(working, finalProjection, reserved);
     for (const edge of inputs) {
       const route = routes.get(edge.id);
-      if (!route || !pathIsClear(route.points, retained.has(edge.id) ? { ...geometry, reserved: [] } : geometry, edge.source, edge.target, edge.id)) {
+      if (!route || !pathIsClear(route.points, retained.has(edge.id) ? withReservedRoutes(geometry, []) : geometry, edge.source, edge.target, edge.id)) {
         conflicts.push({ kind: 'locked-route', entityIds: [edge.id], message: '连接无法避开当前节点或锁定路径', actions: ['unfreeze', 'cancel'] });
       }
     }

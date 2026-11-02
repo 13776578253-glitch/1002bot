@@ -42,6 +42,10 @@ function inside(outer: Rect, inner: Rect): boolean {
  * 3. 仍重叠时向外投影查找离路径最近的无遮挡可行点；
  * 4. 保底放置于内容区域最右侧开阔平面。
  */
+export function measureLabel(text: string): { width: number; height: number } {
+  return { width: Math.max(44, Array.from(text).reduce((sum, character) => sum + (/[^\u0000-\u007f]/.test(character) ? 12 : 7), 0) + 16), height: 24 };
+}
+
 export function placeEdgeLabel(
   points: readonly Point[],
   text: string,
@@ -49,8 +53,7 @@ export function placeEdgeLabel(
   frames: readonly Rect[],
   occupied: readonly Rect[] = [],
 ): EdgeLabelPlacement {
-  const width = Math.max(44, Array.from(text).reduce((sum, character) => sum + (/[^\u0000-\u007f]/.test(character) ? 12 : 7), 0) + 16);
-  const height = 24;
+  const { width, height } = measureLabel(text);
   const end = points[points.length - 1];
   const content = [...blockers, ...occupied, ...(end ? [{ x: end.x - 8, y: end.y - 8, w: 16, h: 16 }] : [])].map((rect) => expand(rect, CLEARANCE));
   const valid = (point: Point): boolean => {
