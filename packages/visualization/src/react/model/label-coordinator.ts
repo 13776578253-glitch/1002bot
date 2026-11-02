@@ -20,7 +20,7 @@ interface State {
  * first. If no candidate fits, a required label becomes hidden; optional labels
  * simply have no placement. The beam is bounded so this stays a local UI pass.
  */
-export function coordinateLabels(routes: readonly CoordinatedLabelRoute[], fixed: readonly Rect[] = [], beamWidth = 8): Map<string, LabelCandidate | undefined> {
+export function coordinateLabels(routes: readonly CoordinatedLabelRoute[], fixed: readonly Rect[] = [], beamWidth = 24): Map<string, LabelCandidate | undefined> {
   const ordered = [...routes].sort((a, b) =>
     Number(b.required) - Number(a.required)
     || a.candidates.length - b.candidates.length

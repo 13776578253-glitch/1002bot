@@ -28,6 +28,7 @@ export interface GroupEdgeInput {
   text: string;
   fixed?: CachedRoute;
   priority?: 'auto' | 'pinned' | 'locked' | 'frozen';
+  softPorts?: boolean;
   labelRequired?: boolean;
 }
 
@@ -391,7 +392,7 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
   allocator.begin();
   try {
     for (const edge of input.edges) {
-      if (!edge.fixed) continue;
+      if (!edge.fixed || edge.softPorts) continue;
       const priority = edge.priority ?? 'pinned';
       const sourceHandle = edge.fixed.sourceHandle;
       const targetHandle = edge.fixed.targetHandle;

@@ -57,6 +57,10 @@ export const DEFAULT_QUALITY_WEIGHTS: QualityWeights = {
 const key = (slot: PortSlot): string => `${slot.nodeId}::${slot.physicalId}`;
 const distance = (a: Point, b: Point): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
+export function crossingsBetween(a: readonly Point[], b: readonly Point[]): number {
+  return crossings(a, b);
+}
+
 function crossings(a: readonly Point[], b: readonly Point[]): number {
   let count = 0;
   for (let i = 1; i < a.length; i += 1) for (let j = 1; j < b.length; j += 1) {

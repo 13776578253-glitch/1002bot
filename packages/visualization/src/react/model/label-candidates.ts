@@ -31,7 +31,7 @@ export function labelCandidatesForRoute(
   text: string,
   geometry: DiagramGeometry,
   trunkSegments = 0,
-  max = 6,
+  max = 14,
 ): LabelCandidate[] {
   const { width, height } = measureLabel(text);
   const output: LabelCandidate[] = [];
@@ -51,8 +51,8 @@ export function labelCandidatesForRoute(
     const high = segment.length - alongHalf - BEND_CLEARANCE;
     if (low > high) continue;
     const kind: 'branch' | 'trunk' = index < trunkSegments ? 'trunk' : 'branch';
-    const offsets = [0, -(acrossHalf + 4), acrossHalf + 4, -(acrossHalf + 8), acrossHalf + 8];
-    for (const fraction of [0.7, 0.5, 0.3]) {
+    const offsets = [0, -(acrossHalf + 4), acrossHalf + 4, -(acrossHalf + 8), acrossHalf + 8, -(acrossHalf + 16), acrossHalf + 16, -(acrossHalf + 24), acrossHalf + 24, -(acrossHalf + 32), acrossHalf + 32, -(acrossHalf + 48), acrossHalf + 48];
+    for (const fraction of [0.85, 0.7, 0.55, 0.4, 0.25, 0.15]) {
       const along = Math.max(low, Math.min(high, segment.length * fraction));
       for (const offset of offsets) {
         const anchor = {

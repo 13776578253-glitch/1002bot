@@ -195,7 +195,7 @@ export class GroupRouteCache {
       const cached = group && !dirtyIds.has(group.id)
         ? this.outcome!.routes.get(edge.id)
         : reusable.has(edge.id) ? this.records.get(edgeGroup.get(edge.id)!.id)?.routes.get(edge.id) : undefined;
-      return cached ? { ...edge, fixed: cached, priority: 'pinned' as const } : edge;
+      return cached ? { ...edge, fixed: cached, priority: 'pinned' as const, softPorts: true } : edge;
     });
     const reserved: ReservedRoute[] = [];
     const modeHints: Record<string, GroupMode> = {};
@@ -237,7 +237,8 @@ export class GroupRouteCache {
       return record?.plan ? [record.plan] : [];
     });
     const merged: GroupSolveSuccess = { ...incremental, groups, plans, elapsedMs: performance.now() - started };
-    const labelChange = this.coordinateOutcomeLabels(merged, input);
+    const changedEdges = new Set(dirtyGroups.flatMap((group) => group.edges));
+    const labelChange = this.coordinateOutcomeLabels(merged, input, 8, changedEdges);
     this.outcome = merged;
     this.records.clear();
     for (const group of groups) {
@@ -282,18 +283,24 @@ export class GroupRouteCache {
     return false;
   }
 
-  private coordinateOutcomeLabels(outcome: GroupSolveSuccess, input: GroupRouteCacheInput): { reselected: number; hidden: number } {
-    const fixed: Rect[] = input.edges.flatMap((edge) => edge.fixed ? [{
+  private coordinateOutcomeLabels(outcome: GroupSolveSuccess, input: GroupRouteCacheInput, beamWidth: number, changed?: ReadonlySet<string>): { reselected: number; hidden: number } {
+    const protectedLabels: Rect[] = input.edges.flatMap((edge) => edge.fixed ? [{
       x: edge.fixed.label.x - edge.fixed.label.width / 2, y: edge.fixed.label.y - edge.fixed.label.height / 2,
       w: edge.fixed.label.width, h: edge.fixed.label.height,
     }] : []);
-    const visible = outcome.plans.flatMap((plan) => plan.routes.flatMap((route) => route.label ? [route.label.rect] : []));
-    if (!this.hasLabelConflict(visible, fixed)) return { reselected: 0, hidden: 0 };
-    const placements = coordinateLabels(outcome.plans.flatMap((plan) => plan.routes.map((route) => ({
+    const allRoutes = outcome.plans.flatMap((plan) => plan.routes);
+    const targetRoutes = changed ? allRoutes.filter((route) => changed.has(route.edgeId)) : allRoutes;
+    const fixed = changed
+      ? [...protectedLabels, ...allRoutes.filter((route) => !changed.has(route.edgeId) && route.label).map((route) => route.label!.rect)]
+      : protectedLabels;
+    const visible = allRoutes.flatMap((route) => route.label ? [route.label.rect] : []);
+    if (!this.hasLabelConflict(visible, protectedLabels)) return { reselected: 0, hidden: 0 };
+    const placements = coordinateLabels(targetRoutes.map((route) => ({
       edgeId: route.edgeId, candidates: route.labelCandidates, required: route.labelRequired,
-    }))), fixed);
+    })), fixed, beamWidth);
     let reselected = 0, hidden = 0;
     for (const plan of outcome.plans) for (const route of plan.routes) {
+      if (changed && !changed.has(route.edgeId)) continue;
       const candidate = placements.get(route.edgeId);
       const previous = route.label;
       const hide = (cached: CachedRoute): CachedRoute => {
@@ -377,7 +384,7 @@ export class GroupRouteCache {
       return { outcome, stats: { mode: 'full', groups: groups.length, reusedGroups: 0, solvedGroups: 0, durationMs: performance.now() - started, fullReason } };
     }
     this.outcome = outcome;
-    this.coordinateOutcomeLabels(outcome, input);
+    this.coordinateOutcomeLabels(outcome, input, 24);
     this.records.clear();
     for (const group of outcome.groups) {
       const routes = new Map<string, CachedRoute>();

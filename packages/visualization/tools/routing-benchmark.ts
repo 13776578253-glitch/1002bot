@@ -7,6 +7,7 @@ import { solveRouteGroups } from '../src/react/model/route-groups.ts';
 import { GroupRouteCache } from '../src/react/model/group-route-cache.ts';
 import { DiagramRouteCache, type CachedRoute } from '../src/react/model/route-cache.ts';
 import { measureRoutes, type QualityRoute } from '../src/react/model/route-quality.ts';
+import { crossGroupCrossingHotspots } from '../src/react/model/cross-group-quality.ts';
 
 const HUBS = 5;
 const HUB_GAP = 2600;
@@ -82,13 +83,16 @@ function percentile(values: readonly number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))]!;
 }
 
-function quality(routes: Map<string, CachedRoute>): ReturnType<typeof measureRoutes> {
-  const rows: QualityRoute[] = [...routes].map(([edgeId, route]) => ({
+function qualityRows(routes: Map<string, CachedRoute>): QualityRoute[] {
+  return [...routes].map(([edgeId, route]) => ({
     edgeId, points: route.points, label: route.label,
     labelRequired: Boolean(route.text.trim()),
     ...(route.labelState ? { labelState: route.labelState } : {}),
   }));
-  return measureRoutes(rows);
+}
+
+function quality(routes: Map<string, CachedRoute>): ReturnType<typeof measureRoutes> {
+  return measureRoutes(qualityRows(routes));
 }
 
 function runScale(edgeCount: number, crossed: boolean): Record<string, unknown> {
@@ -104,32 +108,42 @@ function runScale(edgeCount: number, crossed: boolean): Record<string, unknown> 
   const groupCache = new GroupRouteCache();
   const warmGroup = groupCache.update({ ...input });
   const groupIncrementalMs: number[] = [];
+  const localFailures: Array<Record<string, unknown>> = [];
   let groupIncrementalStats = warmGroup.stats;
   let lastMoved = fixture.nodes;
   for (let index = -3; index < 30; index += 1) {
-    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x + 12 + Math.max(0, index) * 4, y: node.position.y + 8 } } : node);
+    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x - 12 - Math.max(0, index) * 4, y: node.position.y + 8 } } : node);
     lastMoved = moved;
     const started = performance.now();
     const update = groupCache.update({ ...input, nodes: moved });
     const elapsed = performance.now() - started;
     groupIncrementalStats = update.stats;
-    if (index >= 0) groupIncrementalMs.push(elapsed);
+    if (index >= 0) {
+      groupIncrementalMs.push(elapsed);
+      if (!update.outcome?.ok) localFailures.push({
+        frame: index, stats: update.stats, error: update.error,
+        failures: update.outcome?.failures ?? [],
+      });
+    }
   }
   const legacyCache = new DiagramRouteCache();
   legacyCache.update(fixture.nodes, fixture.projection, legacyInputs);
   const legacyIncrementalMs: number[] = [];
   for (let index = -3; index < 30; index += 1) {
-    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x + 12 + Math.max(0, index) * 4, y: node.position.y + 8 } } : node);
+    const moved = fixture.nodes.map((node) => node.id === 'leaf-0-0' ? { ...node, position: { x: node.position.x - 12 - Math.max(0, index) * 4, y: node.position.y + 8 } } : node);
     const started = performance.now();
     legacyCache.update(moved, fixture.projection, legacyInputs);
     if (index >= 0) legacyIncrementalMs.push(performance.now() - started);
   }
-  const commitGroup = samples(30, () => new GroupRouteCache().update({ ...input, nodes: lastMoved, revision: 1 }));
-  const commitLegacy = samples(30, () => new DiagramRouteCache().update(lastMoved, fixture.projection, legacyInputs));
+  const commitGroup = samples(30, () => groupCache.update({ ...input, nodes: lastMoved }));
+  const commitLegacy = samples(30, () => legacyCache.update(lastMoved, fixture.projection, legacyInputs));
   const cold = coldGroup.value;
   const coldCacheOutcome = coldCache.value.outcome;
   const groupRoutes = coldCacheOutcome?.ok ? coldCacheOutcome.routes : cold.ok ? cold.routes : new Map<string, CachedRoute>();
   const legacyRoutes = coldLegacy.value;
+  const groupByEdge = new Map<string, string>();
+  if (coldCacheOutcome?.ok) for (const plan of coldCacheOutcome.plans) for (const route of plan.routes) groupByEdge.set(route.edgeId, plan.groupId);
+  const crossingHotspots = crossGroupCrossingHotspots(qualityRows(groupRoutes), groupByEdge, 5);
   return {
     variant: crossed ? 'crossed' : 'stars',
     edges: edgeCount,
@@ -143,6 +157,9 @@ function runScale(edgeCount: number, crossed: boolean): Record<string, unknown> 
     commitLegacyMs: { p50: percentile(commitLegacy.ms, 0.5), p95: percentile(commitLegacy.ms, 0.95) },
     warmGroups: warmGroup.stats,
     localGroups: groupIncrementalStats,
+    localFailureCount: localFailures.length,
+    localFailures,
+    crossingHotspots,
     quality: { group: quality(groupRoutes), legacy: quality(legacyRoutes) },
   };
 }
