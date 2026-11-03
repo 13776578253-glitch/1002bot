@@ -5,6 +5,7 @@ import type { CanvasNode } from '../model/grouping.ts';
 import { baselineNodes } from '../model/hierarchy.ts';
 import { baselineForView } from '../model/view-projection.ts';
 import { restoreFrozenGroups } from '../model/frozen.ts';
+import { confirmationIsCurrent } from '../model/confirmation.ts';
 import { normalizeCardLayout } from '../model/normalize-card-layout.ts';
 import { hierarchyProjection } from '../model/hierarchy.ts';
 import { validateStoredRoutes } from '../model/edge-routes.ts';
@@ -63,11 +64,10 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     const frozen = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes), saved.frozenGroups);
     if (frozen.conflicts.length) throw new Error(frozen.conflicts.map((item) => item.message).join('；'));
     const original = restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes, false);
-    const normalized = normalizeCardLayout(frozen.nodes, saved.nodes, baseline.stage, true);
+    const normalized = normalizeCardLayout(frozen.nodes, saved.nodes, baseline.stage);
     const issue = normalized.conflict?.message ?? validateStoredRoutes(original, normalized.nodes, saved.edgeRoutes, hierarchyProjection(normalized.nodes, baseline.stage));
     normalizationMessage.current = issue ? `卡片规格调整冲突：${issue}` : '';
     const working = issue ? original : normalized.nodes;
-    if (!issue && working.some((node) => { const old = saved.nodes.find((item) => item.id === node.id); return old && (old.width !== node.width || old.height !== node.height || old.position.x !== node.position.x || old.position.y !== node.position.y); })) views.current[mode][id] = { ...replaceContent(saved, captureContent(working, saved.edgeRoutes, frozen.groups, saved.overlay, saved.displayRoutes)), requiresConfirmation: true };
     return { nodes: working, edgeRoutes: structuredClone(saved.edgeRoutes), frozenGroups: structuredClone(frozen.groups),
       ...(saved.overlay ? { overlay: structuredClone(saved.overlay) } : {}), displayRoutes: structuredClone(saved.displayRoutes ?? []) };
   }, [getBaseline]);
@@ -102,8 +102,8 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     const mode = modeRef.current, id = idRef.current;
     views.current[mode][id] = replaceContent(views.current[mode][id]!, captureCurrent());
   }, [captureCurrent]);
-  const save = useCallback(() => {
-    storeCurrent();
+  const save = useCallback((capture = true) => {
+    if (capture) storeCurrent();
     if (!persistence) return;
     const view: CanvasWorkspaceView = { version: 2, baselineId: idRef.current, viewMode: modeRef.current, baselines: views.current[modeRef.current], views: views.current };
     void saveWorkspace(persistence.storage, persistence.key, structuredClone(view)).then(() => setSaveError(''),
@@ -153,15 +153,15 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     refresh((value) => value + 1); save();
   }, [captureCurrent, makeContent, publishContent, save]);
   const switchBaseline = useCallback((id: string) => {
-    storeCurrent(); pending.current = undefined; idRef.current = id; publishId(id);
-    publishContent(makeContent(id, modeRef.current)); save();
-  }, [storeCurrent, makeContent, publishContent, save]);
+    pending.current = undefined; idRef.current = id; publishId(id);
+    publishContent(makeContent(id, modeRef.current)); save(false);
+  }, [makeContent, publishContent, save]);
   const switchView = useCallback((mode: CanvasViewMode) => {
     if (mode === modeRef.current) return '';
-    storeCurrent(); pending.current = undefined; modeRef.current = mode; publishMode(mode);
-    publishContent(makeContent(idRef.current, mode)); save();
+    pending.current = undefined; modeRef.current = mode; publishMode(mode);
+    publishContent(makeContent(idRef.current, mode)); save(false);
     return normalizationMessage.current;
-  }, [storeCurrent, makeContent, publishContent, save]);
+  }, [makeContent, publishContent, save]);
   const applyStageTransitions = useCallback((targetId: string, results: Record<CanvasViewMode, ViewTransition>) => {
     storeCurrent(); pending.current = undefined;
     for (const mode of VIEW_MODES) {
@@ -192,8 +192,13 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     return saved ? { content: contentOf(saved), revision: saved.revision, inheritance: saved.inheritance, sourceStage: saved.sourceStage } : undefined;
   }, [storeCurrent]);
   const getConfirmedContent = useCallback((id: string, mode = modeRef.current) => views.current[mode][id]?.confirmed, []);
-  const getConfirmedRevision = useCallback((id: string, mode = modeRef.current) => { const saved = views.current[mode][id]; return saved?.confirmed && !saved.requiresConfirmation ? saved.confirmedRevision ?? saved.revision : undefined; }, []);
-  const saveViewport = useCallback((viewport: CanvasViewport) => { views.current[modeRef.current][idRef.current]!.viewport = viewport; if (!pending.current) save(); }, [save]);
+  const getConfirmedRevision = useCallback((id: string, mode = modeRef.current) => {
+    const saved = views.current[mode][id], baseline = getBaseline(id, mode);
+    if (!saved) return undefined;
+    const revision = baseline.stage.graph.revision ?? baseline.stage.id;
+    return confirmationIsCurrent(saved, revision) ? saved.confirmedRevision ?? saved.revision : undefined;
+  }, [getBaseline]);
+  const saveViewport = useCallback((viewport: CanvasViewport) => { views.current[modeRef.current][idRef.current]!.viewport = viewport; if (!pending.current) save(false); }, [save]);
   return {
     nodes, nodesRef, setNodes, edgeRoutes, routesRef, frozenGroups, frozenRef, overlay, overlayRef,
     setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, displayRoutes, displayRoutesRef, commitContent,
@@ -202,8 +207,12 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     initialViewport: views.current[initialMode][initialId]?.viewport,
     getViewport: (id: string, mode = modeRef.current) => views.current[mode][id]?.viewport, saveViewport,
     begin, finish, commit, switchBaseline, applyStageTransitions, confirm, getConfirmedContent, getConfirmedRevision, getSavedContent,
-    undo: () => travel('undo'), redo: () => travel('redo'), canUndo: history().canUndo, canRedo: history().canRedo, saveError, retrySave: save,
+    undo: () => travel('undo'), redo: () => travel('redo'), canUndo: history().canUndo, canRedo: history().canRedo, saveError, retrySave: () => save(),
     transition: views.current[viewMode][baselineId]?.transition, confirmedAt: views.current[viewMode][baselineId]?.confirmedAt,
-    confirmationStatus: VIEW_MODES.map((mode) => { const saved = views.current[mode][baselineId]; return { mode, confirmed: !!saved?.confirmed, current: !!saved?.confirmed && !saved.requiresConfirmation && (saved.confirmedRevision ?? saved.revision) === (getBaseline(baselineId, mode).stage.graph.revision ?? getBaseline(baselineId, mode).stage.id) }; }),
+    confirmationStatus: VIEW_MODES.map((mode) => {
+      const saved = views.current[mode][baselineId], source = getBaseline(baselineId, mode);
+      const revision = source.stage.graph.revision ?? source.stage.id;
+      return { mode, confirmed: !!saved?.confirmed, current: !!saved && confirmationIsCurrent(saved, revision) };
+    }),
   };
 }

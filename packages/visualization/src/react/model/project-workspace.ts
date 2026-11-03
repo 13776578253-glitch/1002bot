@@ -79,9 +79,6 @@ function projectView(stage: CanvasBaselineView, previous?: ProjectViewWorkspace)
     const draft = projectSnapshot(canvasContent(stage));
     const confirmed = stage.confirmed ? projectSnapshot(stage.confirmed) : undefined;
     const checkpoints = structuredClone(previous?.checkpoints ?? []);
-    if (confirmed && stage.confirmationId && stage.confirmedAt && !checkpoints.some((item) => item.id === stage.confirmationId)) {
-      checkpoints.push({ id: stage.confirmationId, createdAt: stage.confirmedAt, ...structuredClone(confirmed) });
-    }
     return {
       revision: stage.revision, overrides: draft.overrides, containerStates: draft.containerStates, draft: draft.content,
       ...(confirmed ? { confirmed } : {}),

@@ -44,7 +44,7 @@ test('the first snapshot selects the six report overview components while retain
   assert.deepEqual(seed.stages[snapshotId]!.checkpoints, []);
 });
 
-test('a source revision becomes a saveable draft and preserves its previous confirmed checkpoint', async () => {
+test('a source revision becomes a saveable draft without creating a new checkpoint', async () => {
   const records = new Map<string, string>();
   const storage = createProjectViewStorage({ getItem: (key) => records.get(key) ?? null, setItem: (key, value) => { records.set(key, value); } }, project.id);
   const view = projectWorkspaceToCanvas(normalizeProjectWorkspace(await read<ProjectWorkspace>(at(manifest.workspace!)), project.id));
@@ -63,6 +63,6 @@ test('a source revision becomes a saveable draft and preserves its previous conf
   assert.equal(restored!.baselines[snapshotId]!.revision, 'revised-source');
   assert.equal(restored!.baselines[snapshotId]!.confirmedRevision, baseline.stage.graph.revision ?? baseline.stage.id);
   const persisted = normalizeProjectWorkspace(JSON.parse(records.get('project')!), project.id);
-  assert.equal(persisted.stages[snapshotId]!.checkpoints.length, 1);
-  assert.deepEqual(persisted.stages[snapshotId]!.checkpoints[0]!.content, content);
+  assert.equal(persisted.stages[snapshotId]!.checkpoints.length, 0);
+  assert.deepEqual(persisted.stages[snapshotId]!.confirmed!.content, content);
 });

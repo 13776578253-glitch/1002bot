@@ -29,7 +29,7 @@ export function CanvasControls({ zoom, boxMode, grid, onZoomOut, onZoomIn, onFit
     <button className="icon-button" aria-label="框选节点" aria-pressed={boxMode} title="框选节点 · Shift + 拖动" onClick={onToggleBox}><Icon name="select" /></button>
     <button className="icon-button" aria-label="显示网格" aria-pressed={grid} onClick={onToggleGrid}><Icon name="grid" /></button>
     <span className="divider" />
-    <button className="icon-button" aria-label="固定当前可见节点" title="固定当前可见节点的位置" onClick={onFreeze}><Icon name="pin" /></button>
+    <button className="icon-button" aria-label="固定当前可见节点" title="固定当前可见节点（与子图冻结不同）" onClick={onFreeze}><Icon name="pin" /></button>
     <button className="icon-button" aria-label="确认当前阶段布局" title="确认当前阶段布局，作为后续阶段基础" onClick={onConfirm}><Icon name="check" /></button>
     <button className="icon-button" aria-label="撤销" title="撤销 · Ctrl + Z" disabled={!canUndo} onClick={onUndo}><Icon name="undo" /></button>
     <button className="icon-button" aria-label="重做" title="重做 · Ctrl + Shift + Z" disabled={!canRedo} onClick={onRedo}><Icon name="redo" /></button>

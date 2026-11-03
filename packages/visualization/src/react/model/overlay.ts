@@ -1,4 +1,5 @@
-/** User-owned graph overlay contract; canonical source entities remain unchanged. */
+/** User-owned graph overlay contract; canonical source entities remain unchanged.
+ * Unenabled: no controller or UI currently creates an overlay; persistence compatibility only. */
 import type { CanonicalEdge, CanonicalEndpoint, CanonicalNode } from '../../core/schema/types.ts';
 
 export interface EdgeOverride {

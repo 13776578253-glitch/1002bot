@@ -57,7 +57,6 @@ function normalizeProjectView(id: string, raw: unknown): ProjectViewWorkspace {
     };
     const checked: CanvasBaselineView = normalizeWorkspaceView({ version: 2, baselineId: id, baselines: { [id]: candidate } }).baselines[id]!;
     const matched = checkpoints.find((item) => item.id === raw.confirmationId);
-    if (text(raw.confirmationId) && !matched) throw new Error('阶段确认快照缺少对应检查点');
     if (matched && (!confirmed || !equal(matched.content, confirmed.content) || matched.createdAt !== raw.confirmedAt)) throw new Error('阶段确认快照与检查点不一致');
     return {
       revision: checked.revision, draft: draft.content, overrides: draft.overrides, containerStates: draft.containerStates,

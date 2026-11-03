@@ -10,13 +10,14 @@ export interface SnapshotDialogProps {
   stageId: string;
   viewLabel: string;
   confirmedAt?: string | undefined;
+  confirmedCurrent?: boolean | undefined;
   onSelectStage(id: string): void;
   onClose(): void;
 }
 
 const tabs = ['详情', '活动记录', '备注'] as const;
 
-export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, description, viewLabel, confirmedAt, onSelectStage, onClose }: SnapshotDialogProps) {
+export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, description, viewLabel, confirmedAt, confirmedCurrent, onSelectStage, onClose }: SnapshotDialogProps) {
   const id = useId();
   const dialog = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -54,7 +55,7 @@ export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, de
       </div>
       <aside className="snapshot-sidebar" aria-label="快照属性">
         <div className="snapshot-properties"><h3>快照属性</h3><dl>
-          <div><dt>状态</dt><dd><span className="snapshot-status"><span />{confirmedAt ? '有确认快照' : '草稿'}</span></dd></div>
+          <div><dt>状态</dt><dd><span className="snapshot-status"><span />{confirmedAt ? confirmedCurrent ? '已确认' : '有未确认修改' : '草稿'}</span></dd></div>
           <div><dt>视图</dt><dd>{viewLabel}</dd></div>
           <div><dt><label htmlFor={`${id}-stage`}>所属阶段</label></dt><dd><div className="snapshot-stage"><select id={`${id}-stage`} value={stageId} onChange={(event) => { const next = event.target.value; if (next !== stageId) onSelectStage(next); }}>{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.label}</option>)}</select><Icon name="down" /></div></dd></div>
           <div><dt>标签</dt><dd className="snapshot-unset">—</dd></div>

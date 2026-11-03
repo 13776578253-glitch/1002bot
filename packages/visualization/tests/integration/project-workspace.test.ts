@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CanvasBaselineContent, CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
-import { canvasWorkspaceToProject, projectWorkspaceToCanvas } from '../../src/react/model/project-workspace.ts';
+import { canvasWorkspaceToProject, projectSnapshot, projectWorkspaceToCanvas } from '../../src/react/model/project-workspace.ts';
 import { createProjectViewStorage, normalizeProjectWorkspace } from '../../src/react/persistence/project-storage.ts';
 
 class MemoryStorage {
@@ -35,16 +35,19 @@ test('project conversion keeps relative geometry and derives independently inspe
   assert.deepEqual(projectWorkspaceToCanvas(normalizeProjectWorkspace(project, 'alpha')), source);
 });
 
-test('confirmations create immutable stage checkpoints while autosaves and reloads preserve them', async () => {
+test('confirmations no longer add checkpoints while existing history is preserved', async () => {
   const memory = new MemoryStorage(), storage = createProjectViewStorage(memory, 'alpha');
   const first = content(30, '初次'), second = content(70, '再次');
-  await storage.save('new-key', view(first, first, 'confirm-1'));
-  const initial = JSON.parse(memory.getItem('new-key')!);
-  assert.equal(initial.stages.M1.checkpoints.length, 1);
+  const seeded = canvasWorkspaceToProject(view(first, first, 'confirm-1'), 'alpha');
+  const existing = { id: 'confirm-1', createdAt: '2026-11-01T01:00:00Z', ...projectSnapshot(first) };
+  seeded.stages.M1!.checkpoints = [existing];
+  seeded.stages.M1!.views!.structure!.checkpoints = [structuredClone(existing)];
+  memory.setItem('new-key', JSON.stringify(seeded));
+
   await storage.save('new-key', view(second, first, 'confirm-1'));
   let state = JSON.parse(memory.getItem('new-key')!);
   assert.equal(state.stages.M1.checkpoints.length, 1);
-  assert.deepEqual(state.stages.M1.checkpoints[0], initial.stages.M1.checkpoints[0]);
+  assert.deepEqual(state.stages.M1.checkpoints[0], existing);
   assert.equal(state.stages.M1.draft.nodes[1].position.x, 70);
   assert.equal(state.stages.M1.confirmed.content.nodes[1].position.x, 30);
   assert.equal((await storage.load('new-key'))!.baselines.M1!.confirmationId, 'confirm-1');
@@ -55,10 +58,9 @@ test('confirmations create immutable stage checkpoints while autosaves and reloa
   const nextStorage = createProjectViewStorage(memory, 'alpha');
   await nextStorage.save('new-key', view(second, second, 'confirm-2'));
   state = JSON.parse(memory.getItem('new-key')!);
-  assert.deepEqual(state.stages.M1.checkpoints.map((item: { id: string }) => item.id), ['confirm-1', 'confirm-2']);
-  assert.deepEqual(state.stages.M1.checkpoints[0], initial.stages.M1.checkpoints[0]);
-  assert.equal(state.stages.M1.checkpoints[1].overrides.nodeTitles.child, '再次');
-  assert.equal(state.stages.M1.checkpoints[0].overrides.nodeTitles.child, '初次');
+  assert.deepEqual(state.stages.M1.checkpoints.map((item: { id: string }) => item.id), ['confirm-1']);
+  assert.deepEqual(state.stages.M1.checkpoints[0], existing);
+  assert.equal(state.stages.M1.confirmationId, 'confirm-2');
 });
 
 test('project identities isolate data and failed reads never replace existing records', async () => {
@@ -81,6 +83,9 @@ test('project identities isolate data and failed reads never replace existing re
 
 test('saving one stage keeps checkpoints for stages absent from the current canvas view', () => {
   const first = canvasWorkspaceToProject(view(content(30, 'A'), content(30, 'A'), 'confirm-1'), 'alpha');
+  const existing = { id: 'confirm-1', createdAt: '2026-11-01T01:00:00Z', ...projectSnapshot(content(30, 'A')) };
+  first.stages.M1!.checkpoints = [existing];
+  first.stages.M1!.views!.structure!.checkpoints = [structuredClone(existing)];
   const onlyM0: CanvasWorkspaceView = { version: 2, baselineId: 'M0', baselines: { M0: { revision: 'zero', nodes: [], edgeRoutes: [], frozenGroups: [] } } };
   const next = canvasWorkspaceToProject(onlyM0, 'alpha', first);
   assert.equal(next.stages.M1!.checkpoints[0]!.id, 'confirm-1');
