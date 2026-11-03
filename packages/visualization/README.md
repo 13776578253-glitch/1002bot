@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/layout-intent.ts`, `src/react/model/snapshot-inheritance.ts`, `src/react/canvas/use-workspace-session.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
+Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/layout-intent.ts`, `src/react/model/snapshot-inheritance.ts`, `src/react/canvas/use-workspace-session.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`, `src/react/model/view-projection.ts`, `src/react/model/normalize-card-layout.ts`
 
 # Visualization
 
@@ -118,13 +118,27 @@ const persistence = {
 
 旧记录在工作副本中转换为 `origin=legacy`，表示来源未知；双方都改变的未知几何优先保留当前阶段草稿。旧尺寸偏好采用实际保存的 frame，扩容预算字段不作为最小尺寸。原确认快照及检查点不就地迁移。项目存储首次保存带编辑意图的草稿前，将原始 JSON 保留到原键加 `:before-layout-intent-v1` 的一次性备份键。
 
-位置与约束按阶段保存；切换时共同节点继续同步当前展开状态。展开和切换不自动缩放全图，恢复各阶段已保存视口；适应画布由按钮触发。拖动结束、标题提交及其他布局操作后保存，视口在移动结束时保存。
+位置与约束按阶段和视图保存；切换直接恢复各自快照，不同步其他视图的展开状态。优先恢复已保存视口，首次打开未保存视口的视图时适应画布。拖动结束、标题提交及其他布局操作后保存，视口在移动结束时保存。
 
 每阶段当前页面会话保留100步撤销/重做。一次拖动包含祖先扩缩和邻居避让；冻结、分组、标题提交和展开各占一步。阶段重新继承同时撤销布局和继承基准。快捷键为 Ctrl/Cmd+Z 与 Ctrl/Cmd+Shift+Z（另支持 Ctrl+Y），输入框使用原生编辑历史。
 
+## 三份阶段视图
+
+同一 Canonical Graph 在每个阶段保存三份独立工作视图：
+
+- `Overview View`：架构节点全部收起。
+- `Structure View`：首次展开一层真实组件，之后独立保存用户选择的展开集合。
+- `Full View`：所有真实组件和职责末端全部展开。
+
+视图选择器显示当前阶段及各视图确认状态。布局、节点约束、人工路径、冻结账本、视口、草稿、确认快照、继承基准和页面内撤销历史均按阶段与视图隔离。收展编辑在 Structure View 中进行；Overview 与 Full 的投影范围固定。已有快照切换直接恢复，无逐节点收展或父链贴合。
+
+首次创建独立视图时，`view-projection.ts` 计算子至父的布局和尺寸。后续阶段分别以父阶段的同名确认快照应用语义增量和三方合并；三个候选均合法才一次写入目标阶段。冲突面板标明所属视图，失败时所有目标视图保持原状。历史确认和检查点保留，更新后的草稿通过 `requiresConfirmation` 等待重新确认。新增元素当前使用既有增量安置器；AI 安置服务尚未接入。
+
+Canvas v2 增加 `viewMode` 与 `views[mode][stageId]`；项目 Workspace v1 增加 `activeView` 与 `stages[stageId].views[mode]`。旧 `baselines` 和阶段字段保留为活动视图兼容别名。旧单视图仅迁入 Structure，首次写回前保留原 JSON 到 `<key>:before-three-views-v1`。缺少其他视图的旧后续阶段从首阶段建立确认链，原有草稿与确认保留，并在页面提示。
+
 ## 阶段增量与冻结子图
 
-工作视图 v2 把草稿和已确认快照分开保存。自动保存只更新草稿；工具栏的确认按钮写入 `confirmedAt` 与当前内容副本，后续阶段以该副本为基础。切换阶段时若来源阶段没有确认快照，画布拒绝进入下一阶段。
+工作视图 v2 把草稿和已确认快照分开保存。自动保存只更新草稿；工具栏的确认按钮写入 `confirmedAt` 与当前内容副本，后续阶段以该副本为基础。切换阶段前，来源阶段的三份视图都须有当前版本的确认快照。
 
 首次进入目标阶段时，只对来源差异求解：共同叶节点沿用已确认世界坐标，容器保留 `worldPosition - fitOffset` 内容锚点。替换实体按 `previousId` 继承旧布局，归属改变的替换实体重新安置。新增节点优先填补空隙，再四向有限扩容。人工模式保留容器展开状态，隐藏新增节点继续使用声明的局部坐标；可见新增节点避开其他容器的完整范围。人工扩缩每轴余量为自然尺寸的 100% 且不超过 800px；自动阶段安置每轴预算为自然尺寸加 800px。成功后不抬高自然基准，已合法生成的既有尺寸可保持。
 
@@ -151,14 +165,14 @@ const persistence = {
 - `previousStageId`：可选阶段父级；缺省时按数组前一项推导。
 - `nodeChanges`、`edgeChanges`：按实体 ID 提供 `ChangeMark`，覆盖所有非根节点及关系。`replaced` 标记可带 `previousId`，增量布局据此继承旧实体位置。
 - `positions`：可选初始坐标。根层节点是画布坐标；子节点是父容器局部坐标。默认模式缺省时使用有序网格。
-- `layout`：人工模式指定 kind=manual 和每个节点的完整位置及尺寸，容器还指定 expandedSize。用户保存几何优先于这些初始值。
+- `layout`：人工模式指定 kind=manual 和每个节点的完整位置及尺寸，容器还指定 expandedSize。结构框的用户保存几何优先于初始值；普通收起卡片和详情卡片使用统一规格。
 - `stage.presentation`：展示关系的展开条件、原始关系映射和细化关系。总览和细节按条件互斥。
 
 `ChangeMark.kind` 为 `baseline`、`inherited`、`added` 或 `replaced`，`label` 是相应文字，`note` 可记录替换前后关系。界面仅显示新增、替换注释，分别使用绿色、琥珀色；其余关系保留名称。
 
 接入数据先调用 `assertValidBaselines` 校验。React 组件也在输入边界执行校验，拒绝重复基线 ID、无效图、缺失标记或非法坐标。需要增量更新时，使用 Core `applyGraphPatch` 生成新的完整快照，再组装基线输入。
 
-每次替换源数据应更新 `stage.graph.revision`。基线 ID 或 revision 变化会重建画布会话；相同 revision 下的父组件重渲染保留当前会话。卡片移动、分组和标题修改仅存于组件会话；切换基线保留各自位置和分组，共有节点同步当前展开状态。
+每次替换源数据应更新 `stage.graph.revision`。基线 ID 或 revision 变化会重建画布会话；相同 revision 下的父组件重渲染保留当前会话。卡片移动、分组和标题修改归属当前阶段的当前视图；切换保留各自几何、分组和展开集合。
 
 真实数据适配器后续只负责生成上述合同，不在渲染组件内解析业务文件或绑定业务节点 ID。
 
@@ -166,7 +180,7 @@ const persistence = {
 
 双击或点击展开按钮原位递归展开，跨层连线绑定可见端点。支持拖动、平移、缩放、直接关联链路高亮、Shift 框选、Ctrl/Cmd+G 分组、标题编辑和解散。
 
-内部卡片可向四周撑开父链，回拖收缩。每轴额外空间最多为自然尺寸的 100% 且不超过 800 px，两侧共享总余量；连续拖动不抬高上限。近对齐时按 6 屏幕像素阈值吸附，连线和标签避开卡片及标题。
+节点收起卡片统一为 462×96，两项以内的详情卡片统一为 462×192，其余详情卡片为 462×280；内部职责使用 210×80 信息卡、8px 间距，分别采用 1×2 或固定 2×2 分页。翻页只修改组件内部状态。人工拖动过程中，框内移动保持父框；越界时按需扩容。拖动结束和内容尺寸变化后自动贴合内容，收缩右侧与底部空白，保持父框原点及人工设置的最小尺寸。每轴额外空间最多为自然尺寸的 100% 且不超过 800 px，两侧共享总余量；连续拖动不抬高上限。近对齐时按 6 屏幕像素阈值吸附，连线和标签避开卡片及标题。
 
 ## 0.2 基线迁移
 
@@ -189,3 +203,5 @@ The playground exposes `?lab=routing`: a 36-node routing lab with 1,584 physical
 ### Default engine policy (P5)
 
 Legacy remains the default. Group promotion requires all of the following: 50/100/200-edge cold and local-update P95 at or below 16 ms; zero cross-group label overlaps and no hidden labels without hover; crossings no worse than Legacy on fixed layouts; and passing rollback/failure-injection tests. The P5 benchmark currently fails these gates at 50+ edges for local latency, cross-group labels and crossings, so Group stays opt-in with `?routing=group`; Legacy remains available with `?routing=legacy`. See the P5 report for measurements and the decision.
+
+统一卡片规格首次保存前，将完整原工作区备份到 <key>:before-uniform-cards-v1。尺寸迁移保留原确认和检查点，更新的工作副本需要重新确认；冻结或锁定几何发生冲突时显示原因。

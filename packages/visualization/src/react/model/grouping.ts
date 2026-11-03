@@ -32,8 +32,14 @@ export type CanvasNode = Node<{
   groupOrigins?: Record<string, string | null>;
 }>;
 
-export const CARD_SIZE = { width: 240, height: 82 };
-export const structureHeaderHeight = (node: Pick<CanvasNode, 'data'>): number => 68 + (node.data.details?.length ?? 0) * 52;
+export const RESPONSIBILITY_CARD_SIZE = { width: 210, height: 80, gap: 8 };
+export const RESPONSIBILITY_NODE_WIDTH = RESPONSIBILITY_CARD_SIZE.width * 2 + RESPONSIBILITY_CARD_SIZE.gap + 34;
+export const CARD_SIZE = { width: RESPONSIBILITY_NODE_WIDTH, height: 96 };
+export const DETAIL_CARD_SIZE = { width: RESPONSIBILITY_NODE_WIDTH, height: 280 };
+export const COMPACT_DETAIL_CARD_SIZE = { width: RESPONSIBILITY_NODE_WIDTH, height: 192 };
+export const detailCardSize = (count: number) => count <= 2 ? COMPACT_DETAIL_CARD_SIZE : DETAIL_CARD_SIZE;
+export const responsibilityHeight = (count: number): number => count ? count <= 2 ? 116 : 204 : 0;
+export const structureHeaderHeight = (node: Pick<CanvasNode, 'data'>): number => 68 + responsibilityHeight(node.data.details?.length ?? 0);
 export const MIN_EDGE_GAP = 64;
 const GROUP_PADDING = { x: 24, top: 60, bottom: 24 };
 const SIBLING_GAP = 24;

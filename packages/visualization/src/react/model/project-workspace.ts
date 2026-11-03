@@ -1,6 +1,6 @@
 /** Serializable project workspace with independent stage drafts and checkpoints. */
 import type { UserGraphOverlay } from './overlay.ts';
-import type { CanvasBaselineContent, CanvasBaselineView, CanvasWorkspaceView } from './workspace.ts';
+import type { CanvasBaselineContent, CanvasBaselineView, CanvasViewMode, CanvasWorkspaceView } from './workspace.ts';
 
 export interface ProjectOverrides {
   nodeTitles: Record<string, string>;
@@ -21,7 +21,7 @@ export interface ProjectWorkspaceCheckpoint extends ProjectWorkspaceSnapshot {
   createdAt: string;
 }
 
-export interface ProjectStageWorkspace {
+export interface ProjectViewWorkspace {
   revision: string;
   overrides: ProjectOverrides;
   containerStates: ProjectContainerStates;
@@ -30,6 +30,7 @@ export interface ProjectStageWorkspace {
   confirmedAt?: string;
   confirmationId?: string;
   confirmedRevision?: string;
+  requiresConfirmation?: boolean;
   checkpoints: ProjectWorkspaceCheckpoint[];
   viewport?: CanvasBaselineView['viewport'];
   transition?: CanvasBaselineView['transition'];
@@ -37,10 +38,15 @@ export interface ProjectStageWorkspace {
   sourceStage?: CanvasBaselineView['sourceStage'];
 }
 
+export interface ProjectStageWorkspace extends ProjectViewWorkspace {
+  views?: Partial<Record<CanvasViewMode, ProjectViewWorkspace>>;
+}
+
 export interface ProjectWorkspace {
   version: 1;
   projectId: string;
   activeStageId: string;
+  activeView?: CanvasViewMode;
   stages: Record<string, ProjectStageWorkspace>;
 }
 
@@ -69,48 +75,81 @@ function canvasContent(stage: CanvasBaselineView): CanvasBaselineContent {
   };
 }
 
-/** Preserve unvisited stages and checkpoint history across ordinary canvas saves. */
-export function canvasWorkspaceToProject(view: CanvasWorkspaceView, projectId: string, previous?: ProjectWorkspace): ProjectWorkspace {
-  if (previous && previous.projectId !== projectId) throw new Error('工作空间所属项目不匹配');
-  const stages: Record<string, ProjectStageWorkspace> = structuredClone(previous?.stages ?? {});
-  for (const [id, stage] of Object.entries(view.baselines)) {
+function projectView(stage: CanvasBaselineView, previous?: ProjectViewWorkspace): ProjectViewWorkspace {
     const draft = projectSnapshot(canvasContent(stage));
     const confirmed = stage.confirmed ? projectSnapshot(stage.confirmed) : undefined;
-    const checkpoints = stages[id]?.checkpoints ?? [];
+    const checkpoints = structuredClone(previous?.checkpoints ?? []);
     if (confirmed && stage.confirmationId && stage.confirmedAt && !checkpoints.some((item) => item.id === stage.confirmationId)) {
       checkpoints.push({ id: stage.confirmationId, createdAt: stage.confirmedAt, ...structuredClone(confirmed) });
     }
-    stages[id] = {
+    return {
       revision: stage.revision, overrides: draft.overrides, containerStates: draft.containerStates, draft: draft.content,
       ...(confirmed ? { confirmed } : {}),
       ...(stage.confirmedAt ? { confirmedAt: stage.confirmedAt } : {}),
       ...(stage.confirmationId ? { confirmationId: stage.confirmationId } : {}),
       ...(stage.confirmedRevision ? { confirmedRevision: stage.confirmedRevision } : {}),
+      ...(stage.requiresConfirmation !== undefined ? { requiresConfirmation: stage.requiresConfirmation } : {}),
       checkpoints,
       ...(stage.viewport ? { viewport: structuredClone(stage.viewport) } : {}),
       ...(stage.transition ? { transition: structuredClone(stage.transition) } : {}),
       ...(stage.inheritance ? { inheritance: structuredClone(stage.inheritance) } : {}),
       ...(stage.sourceStage ? { sourceStage: structuredClone(stage.sourceStage) } : {}),
     };
-  }
-  return { version: 1, projectId, activeStageId: view.baselineId, stages };
 }
 
-export function projectWorkspaceToCanvas(workspace: ProjectWorkspace): CanvasWorkspaceView {
-  return {
-    version: 2,
-    baselineId: workspace.activeStageId,
-    baselines: Object.fromEntries(Object.entries(workspace.stages).map(([id, stage]) => [id, {
+function canvasView(stage: ProjectViewWorkspace): CanvasBaselineView {
+    return {
       revision: stage.revision,
       ...structuredClone(stage.draft),
       ...(stage.confirmed ? { confirmed: structuredClone(stage.confirmed.content) } : {}),
       ...(stage.confirmedAt ? { confirmedAt: stage.confirmedAt } : {}),
       ...(stage.confirmationId ? { confirmationId: stage.confirmationId } : {}),
       ...(stage.confirmedRevision ? { confirmedRevision: stage.confirmedRevision } : {}),
+      ...(stage.requiresConfirmation !== undefined ? { requiresConfirmation: stage.requiresConfirmation } : {}),
       ...(stage.viewport ? { viewport: structuredClone(stage.viewport) } : {}),
       ...(stage.transition ? { transition: structuredClone(stage.transition) } : {}),
       ...(stage.inheritance ? { inheritance: structuredClone(stage.inheritance) } : {}),
       ...(stage.sourceStage ? { sourceStage: structuredClone(stage.sourceStage) } : {}),
-    }])),
-  };
+    };
+}
+
+/** Preserve each view's unvisited stages and independent checkpoint history. */
+export function canvasWorkspaceToProject(view: CanvasWorkspaceView, projectId: string, previous?: ProjectWorkspace): ProjectWorkspace {
+  if (previous && previous.projectId !== projectId) throw new Error('工作空间所属项目不匹配');
+  const activeView = view.viewMode ?? 'structure';
+  const inputViews: NonNullable<CanvasWorkspaceView['views']> = view.views ?? { structure: view.baselines };
+  const stages: Record<string, ProjectStageWorkspace> = structuredClone(previous?.stages ?? {});
+  for (const [id, stage] of Object.entries(stages)) {
+    if (!stage.views) {
+      const { views: _views, ...legacy } = stage;
+      stages[id] = { ...stage, views: { structure: legacy } };
+    }
+  }
+  for (const mode of ['overview', 'structure', 'full'] as const) {
+    for (const [id, baseline] of Object.entries(inputViews[mode] ?? {})) {
+      const old = stages[id];
+      const views = { ...old?.views, [mode]: projectView(baseline, old?.views?.[mode]) };
+      const alias = views[activeView] ?? views.structure ?? views.overview ?? views.full!;
+      stages[id] = { ...alias, views };
+    }
+  }
+  for (const [id, stage] of Object.entries(stages)) {
+    const current = stage.views?.[activeView];
+    if (current) stages[id] = { ...current, views: stage.views! };
+  }
+  return { version: 1, projectId, activeStageId: view.baselineId, activeView, stages };
+}
+
+export function projectWorkspaceToCanvas(workspace: ProjectWorkspace): CanvasWorkspaceView {
+  const viewMode = workspace.activeView ?? 'structure';
+  const views: NonNullable<CanvasWorkspaceView['views']> = {};
+  for (const [id, stage] of Object.entries(workspace.stages)) {
+    const stageViews = stage.views ?? { structure: stage };
+    for (const mode of ['overview', 'structure', 'full'] as const) {
+      const saved = stageViews[mode];
+      if (saved) (views[mode] ??= {})[id] = canvasView(saved);
+    }
+  }
+  views[viewMode] ??= {};
+  return { version: 2, baselineId: workspace.activeStageId, viewMode, baselines: structuredClone(views[viewMode]), views };
 }

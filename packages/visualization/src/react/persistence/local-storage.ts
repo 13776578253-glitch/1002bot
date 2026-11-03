@@ -4,6 +4,7 @@ import type {
   CanvasNodeView,
   CanvasViewport,
   CanvasViewStorage,
+  CanvasViewMode,
   CanvasWorkspaceView,
   EdgeRouteSnapshot,
   FrozenBoundarySide,
@@ -20,6 +21,7 @@ const NODE_TYPES = new Set(['card', 'structure', 'cluster']);
 const LAYOUT_MODES = new Set(['free', 'fixed', 'locked']);
 const ROUTE_STATES = new Set(['auto', 'pinned', 'locked']);
 const FROZEN_SIDES = new Set<FrozenBoundarySide>(['top', 'right', 'bottom', 'left']);
+const VIEW_MODES = new Set<CanvasViewMode>(['overview', 'structure', 'full']);
 
 function isRecord(value: unknown): value is UnknownRecord {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -228,7 +230,7 @@ function normalizeV1(view: UnknownRecord): CanvasWorkspaceView {
   if (!isRecord(rawBaselines)) throw new Error('工作视图格式不正确');
   const baselines: Record<string, CanvasWorkspaceView['baselines'][string]> = {};
   for (const [id, raw] of Object.entries(rawBaselines)) {
-    if (!isRecord(raw) || !isText(raw.revision)) throw new Error('阶段视图格式不正确');
+    if (!isText(id) || !isRecord(raw) || !isText(raw.revision)) throw new Error('阶段视图格式不正确');
     const nodes = checkNodeViews(raw.nodes);
     const viewport = checkViewport(raw.viewport);
     baselines[id] = {
@@ -247,7 +249,7 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
   if (!isRecord(rawBaselines)) throw new Error('工作视图格式不正确');
   const baselines: Record<string, CanvasWorkspaceView['baselines'][string]> = {};
   for (const [id, raw] of Object.entries(rawBaselines)) {
-    if (!isRecord(raw) || !isText(raw.revision)) throw new Error('阶段视图格式不正确');
+    if (!isText(id) || !isRecord(raw) || !isText(raw.revision)) throw new Error('阶段视图格式不正确');
     const content = checkContent(raw);
     let confirmed: CanvasBaselineContent | undefined;
     if (raw.confirmed !== undefined) {
@@ -255,8 +257,9 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
       confirmed = checkContent(raw.confirmed);
     }
     if (raw.confirmedAt !== undefined && !isText(raw.confirmedAt)) throw new Error('阶段确认时间格式不正确');
-    if (raw.confirmationId !== undefined && !isText(raw.confirmationId)) throw new Error('阶段确认标识格式不正确');
+    if (raw.confirmationId !== undefined && (!isText(raw.confirmationId) || !confirmed || !isText(raw.confirmedAt))) throw new Error('阶段确认标识格式不正确');
     if (raw.confirmedRevision !== undefined && (!isText(raw.confirmedRevision) || !confirmed)) throw new Error('阶段确认来源版本格式不正确');
+    if (raw.requiresConfirmation !== undefined && typeof raw.requiresConfirmation !== 'boolean') throw new Error('阶段确认状态格式不正确');
     const viewport = checkViewport(raw.viewport);
     const transition = checkTransition(raw.transition);
     const inheritance = checkInheritance(raw.inheritance);
@@ -271,6 +274,7 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
       ...(raw.confirmedAt !== undefined ? { confirmedAt: raw.confirmedAt as string } : {}),
       ...(raw.confirmationId !== undefined ? { confirmationId: raw.confirmationId as string } : {}),
       ...(raw.confirmedRevision !== undefined ? { confirmedRevision: raw.confirmedRevision as string } : {}),
+      ...(raw.requiresConfirmation !== undefined ? { requiresConfirmation: raw.requiresConfirmation as boolean } : {}),
       ...(viewport ? { viewport } : {}),
       ...(transition ? { transition } : {}),
       ...(inheritance ? { inheritance } : {}),
@@ -283,9 +287,27 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
 /** Validate and migrate decoded records; legacy views remain drafts until explicit confirmation. */
 export function normalizeWorkspaceView(value: unknown): CanvasWorkspaceView {
   if (!isRecord(value) || !isText(value.baselineId) || !isRecord(value.baselines)) throw new Error('工作视图格式不正确');
-  if (value.version === 1) return normalizeV1(value);
-  if (value.version === 2) return normalizeV2(value);
-  throw new Error('工作视图格式不正确');
+  const active = value.version === 1 ? normalizeV1(value) : value.version === 2 ? normalizeV2(value) : undefined;
+  if (!active) throw new Error('工作视图格式不正确');
+  if (value.viewMode !== undefined && !VIEW_MODES.has(value.viewMode as CanvasViewMode)) throw new Error('工作视图类型不正确');
+  if (value.views === undefined) {
+    if (value.viewMode !== undefined && value.viewMode !== 'structure') throw new Error('工作视图类型缺少对应内容');
+    return { ...active, viewMode: 'structure', views: { structure: structuredClone(active.baselines) } };
+  }
+  if (!isRecord(value.views) || value.viewMode === undefined) throw new Error('工作视图集合格式不正确');
+  const viewMode = value.viewMode as CanvasViewMode;
+  const views: NonNullable<CanvasWorkspaceView['views']> = {};
+  for (const [mode, baselines] of Object.entries(value.views)) {
+    if (!VIEW_MODES.has(mode as CanvasViewMode) || !isRecord(baselines)) throw new Error('工作视图集合格式不正确');
+    views[mode as CanvasViewMode] = normalizeV2({ baselineId: value.baselineId, baselines }).baselines;
+  }
+  if (!views[viewMode]) {
+    if (Object.keys(active.baselines).length) throw new Error('当前工作视图缺少对应内容');
+    views[viewMode] = {};
+  }
+  const ordered = (item: unknown): unknown => Array.isArray(item) ? item.map(ordered) : isRecord(item) ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, ordered(item[key])])) : item;
+  if (JSON.stringify(ordered(active.baselines)) !== JSON.stringify(ordered(views[viewMode]))) throw new Error('当前工作视图与视图集合不一致');
+  return { ...active, viewMode, views };
 }
 
 export function assertWorkspaceView(value: unknown): asserts value is CanvasWorkspaceView {
@@ -300,6 +322,18 @@ export function createLocalStorageViewStorage(storage: Pick<Storage, 'getItem' |
       const view: unknown = JSON.parse(text);
       return normalizeWorkspaceView(view);
     },
-    save(key, view) { storage.setItem(key, JSON.stringify(view)); },
+    save(key, view) {
+      normalizeWorkspaceView(view);
+      const original = storage.getItem(key);
+      const uniformCardsBackup = `${key}:before-uniform-cards-v1`;
+      if (original !== null && storage.getItem(uniformCardsBackup) === null) storage.setItem(uniformCardsBackup, original);
+      const backupKey = `${key}:before-three-views-v1`;
+      if (original !== null) {
+        const previous: unknown = JSON.parse(original);
+        normalizeWorkspaceView(previous);
+        if (view.views && storage.getItem(backupKey) === null && isRecord(previous) && previous.views === undefined) storage.setItem(backupKey, original);
+      }
+      storage.setItem(key, JSON.stringify(view));
+    },
   };
 }

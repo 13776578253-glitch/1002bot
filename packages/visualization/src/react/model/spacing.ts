@@ -18,11 +18,19 @@ export const containerInset = (node: CanvasNode) => ({ x: 24, top: node.type ===
 
 const extra = (size: number) => Math.min(MAX_CONTAINER_EXTRA, size * MAX_CONTAINER_RATIO);
 
-function containerContentBounds(node: CanvasNode, nodes: readonly CanvasNode[], ignored: ReadonlySet<string> = new Set()) {
+function containerContentBounds(node: CanvasNode, nodes: readonly CanvasNode[], ignored: ReadonlySet<string> = new Set(), anchorFrame = false) {
   const inset = containerInset(node);
   const children = nodes.filter((child) => child.parentId === node.id && !ignored.has(child.id));
   const anchor = { x: -(node.data.fitOffset?.x ?? 0), y: -(node.data.fitOffset?.y ?? 0) };
   const preference = preferredEditedSize(node);
+  if (anchorFrame) {
+    const minimum = preference?.origin === 'user' ? preference : undefined;
+    const left = Math.min(0, ...children.map((child) => child.position.x - inset.x));
+    const top = Math.min(0, ...children.map((child) => child.position.y - inset.top));
+    const right = Math.max(CARD_SIZE.width + inset.x * 2, minimum?.width ?? 0, ...children.map((child) => child.position.x + (child.width ?? CARD_SIZE.width) + inset.x));
+    const bottom = Math.max(inset.top + CARD_SIZE.height + inset.bottom, minimum?.height ?? 0, ...children.map((child) => child.position.y + (child.height ?? CARD_SIZE.height) + inset.bottom));
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }
   const left = Math.min(anchor.x, ...children.map((child) => child.position.x - inset.x));
   const top = Math.min(anchor.y, ...children.map((child) => child.position.y - inset.top));
   const right = Math.max(anchor.x + (preference?.width ?? 288), ...children.map((child) => child.position.x + (child.width ?? CARD_SIZE.width) + inset.x));
@@ -65,7 +73,7 @@ export function containerSizeLimits(node: CanvasNode, nodes: readonly CanvasNode
  * 子节点位移后自底向上（从最深层父级到最外层）重新贴合所有受影响容器尺寸。
  * 使用 fitOffset 跟踪边界偏移，保持内部坐标系稳定并支持回拖反向收缩。
  */
-export function fitMovedContainers(input: readonly CanvasNode[], movedIds: readonly string[], options: { moveNeighbours?: boolean; ignored?: ReadonlySet<string>; preserveFrozen?: boolean } = {}): CanvasNode[] {
+export function fitMovedContainers(input: readonly CanvasNode[], movedIds: readonly string[], options: { moveNeighbours?: boolean; ignored?: ReadonlySet<string>; preserveFrozen?: boolean; preserveFrames?: boolean; anchorFrame?: boolean } = {}): CanvasNode[] {
   let nodes = [...input];
   const ancestors = new Set<string>();
   for (const id of movedIds) {
@@ -78,7 +86,13 @@ export function fitMovedContainers(input: readonly CanvasNode[], movedIds: reado
     const node = nodes.find((item) => item.id === id)!;
     if (node.type === 'card' && !node.data.expanded) continue;
     if (options.preserveFrozen && node.data.frozen) continue;
-    const { x, y, width, height } = containerContentBounds(node, nodes, options.ignored);
+    let { x, y, width, height } = containerContentBounds(node, nodes, options.ignored, options.anchorFrame);
+    if (options.preserveFrames) {
+      const right = Math.max(node.width!, x + width), bottom = Math.max(node.height!, y + height);
+      x = Math.min(0, x); y = Math.min(0, y);
+      width = right - x; height = bottom - y;
+      if (Math.abs(x) < 0.000001 && Math.abs(y) < 0.000001 && Math.abs(width - node.width!) < 0.000001 && Math.abs(height - node.height!) < 0.000001) continue;
+    }
     const changed = x || y || width !== node.width || height !== node.height || node.data.contentWidth === undefined || node.data.contentHeight === undefined;
     if (changed) nodes = nodes.map((item) => {
       if (item.id === id) return { ...item, position: { x: item.position.x + x, y: item.position.y + y }, width, height, measured: { width, height }, style: { ...item.style, width, height }, data: { ...item.data, contentWidth: item.data.contentWidth ?? item.width!, contentHeight: item.data.contentHeight ?? item.height!, fitOffset: { x: (item.data.fitOffset?.x ?? 0) + x, y: (item.data.fitOffset?.y ?? 0) + y }, ...(item.data.reflowOrigin ? { reflowOrigin: { x: item.data.reflowOrigin.x + x, y: item.data.reflowOrigin.y + y } } : {}) } };

@@ -23,7 +23,7 @@ export type NavigationResult = StageTransitionResult & { inheritance?: StageInhe
 export function rebaseSavedView(target: VisualizationBaseline, saved: CanvasBaselineView): CanvasBaselineView {
   const merged = prepareSourceRevision(target, saved);
   if (!merged.ok) throw new Error(merged.conflicts.map((item) => item.message).join('；'));
-  return { ...saved, ...merged.content, ...(saved.confirmed ? { confirmedRevision: saved.confirmedRevision ?? saved.revision } : {}), revision: target.stage.graph.revision ?? target.stage.id, sourceStage: target.stage };
+  return { ...saved, ...merged.content, requiresConfirmation: true, ...(saved.confirmed ? { confirmedRevision: saved.confirmedRevision ?? saved.revision } : {}), revision: target.stage.graph.revision ?? target.stage.id, sourceStage: target.stage };
 }
 
 function finalizeMerged(target: VisualizationBaseline, previous: CanvasBaselineContent, content: CanvasBaselineContent, generated: Extract<StageTransitionResult,{ok:true}>, inheritance?: StageInheritanceBase): NavigationResult {

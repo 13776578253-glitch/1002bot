@@ -1,25 +1,17 @@
-/** Committed workspace transactions, per-baseline history and storage writes at gesture boundaries. */
-import { useCallback, useRef, useState, type SetStateAction } from 'react';
+/** Independent stage/view transactions and persisted snapshots; canonical graphs stay shared. */
+import { useCallback, useMemo, useRef, useState, type SetStateAction } from 'react';
 import type { VisualizationCanvasProps } from '../types.ts';
 import type { CanvasNode } from '../model/grouping.ts';
 import { baselineNodes } from '../model/hierarchy.ts';
+import { baselineForView } from '../model/view-projection.ts';
 import { restoreFrozenGroups } from '../model/frozen.ts';
+import { normalizeCardLayout } from '../model/normalize-card-layout.ts';
+import { hierarchyProjection } from '../model/hierarchy.ts';
+import { validateStoredRoutes } from '../model/edge-routes.ts';
 import type { UserGraphOverlay } from '../model/overlay.ts';
-import {
-  captureContent,
-  captureNodeViews,
-  restoreNodeViews,
-  ViewHistory,
-  type CanvasBaselineContent,
-  type CanvasViewport,
-  type CanvasWorkspaceView,
-  type EdgeRouteSnapshot,
-  type FrozenGroupSnapshot,
-  type StageTransitionRecord,
-  type DisplayRouteSnapshot,
-} from '../model/workspace.ts';
+import { captureContent, restoreNodeViews, ViewHistory, type CanvasBaselineContent, type CanvasBaselineView, type CanvasViewMode, type CanvasViewport, type CanvasWorkspaceView, type EdgeRouteSnapshot, type FrozenGroupSnapshot, type DisplayRouteSnapshot } from '../model/workspace.ts';
 import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
-import type { StageSnapshot } from '../../core/schema/types.ts';
+import type { StageTransitionSuccess } from '../model/stage-transition.ts';
 import { saveWorkspace } from '../persistence/storage-session.ts';
 
 export interface CanvasSessionState {
@@ -29,288 +21,189 @@ export interface CanvasSessionState {
   overlay?: UserGraphOverlay;
   displayRoutes?: DisplayRouteSnapshot[];
 }
-
+export const VIEW_MODES = ['overview', 'structure', 'full'] as const;
+export const VIEW_LABELS: Record<CanvasViewMode, string> = { overview: 'Overview View', structure: 'Structure View', full: 'Full View' };
+export type ViewTransition = StageTransitionSuccess & { inheritance?: StageInheritanceBase };
 export { baselineNodes };
+
+function contentOf(view: CanvasBaselineView): CanvasBaselineContent {
+  return { nodes: view.nodes, edgeRoutes: view.edgeRoutes, frozenGroups: view.frozenGroups,
+    ...(view.overlay ? { overlay: view.overlay } : {}), ...(view.displayRoutes ? { displayRoutes: view.displayRoutes } : {}) };
+}
+function replaceContent(view: CanvasBaselineView, content: CanvasBaselineContent): CanvasBaselineView {
+  const { overlay: _overlay, displayRoutes: _display, ...metadata } = view;
+  return { ...metadata, ...content };
+}
 
 export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: CanvasWorkspaceView) {
   const { baselines, persistence } = props;
-  const initialId = restored && baselines.some((item) => item.id === restored.baselineId) ? restored.baselineId : props.initialBaselineId ?? baselines[baselines.length - 1]!.id;
-  const contents = useRef(new Map<string, CanvasBaselineContent>());
-  const revisions = useRef(new Map(Object.entries(restored?.baselines ?? {}).map(([id, view]) => [id, view.revision])));
-
-  const makeContent = useCallback((id: string): CanvasSessionState => {
-    const baseline = baselines.find((item) => item.id === id)!;
-    const saved = contents.current.get(id) ?? restored?.baselines[id];
-    if (!saved) return { nodes: baselineNodes(baseline), edgeRoutes: [], frozenGroups: [] };
+  const initialMode = restored?.viewMode ?? 'structure';
+  const definitions = useMemo(() => Object.fromEntries(VIEW_MODES.map((mode) => [mode, new Map(baselines.map((item) => [item.id, baselineForView(item, mode)]))])) as Record<CanvasViewMode, Map<string, typeof baselines[number]>>, [baselines]);
+  const getBaseline = useCallback((id: string, mode: CanvasViewMode) => definitions[mode].get(id)!, [definitions]);
+  const [initialViews] = useState(() => {
+    const views = structuredClone(restored?.views ?? { structure: restored?.baselines ?? {} });
+    for (const mode of VIEW_MODES) views[mode] ??= {};
+    return views as Record<CanvasViewMode, Record<string, CanvasBaselineView>>;
+  });
+  const views = useRef(initialViews);
+  const [initialId] = useState(() => {
+    const requested = restored && baselines.some((item) => item.id === restored.baselineId) ? restored.baselineId : props.initialBaselineId ?? baselines[baselines.length - 1]!.id;
+    return VIEW_MODES.every((mode) => views.current[mode][requested]) ? requested : baselines[0]!.id;
+  });
+  const [viewMode, publishMode] = useState<CanvasViewMode>(initialMode), modeRef = useRef(viewMode);
+  const [baselineId, publishId] = useState(initialId), idRef = useRef(baselineId);
+  const seed = useCallback((id: string, mode: CanvasViewMode): CanvasBaselineView => {
+    const baseline = getBaseline(id, mode);
+    return { revision: baseline.stage.graph.revision ?? baseline.stage.id, ...captureContent(baselineNodes(baseline)), sourceStage: structuredClone(baseline.stage) };
+  }, [getBaseline]);
+  for (const mode of VIEW_MODES) views.current[mode][initialId] ??= seed(initialId, mode);
+  const normalizationMessage = useRef('');
+  const makeContent = useCallback((id: string, mode: CanvasViewMode): CanvasSessionState => {
+    const baseline = getBaseline(id, mode), saved = views.current[mode][id]!;
     const frozen = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes), saved.frozenGroups);
-    return {
-      nodes: frozen.nodes,
-      edgeRoutes: structuredClone(saved.edgeRoutes),
-      frozenGroups: structuredClone(frozen.groups),
-      ...(saved.overlay ? { overlay: structuredClone(saved.overlay) } : {}),
-      ...(saved.displayRoutes ? { displayRoutes: structuredClone(saved.displayRoutes) } : {}),
-    };
-  }, [baselines, restored]);
-
-  const [initialContent] = useState<CanvasSessionState>(() => makeContent(initialId));
-  const [baselineId, setBaselineId] = useState(initialId);
-  const idRef = useRef(baselineId);
-  const [nodes, publish] = useState<CanvasNode[]>(initialContent.nodes);
-  const nodesRef = useRef(nodes);
-  const [routes, publishRoutes] = useState<EdgeRouteSnapshot[]>(initialContent.edgeRoutes);
-  const routesRef = useRef(routes);
-  const [frozenGroups, publishFrozen] = useState<FrozenGroupSnapshot[]>(initialContent.frozenGroups);
-  const frozenRef = useRef(frozenGroups);
-  const [overlay, publishOverlay] = useState<UserGraphOverlay | undefined>(initialContent.overlay);
-  const overlayRef = useRef(overlay);
-  const [displayRoutes, publishDisplayRoutes] = useState<DisplayRouteSnapshot[]>(initialContent.displayRoutes ?? []);
-  const displayRoutesRef = useRef(displayRoutes);
-  const inheritances = useRef(new Map<string, StageInheritanceBase>(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.inheritance ? [[id, view.inheritance] as const] : [])));
-  const sourceStages = useRef(new Map<string, StageSnapshot>(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.sourceStage ? [[id, view.sourceStage] as const] : [])));
-  const confirmedContents = useRef(new Map<string, CanvasBaselineContent>(
-    Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmed ? [[id, structuredClone(view.confirmed)] as const] : []),
-  ));
-  const confirmedAt = useRef(new Map<string, string>(
-    Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmedAt ? [[id, view.confirmedAt] as const] : []),
-  ));
-  const confirmationIds = useRef(new Map(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmationId ? [[id, view.confirmationId] as const] : [])));
-  const confirmedRevisions = useRef(new Map(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmed ? [[id, view.confirmedRevision ?? view.revision] as const] : [])));
-  const transitions = useRef(new Map<string, StageTransitionRecord>(
-    Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.transition ? [[id, view.transition] as const] : []),
-  ));
-  const viewports = useRef(new Map(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.viewport ? [[id, view.viewport] as const] : [])));
+    if (frozen.conflicts.length) throw new Error(frozen.conflicts.map((item) => item.message).join('；'));
+    const original = restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes, false);
+    const normalized = normalizeCardLayout(frozen.nodes, saved.nodes, baseline.stage, true);
+    const issue = normalized.conflict?.message ?? validateStoredRoutes(original, normalized.nodes, saved.edgeRoutes, hierarchyProjection(normalized.nodes, baseline.stage));
+    normalizationMessage.current = issue ? `卡片规格调整冲突：${issue}` : '';
+    const working = issue ? original : normalized.nodes;
+    if (!issue && working.some((node) => { const old = saved.nodes.find((item) => item.id === node.id); return old && (old.width !== node.width || old.height !== node.height || old.position.x !== node.position.x || old.position.y !== node.position.y); })) views.current[mode][id] = { ...replaceContent(saved, captureContent(working, saved.edgeRoutes, frozen.groups, saved.overlay, saved.displayRoutes)), requiresConfirmation: true };
+    return { nodes: working, edgeRoutes: structuredClone(saved.edgeRoutes), frozenGroups: structuredClone(frozen.groups),
+      ...(saved.overlay ? { overlay: structuredClone(saved.overlay) } : {}), displayRoutes: structuredClone(saved.displayRoutes ?? []) };
+  }, [getBaseline]);
+  const [initialContent] = useState(() => makeContent(initialId, initialMode));
+  const [nodes, publishNodes] = useState(initialContent.nodes), nodesRef = useRef(nodes);
+  const [edgeRoutes, publishRoutes] = useState(initialContent.edgeRoutes), routesRef = useRef(edgeRoutes);
+  const [frozenGroups, publishFrozen] = useState(initialContent.frozenGroups), frozenRef = useRef(frozenGroups);
+  const [overlay, publishOverlay] = useState(initialContent.overlay), overlayRef = useRef(overlay);
+  const [displayRoutes, publishDisplay] = useState(initialContent.displayRoutes ?? []), displayRoutesRef = useRef(displayRoutes);
   const histories = useRef(new Map<string, ViewHistory>());
-  const checkpointMetadata = useRef(new WeakMap<CanvasBaselineContent, { inheritance: StageInheritanceBase | undefined; transition: StageTransitionRecord | undefined; revision: string | undefined; sourceStage: StageSnapshot | undefined }>());
+  const metadata = useRef(new WeakMap<CanvasBaselineContent, CanvasBaselineView>());
   const pending = useRef<CanvasBaselineContent | undefined>(undefined);
-  const [historyVersion, refreshHistory] = useState(0);
+  const [, refresh] = useState(0);
   const [saveError, setSaveError] = useState('');
-  const history = () => {
-    let value = histories.current.get(idRef.current);
-    if (!value) { value = new ViewHistory(); histories.current.set(idRef.current, value); }
-    return value;
+  const history = (id = idRef.current, mode = modeRef.current) => {
+    const key = `${mode}:${id}`;
+    let stack = histories.current.get(key);
+    if (!stack) { stack = new ViewHistory(); histories.current.set(key, stack); }
+    return stack;
   };
-
-  const setNodes = useCallback((action: SetStateAction<CanvasNode[]>) => {
-    const next = typeof action === 'function' ? action(nodesRef.current) : action;
-    nodesRef.current = next;
-    publish(next);
-  }, []);
+  const setNodes = useCallback((action: SetStateAction<CanvasNode[]>) => { const next = typeof action === 'function' ? action(nodesRef.current) : action; nodesRef.current = next; publishNodes(next); }, []);
   const setRoutes = useCallback((next: EdgeRouteSnapshot[]) => { routesRef.current = next; publishRoutes(next); }, []);
   const setFrozenGroups = useCallback((next: FrozenGroupSnapshot[]) => { frozenRef.current = next; publishFrozen(next); }, []);
   const setOverlay = useCallback((next: UserGraphOverlay | undefined) => { overlayRef.current = next; publishOverlay(next); }, []);
-  const setDisplayRoutes = useCallback((next: DisplayRouteSnapshot[]) => { displayRoutesRef.current = next; publishDisplayRoutes(next); }, []);
-
-  const rememberMetadata = useCallback((content: CanvasBaselineContent, id = idRef.current) => {
-    checkpointMetadata.current.set(content, { inheritance: inheritances.current.get(id), transition: transitions.current.get(id), revision: revisions.current.get(id), sourceStage: sourceStages.current.get(id) });
+  const setDisplayRoutes = useCallback((next: DisplayRouteSnapshot[]) => { displayRoutesRef.current = next; publishDisplay(next); }, []);
+  const captureCurrent = useCallback(() => {
+    const content = captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current);
+    metadata.current.set(content, structuredClone(views.current[modeRef.current][idRef.current]!));
     return content;
   }, []);
-  const captureCurrent = useCallback(() => rememberMetadata(captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current)), [rememberMetadata]);
-
-  const storedContent = useCallback((id: string): CanvasBaselineContent | undefined => {
-    const saved = restored?.baselines[id];
-    if (!saved) return undefined;
-    return {
-      nodes: saved.nodes,
-      edgeRoutes: saved.edgeRoutes,
-      frozenGroups: saved.frozenGroups,
-      ...(saved.overlay ? { overlay: saved.overlay } : {}),
-      ...(saved.displayRoutes ? { displayRoutes: saved.displayRoutes } : {}),
-    };
-  }, [restored]);
-
+  const storeCurrent = useCallback(() => {
+    const mode = modeRef.current, id = idRef.current;
+    views.current[mode][id] = replaceContent(views.current[mode][id]!, captureCurrent());
+  }, [captureCurrent]);
   const save = useCallback(() => {
-    contents.current.set(idRef.current, captureCurrent());
+    storeCurrent();
     if (!persistence) return;
-    const views: CanvasWorkspaceView['baselines'] = {};
-    for (const baseline of baselines) {
-      const restoredBaseline = restored?.baselines[baseline.id];
-      const content = contents.current.get(baseline.id) ?? storedContent(baseline.id);
-      const confirmed = confirmedContents.current.get(baseline.id) ?? (restoredBaseline?.confirmed ? structuredClone(restoredBaseline.confirmed) : undefined);
-      const confirmedStamp = confirmedAt.current.get(baseline.id) ?? restoredBaseline?.confirmedAt;
-      const transition = transitions.current.get(baseline.id) ?? restoredBaseline?.transition;
-      const viewport = viewports.current.get(baseline.id) ?? restoredBaseline?.viewport;
-      const base = content ?? confirmed;
-      if (!base && !transition && !viewport) continue;
-      const storedOverlay = base?.overlay;
-      views[baseline.id] = {
-        revision: revisions.current.get(baseline.id) ?? baseline.stage.graph.revision ?? baseline.stage.id,
-        nodes: base?.nodes ?? [],
-        edgeRoutes: base?.edgeRoutes ?? [],
-        frozenGroups: base?.frozenGroups ?? [],
-        ...(storedOverlay ? { overlay: storedOverlay } : {}),
-        ...(base?.displayRoutes ? { displayRoutes: base.displayRoutes } : {}),
-        ...(inheritances.current.get(baseline.id) ? { inheritance: inheritances.current.get(baseline.id)! } : {}),
-        ...(sourceStages.current.get(baseline.id) ? { sourceStage: sourceStages.current.get(baseline.id)! } : {}),
-        ...(confirmed ? { confirmed } : {}),
-        ...(confirmedStamp ? { confirmedAt: confirmedStamp } : {}),
-        ...(confirmationIds.current.get(baseline.id) ? { confirmationId: confirmationIds.current.get(baseline.id)! } : {}),
-        ...(confirmed && confirmedRevisions.current.get(baseline.id) ? { confirmedRevision: confirmedRevisions.current.get(baseline.id)! } : {}),
-        ...(transition ? { transition } : {}),
-        ...(viewport ? { viewport } : {}),
-      };
-    }
-    const view: CanvasWorkspaceView = { version: 2, baselineId: idRef.current, baselines: views };
-    void saveWorkspace(persistence.storage, persistence.key, view).then(() => setSaveError(''),
+    const view: CanvasWorkspaceView = { version: 2, baselineId: idRef.current, viewMode: modeRef.current, baselines: views.current[modeRef.current], views: views.current };
+    void saveWorkspace(persistence.storage, persistence.key, structuredClone(view)).then(() => setSaveError(''),
       (error: unknown) => setSaveError(`保存失败：${error instanceof Error ? error.message : String(error)}`));
-  }, [baselines, persistence, restored, captureCurrent, storedContent]);
-
+  }, [persistence, storeCurrent]);
+  const publishContent = useCallback((state: CanvasSessionState) => {
+    setNodes(state.nodes); setRoutes(state.edgeRoutes); setFrozenGroups(state.frozenGroups); setOverlay(state.overlay); setDisplayRoutes(state.displayRoutes ?? []);
+  }, [setNodes, setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes]);
   const begin = useCallback(() => { pending.current ??= captureCurrent(); }, [captureCurrent]);
   const finish = useCallback(() => {
-    const before = pending.current;
-    pending.current = undefined;
+    const before = pending.current; pending.current = undefined;
     if (!before) return;
-    if (history().record(before, captureCurrent())) refreshHistory((version) => version + 1);
+    if (history().record(before, captureCurrent())) refresh((value) => value + 1);
     save();
   }, [captureCurrent, save]);
-
   const commit = useCallback((transform: (current: CanvasNode[]) => CanvasNode[]) => {
-    const current = nodesRef.current;
-    const before = captureCurrent();
-    const next = transform(current);
+    const current = nodesRef.current, before = captureCurrent(), next = transform(current);
     if (next === current) return false;
     setNodes(next);
-    const after = captureCurrent();
-    const changed = history().record(before, after);
-    if (changed) { refreshHistory((version) => version + 1); save(); }
+    const changed = history().record(before, captureCurrent());
+    if (changed) { refresh((value) => value + 1); save(); }
     return changed;
   }, [captureCurrent, save, setNodes]);
-
   const commitContent = useCallback((transform: (current: CanvasSessionState) => CanvasSessionState | undefined) => {
     const before = captureCurrent();
-    const current: CanvasSessionState = {
-      nodes: nodesRef.current, edgeRoutes: routesRef.current, frozenGroups: frozenRef.current,
-      ...(overlayRef.current ? { overlay: overlayRef.current } : {}),
-      displayRoutes: displayRoutesRef.current,
-    };
+    const current: CanvasSessionState = { nodes: nodesRef.current, edgeRoutes: routesRef.current, frozenGroups: frozenRef.current, ...(overlayRef.current ? { overlay: overlayRef.current } : {}), displayRoutes: displayRoutesRef.current };
     const next = transform(current);
     if (!next || next === current) return false;
-    setNodes(next.nodes);
-    setRoutes(next.edgeRoutes);
-    setFrozenGroups(next.frozenGroups);
-    setOverlay(next.overlay);
-    setDisplayRoutes(next.displayRoutes ?? displayRoutesRef.current);
-    const after = captureCurrent();
-    const changed = history().record(before, after);
-    if (changed) { refreshHistory((version) => version + 1); save(); }
+    publishContent({ ...next, displayRoutes: next.displayRoutes ?? displayRoutesRef.current });
+    const changed = history().record(before, captureCurrent());
+    if (changed) { refresh((value) => value + 1); save(); }
     return changed;
-  }, [captureCurrent, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
-
-  const applyContent = useCallback((content: CanvasBaselineContent) => {
-    const baseline = baselines.find((item) => item.id === idRef.current)!;
-    const frozen = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), content.nodes), content.frozenGroups);
-    setNodes(frozen.nodes);
-    setRoutes(structuredClone(content.edgeRoutes));
-    setFrozenGroups(structuredClone(frozen.groups));
-    setOverlay(content.overlay ? structuredClone(content.overlay) : undefined);
-    setDisplayRoutes(structuredClone(content.displayRoutes ?? []));
-  }, [baselines, setFrozenGroups, setNodes, setOverlay, setRoutes]);
-
+  }, [captureCurrent, publishContent, save]);
   const travel = useCallback((direction: 'undo' | 'redo') => {
     const stack = history();
     if (direction === 'undo' ? !stack.canUndo : !stack.canRedo) return;
     pending.current = undefined;
-    const saved = stack[direction](captureCurrent());
-    const metadata = checkpointMetadata.current.get(saved);
-    if (metadata) {
-      if (metadata.inheritance) inheritances.current.set(idRef.current, metadata.inheritance); else inheritances.current.delete(idRef.current);
-      if (metadata.transition) transitions.current.set(idRef.current, metadata.transition); else transitions.current.delete(idRef.current);
-      if (metadata.revision) revisions.current.set(idRef.current, metadata.revision); else revisions.current.delete(idRef.current);
-      if (metadata.sourceStage) sourceStages.current.set(idRef.current, metadata.sourceStage); else sourceStages.current.delete(idRef.current);
+    const content = stack[direction](captureCurrent());
+    const old = metadata.current.get(content), current = views.current[modeRef.current][idRef.current]!;
+    const { inheritance: _inheritance, transition: _transition, sourceStage: _source, requiresConfirmation: _review, ...retained } = current;
+    const sourceStage = old?.sourceStage ?? current.sourceStage;
+    views.current[modeRef.current][idRef.current] = replaceContent({ ...retained,
+      ...(old?.inheritance ? { inheritance: old.inheritance } : {}), ...(old?.transition ? { transition: old.transition } : {}),
+      ...(old?.requiresConfirmation !== undefined ? { requiresConfirmation: old.requiresConfirmation } : {}),
+      ...(sourceStage ? { sourceStage } : {}), revision: old?.revision ?? current.revision }, content);
+    publishContent(makeContent(idRef.current, modeRef.current));
+    refresh((value) => value + 1); save();
+  }, [captureCurrent, makeContent, publishContent, save]);
+  const switchBaseline = useCallback((id: string) => {
+    storeCurrent(); pending.current = undefined; idRef.current = id; publishId(id);
+    publishContent(makeContent(id, modeRef.current)); save();
+  }, [storeCurrent, makeContent, publishContent, save]);
+  const switchView = useCallback((mode: CanvasViewMode) => {
+    if (mode === modeRef.current) return '';
+    storeCurrent(); pending.current = undefined; modeRef.current = mode; publishMode(mode);
+    publishContent(makeContent(idRef.current, mode)); save();
+    return normalizationMessage.current;
+  }, [storeCurrent, makeContent, publishContent, save]);
+  const applyStageTransitions = useCallback((targetId: string, results: Record<CanvasViewMode, ViewTransition>) => {
+    storeCurrent(); pending.current = undefined;
+    for (const mode of VIEW_MODES) {
+      const result = results[mode], old = views.current[mode][targetId];
+      const before = old ? structuredClone(contentOf(old)) : result.base;
+      if (old) metadata.current.set(before, structuredClone(old));
+      const next: CanvasBaselineView = { ...replaceContent(old ?? { revision: result.record.targetRevision, ...result.base }, result.content), revision: result.record.targetRevision, transition: result.record,
+        requiresConfirmation: 'reused' in result && result.reused ? old?.requiresConfirmation ?? false : true,
+        ...(old?.confirmed ? { confirmedRevision: old.confirmedRevision ?? old.revision } : {}),
+        ...(result.inheritance ? { inheritance: result.inheritance } : {}), sourceStage: structuredClone(getBaseline(targetId, mode).stage) };
+      views.current[mode][targetId] = next;
+      metadata.current.set(result.content, structuredClone(next));
+      history(targetId, mode).record(before, result.content);
     }
-    applyContent(saved);
-    refreshHistory((version) => version + 1);
-    save();
-  }, [applyContent, captureCurrent, save]);
-
-  const switchBaseline = useCallback((id: string, transform?: (target: CanvasNode[], source: CanvasNode[]) => CanvasNode[]) => {
-    pending.current = undefined;
-    contents.current.set(idRef.current, captureCurrent());
-    const target = makeContent(id);
-    const nextNodes = transform ? transform(target.nodes, nodesRef.current) : target.nodes;
-    idRef.current = id;
-    setBaselineId(id);
-    setNodes(nextNodes);
-    setRoutes(structuredClone(target.edgeRoutes));
-    setFrozenGroups(structuredClone(target.frozenGroups));
-    setOverlay(target.overlay ? structuredClone(target.overlay) : undefined);
-    setDisplayRoutes(structuredClone(target.displayRoutes ?? []));
-    contents.current.set(id, captureCurrent());
-    save();
-  }, [captureCurrent, makeContent, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
-
-  const applyStageTransition = useCallback((targetId: string, next: CanvasSessionState, before: CanvasBaselineContent, record: StageTransitionRecord, inheritance?: StageInheritanceBase) => {
-    rememberMetadata(before, targetId);
-    pending.current = undefined;
-    contents.current.set(idRef.current, captureCurrent());
-    idRef.current = targetId;
-    setBaselineId(targetId);
-    setNodes(next.nodes);
-    setRoutes(structuredClone(next.edgeRoutes));
-    setFrozenGroups(structuredClone(next.frozenGroups));
-    setOverlay(next.overlay ? structuredClone(next.overlay) : undefined);
-    setDisplayRoutes(structuredClone(next.displayRoutes ?? []));
-    const after = captureCurrent();
-    contents.current.set(targetId, after);
-    transitions.current.set(targetId, record);
-    revisions.current.set(targetId, record.targetRevision);
-    if (inheritance) inheritances.current.set(targetId, inheritance);
-    sourceStages.current.set(targetId, structuredClone(baselines.find((item) => item.id === targetId)!.stage));
-    rememberMetadata(after, targetId);
-    const stack = histories.current.get(targetId) ?? new ViewHistory();
-    histories.current.set(targetId, stack);
-    if (stack.record(before, after)) refreshHistory((version) => version + 1);
-    save();
-  }, [captureCurrent, rememberMetadata, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
-
+    idRef.current = targetId; publishId(targetId);
+    publishContent(makeContent(targetId, modeRef.current)); refresh((value) => value + 1); save();
+  }, [storeCurrent, getBaseline, makeContent, publishContent, save]);
   const confirm = useCallback((renderedRoutes?: DisplayRouteSnapshot[]) => {
     if (renderedRoutes) setDisplayRoutes(renderedRoutes);
-    confirmedContents.current.set(idRef.current, captureCurrent());
-    confirmedAt.current.set(idRef.current, new Date().toISOString());
-    confirmationIds.current.set(idRef.current, crypto.randomUUID());
-    const baseline = baselines.find((item) => item.id === idRef.current)!;
-    revisions.current.set(idRef.current, baseline.stage.graph.revision ?? baseline.stage.id);
-    confirmedRevisions.current.set(idRef.current, baseline.stage.graph.revision ?? baseline.stage.id);
-    sourceStages.current.set(idRef.current, structuredClone(baseline.stage));
-    save();
-  }, [baselines, captureCurrent, save]);
-
-  const getConfirmedContent = useCallback((id: string): CanvasBaselineContent | undefined => confirmedContents.current.get(id) ?? restored?.baselines[id]?.confirmed, [restored]);
-  const getConfirmedRevision = useCallback((id: string): string | undefined => confirmedRevisions.current.get(id), []);
-
-  const getSavedContent = useCallback((id: string): { content: CanvasBaselineContent; revision?: string; inheritance?: StageInheritanceBase; sourceStage?: StageSnapshot } | undefined => {
-    const inMemory = contents.current.get(id);
-    if (inMemory) {
-      const baseline = baselines.find((item) => item.id === id)!;
-      return { content: inMemory, revision: revisions.current.get(id) ?? baseline.stage.graph.revision ?? baseline.stage.id, ...(inheritances.current.get(id) ? { inheritance: inheritances.current.get(id)! } : {}), ...(sourceStages.current.get(id) ? { sourceStage: sourceStages.current.get(id)! } : {}) };
-    }
-    const saved = restored?.baselines[id];
-    if (!saved) return undefined;
-    return {
-      content: {
-        nodes: saved.nodes,
-        edgeRoutes: saved.edgeRoutes,
-        frozenGroups: saved.frozenGroups,
-        ...(saved.overlay ? { overlay: saved.overlay } : {}),
-        ...(saved.displayRoutes ? { displayRoutes: saved.displayRoutes } : {}),
-      },
-      revision: saved.revision,
-      ...(saved.inheritance ? { inheritance: saved.inheritance } : {}),
-      ...(saved.sourceStage ? { sourceStage: saved.sourceStage } : {}),
-    };
-  }, [baselines, restored]);
-
-  const saveViewport = useCallback((viewport: CanvasViewport) => { viewports.current.set(idRef.current, viewport); if (!pending.current) save(); }, [save]);
-  const undo = useCallback(() => travel('undo'), [travel]);
-  const redo = useCallback(() => travel('redo'), [travel]);
-  void historyVersion;
+    storeCurrent();
+    const mode = modeRef.current, id = idRef.current, baseline = getBaseline(id, mode), content = captureCurrent();
+    views.current[mode][id] = { ...views.current[mode][id]!, ...content, requiresConfirmation: false, confirmed: structuredClone(content), confirmedAt: new Date().toISOString(), confirmationId: crypto.randomUUID(), revision: baseline.stage.graph.revision ?? baseline.stage.id, confirmedRevision: baseline.stage.graph.revision ?? baseline.stage.id, sourceStage: structuredClone(baseline.stage) };
+    refresh((value) => value + 1); save();
+  }, [captureCurrent, getBaseline, setDisplayRoutes, storeCurrent, save]);
+  const getSavedContent = useCallback((id: string, mode = modeRef.current) => {
+    if (id === idRef.current && mode === modeRef.current) storeCurrent();
+    const saved = views.current[mode][id];
+    return saved ? { content: contentOf(saved), revision: saved.revision, inheritance: saved.inheritance, sourceStage: saved.sourceStage } : undefined;
+  }, [storeCurrent]);
+  const getConfirmedContent = useCallback((id: string, mode = modeRef.current) => views.current[mode][id]?.confirmed, []);
+  const getConfirmedRevision = useCallback((id: string, mode = modeRef.current) => { const saved = views.current[mode][id]; return saved?.confirmed && !saved.requiresConfirmation ? saved.confirmedRevision ?? saved.revision : undefined; }, []);
+  const saveViewport = useCallback((viewport: CanvasViewport) => { views.current[modeRef.current][idRef.current]!.viewport = viewport; if (!pending.current) save(); }, [save]);
   return {
-    nodes, nodesRef, setNodes,
-    edgeRoutes: routes, routesRef, frozenGroups, frozenRef, overlay, overlayRef,
+    nodes, nodesRef, setNodes, edgeRoutes, routesRef, frozenGroups, frozenRef, overlay, overlayRef,
     setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, displayRoutes, displayRoutesRef, commitContent,
-    baselineId, baseline: baselines.find((item) => item.id === baselineId)!,
-    initialViewport: viewports.current.get(initialId), getViewport: (id: string) => viewports.current.get(id), saveViewport,
-    begin, finish, commit, switchBaseline, applyStageTransition, confirm, getConfirmedContent, getConfirmedRevision, getSavedContent,
-    undo, redo, canUndo: history().canUndo, canRedo: history().canRedo, saveError, retrySave: save,
-    transition:transitions.current.get(baselineId),
+    baselineId, baseline: getBaseline(baselineId, viewMode), viewMode, switchView, getBaseline,
+    initializationMessage: normalizationMessage.current || (restored?.baselineId && restored.baselineId !== initialId ? '旧阶段尚未建立三个视图，先确认首阶段的三个视图；原有阶段草稿和快照已保留' : !restored && props.initialBaselineId && props.initialBaselineId !== initialId ? '目标阶段尚未建立三个视图，请先确认首阶段的三个视图' : ''),
+    initialViewport: views.current[initialMode][initialId]?.viewport,
+    getViewport: (id: string, mode = modeRef.current) => views.current[mode][id]?.viewport, saveViewport,
+    begin, finish, commit, switchBaseline, applyStageTransitions, confirm, getConfirmedContent, getConfirmedRevision, getSavedContent,
+    undo: () => travel('undo'), redo: () => travel('redo'), canUndo: history().canUndo, canRedo: history().canRedo, saveError, retrySave: save,
+    transition: views.current[viewMode][baselineId]?.transition, confirmedAt: views.current[viewMode][baselineId]?.confirmedAt,
+    confirmationStatus: VIEW_MODES.map((mode) => { const saved = views.current[mode][baselineId]; return { mode, confirmed: !!saved?.confirmed, current: !!saved?.confirmed && !saved.requiresConfirmation && (saved.confirmedRevision ?? saved.revision) === (getBaseline(baselineId, mode).stage.graph.revision ?? getBaseline(baselineId, mode).stage.id) }; }),
   };
 }

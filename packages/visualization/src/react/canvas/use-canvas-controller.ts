@@ -4,7 +4,7 @@ import { applyNodeChanges, useReactFlow, type NodeChange } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { VisualizationCanvasProps } from '../types.ts';
 import { groupSelection, selectionRoots, ungroup, type CanvasNode, type LayoutMode } from '../model/grouping.ts';
-import { hierarchyProjection, nodeIsVisible, toggleHierarchy, syncHierarchyExpansion } from '../model/hierarchy.ts';
+import { hierarchyProjection, nodeIsVisible, toggleHierarchy } from '../model/hierarchy.ts';
 import { constrainNodeMoves, type AlignmentGuide } from '../model/constraints.ts';
 import { fitAuthoredLayout, manualGeometryConflict, moveAlignedAuthoredNodes } from '../model/manual-layout.ts';
 import { aggregateProjectedEdges, type DisplayEdge } from '../model/display-edges.ts';
@@ -13,15 +13,13 @@ import { removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validate
 import { captureDisplayRoutes } from '../model/display-route-snapshots.ts';
 import type { CachedRoute } from '../model/route-cache.ts';
 import type { StageViewState } from '../model/stage-transition.ts';
-import { prepareStageNavigation } from '../model/stage-navigation.ts';
-import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
-import type { StageTransitionSuccess } from '../model/stage-transition.ts';
+import { prepareStageNavigation, type NavigationResult } from '../model/stage-navigation.ts';
 import { captureFrozenSubgraph, validateFrozenConnections, releaseFrozenSubgraph } from '../model/blackbox-routes.ts';
 import { rebaseFrozenGrowth } from '../model/frozen-growth.ts';
 import type { StageConflict } from '../model/stage-types.ts';
 import { recordPositionEdits, recordSizeEdits } from '../model/layout-intent.ts';
-import type { CanvasWorkspaceView, EdgeRouteState, FrozenGroupSnapshot } from '../model/workspace.ts';
-import { useWorkspaceSession } from './use-workspace-session.ts';
+import type { CanvasWorkspaceView, CanvasViewMode, EdgeRouteState, FrozenGroupSnapshot } from '../model/workspace.ts';
+import { useWorkspaceSession, VIEW_MODES, VIEW_LABELS, type ViewTransition } from './use-workspace-session.ts';
 import { useCanvasScene } from './use-canvas-scene.ts';
 import { useDragProfile } from './use-drag-profile.ts';
 
@@ -30,7 +28,7 @@ interface TransitionPreview {
   baseline: VisualizationBaseline;
   state: StageViewState;
   conflicts: StageConflict[];
-  reset?: { result: StageTransitionSuccess; inheritance: StageInheritanceBase };
+  reset?: Record<CanvasViewMode, ViewTransition>;
 }
 
 export function useCanvasController(props: VisualizationCanvasProps, restored?: CanvasWorkspaceView) {
@@ -48,7 +46,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const [boxMode, setBoxMode] = useState(false), [grid, setGrid] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<string>();
   const [connectionEdge, setConnectionEdge] = useState<DisplayEdge>();
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(session.initializationMessage);
   const [zoom, setZoom] = useState(Math.round((session.initialViewport?.zoom ?? 1) * 100));
   const [alignment, setAlignment] = useState<AlignmentGuide[]>([]);
   const [engine] = useState<'legacy' | 'group'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('routing') === 'group' ? 'group' : 'legacy');
@@ -90,10 +88,11 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       begin();
       const visible = new Set(next.filter((node) => nodeIsVisible(node, next, projectionRef.current)).map((node) => node.id));
       const started = performance.now();
-      const result = baseline.layout?.kind === 'manual'
+      const result: { nodes: CanvasNode[]; guides: AlignmentGuide[]; conflict?: StageConflict } = baseline.layout?.kind === 'manual'
         ? moveAlignedAuthoredNodes(current, next, moved, baseline.stage, flow.getZoom(), visible)
         : constrainNodeMoves(current, next, moved, flow.getZoom(), visible, links);
       next = result.nodes;
+      if ('conflict' in result && result.conflict) setMessage(result.conflict.message);
       const grown=rebaseFrozenGrowth(current,next,session.routesRef.current,session.frozenRef.current);
       const routeConflict = validateStoredRoutes(current, next, session.routesRef.current, projectionRef.current,grown.routes);
       const connections=routeConflict?[]:validateFrozenConnections(current,next,baseline.stage,grown.routes,grown.groups,routesRef.current);
@@ -109,6 +108,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
 
   const toggleNode = useCallback((id: string) => {
     if (preview) return;
+    if (session.viewMode !== 'structure') { setMessage('在 Structure View 中调整展开层级'); return; }
     const current = nodesRef.current;
     const frozenNode = current.find((node) => node.id === id);
     if (frozenNode?.data.frozen) {
@@ -125,7 +125,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const conflict = validateStoredRoutes(current, next, session.routesRef.current, hierarchyProjection(next, baseline.stage));
     if (conflict) { setMessage(conflict); return; }
     if (commit(() => next)) setMessage(''); setSelectedEdge(undefined);
-  }, [baseline, commit, preview]);
+  }, [baseline, commit, preview, session.viewMode]);
 
   const chooseEdge = useCallback((id: string) => {
     if (preview) return;
@@ -178,6 +178,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const result = freezeSelection({
       nodes: nodesRef.current, rootIds: roots.map((node) => node.id), groupId: `frozen-${crypto.randomUUID()}`,
       stage: baseline.stage, frozenGroups: session.frozenGroups,
+      preserveExpansion: session.viewMode === 'overview',
     });
     if (!result.ok) { setMessage(result.conflict.message); return; }
     const groups = [...session.frozenGroups, result.group];
@@ -236,83 +237,89 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     setMessage(state === 'locked' ? '路径已锁定' : '路径已固定');
   }, [displayEdges, preview, selectedEdge, session]);
 
+  const selectView = useCallback((mode: CanvasViewMode) => {
+    if (preview || mode === session.viewMode) return;
+    captureRendered.current();
+    session.saveViewport(flow.getViewport());
+    const notice = session.switchView(mode);
+    clearTransientState(); setMessage(notice);
+  }, [preview, session, flow.getViewport, clearTransientState]);
+
   const selectBaseline = useCallback((id: string) => {
     if (preview) { setPreview(undefined); setMessage('已取消候选预览'); return; }
     if (id === baselineId) return;
     captureRendered.current();
-    const target = props.baselines.find((item) => item.id === id)!;
-    const targetRevision = target.stage.graph.revision ?? target.stage.id;
-    const saved = session.getSavedContent(id);
     const targetIndex = props.baselines.findIndex((item) => item.id === id);
-    const parentId = target.previousStageId ?? props.baselines[targetIndex - 1]?.id;
-    const synchronize = (destination: CanvasNode[], source: CanvasNode[], routes: typeof session.edgeRoutes, groups: FrozenGroupSnapshot[]) => {
-      let conflict = '';
-      const next = syncHierarchyExpansion(destination, source, target.stage, (before, after) => {
-        const issue = validateStoredRoutes(before, after, routes, hierarchyProjection(after, target.stage))
-          ?? validateFrozenConnections(before, after, target.stage, routes, groups)[0]?.message;
-        if (issue) { conflict = issue; return false; }
-        return true;
-      }, (issue) => { conflict = issue.message; });
-      const wanted = new Map(source.filter(node => node.data.expandable).map(node => [node.id, !!node.data.expanded]));
-      const partial = next.some(node => !node.data.frozen && wanted.has(node.id) && node.data.expandable && wanted.get(node.id) !== !!node.data.expanded);
-      setMessage(conflict || (partial ? '部分模块空间不足，已保留目标阶段的原展开状态' : ''));
-      return next;
-    };
-    if (!parentId && (!saved || saved.revision === targetRevision)) {
-      session.saveViewport(flow.getViewport());
-      session.switchBaseline(id, (destination, source) => synchronize(destination, source, saved?.content.edgeRoutes ?? [], saved?.content.frozenGroups ?? []));
-      clearTransientState();
-      return;
+    const original = props.baselines[targetIndex]!;
+    const parentId = original.previousStageId ?? props.baselines[targetIndex - 1]?.id;
+    if (!parentId) {
+      session.saveViewport(flow.getViewport()); session.switchBaseline(id);
+      clearTransientState(); setMessage(''); return;
     }
-    const parent = parentId ? props.baselines.find((item) => item.id === parentId)! : baseline;
-    const sourceContent = session.getConfirmedContent(parent.id);
-    if (!sourceContent) { setMessage(`请先确认 ${parent.stage.label} 阶段布局，再进入目标阶段`); return; }
-    const sourceRevision = session.getConfirmedRevision(parent.id);
-    if (sourceRevision !== (parent.stage.graph.revision ?? parent.stage.id)) { setMessage(`来源已更新，请先检查并重新确认 ${parent.stage.label}`); return; }
-    const result = prepareStageNavigation({parent,target,parentContent:sourceContent,...(saved ? {saved:{...saved.content,revision:saved.revision!,...(saved.inheritance?{inheritance:saved.inheritance}:{}),...(saved.sourceStage?{sourceStage:saved.sourceStage}:{})}}:{})});
-    if (!result.ok) {
+    const missing = VIEW_MODES.filter((mode) => !session.getConfirmedContent(parentId, mode));
+    if (missing.length) { setMessage(`请先确认 ${props.baselines.find((item) => item.id === parentId)!.stage.label} 的 ${missing.map((mode) => VIEW_LABELS[mode]).join('、')}`); return; }
+    const stale = VIEW_MODES.filter((mode) => session.getConfirmedRevision(parentId, mode) !== (session.getBaseline(parentId, mode).stage.graph.revision ?? session.getBaseline(parentId, mode).stage.id));
+    if (stale.length) { setMessage(`来源已更新，请重新确认 ${stale.map((mode) => VIEW_LABELS[mode]).join('、')}`); return; }
+    const results = {} as Record<CanvasViewMode, ViewTransition>;
+    let failed: { mode: CanvasViewMode; result: Extract<NavigationResult, { ok: false }> } | undefined;
+    const conflicts: StageConflict[] = [];
+    let canReset = true;
+    for (const mode of VIEW_MODES) {
+      const parent = session.getBaseline(parentId, mode), target = session.getBaseline(id, mode);
+      const saved = session.getSavedContent(id, mode);
+      const result = prepareStageNavigation({ parent, target, parentContent: session.getConfirmedContent(parentId, mode)!,
+        ...(saved ? { saved: { ...saved.content, revision: saved.revision!, ...(saved.inheritance ? { inheritance: saved.inheritance } : {}), ...(saved.sourceStage ? { sourceStage: saved.sourceStage } : {}) } } : {}) });
+      if (result.ok) results[mode] = result;
+      else {
+        failed ??= { mode, result };
+        conflicts.push(...result.conflicts.map((item) => ({ ...item, message: `${VIEW_LABELS[mode]}：${item.message}` })));
+        if (result.resetCandidate && result.inheritance) results[mode] = { ...result.resetCandidate, inheritance: result.inheritance };
+        else canReset = false;
+      }
+    }
+    if (failed) {
       previewViewport.current = flow.getViewport();
-      setPreview({ targetId: id, baseline: target, state: result.candidate, conflicts: result.conflicts, ...(result.resetCandidate && result.inheritance ? {reset:{result:result.resetCandidate,inheritance:result.inheritance}}:{}) });
-      setMessage('');
-      clearTransientState();
-      return;
+      const target = session.getBaseline(id, failed.mode), candidate = failed.result.candidate;
+      const ids = new Set(candidate.nodes.map((node) => node.id)), edgeIds = new Set(target.stage.graph.edges.map((edge) => edge.id));
+      const frozenGroups = candidate.frozenGroups.filter((group) => [group.rootId, ...group.memberIds].every((nodeId) => ids.has(nodeId)));
+      const frozenOwners = new Set(frozenGroups.map((group) => group.rootId));
+      const state: StageViewState = { ...candidate,
+        frozenGroups,
+        edgeRoutes: candidate.edgeRoutes.filter((route) => edgeIds.has(route.canonicalEdgeId) && ids.has(route.source.nodeId) && ids.has(route.target.nodeId)
+          && (route.space.kind === 'world' || ids.has(route.space.ownerId)) && (route.frozenBoundaries ?? []).every((part) => frozenOwners.has(part.ownerId))),
+      };
+      setPreview({ targetId: id, baseline: target, state, conflicts, ...(canReset ? { reset: results } : {}) });
+      clearTransientState(); setMessage(''); return;
     }
     session.saveViewport(flow.getViewport());
-    if (result.reused) session.switchBaseline(id, (destination, source) => synchronize(destination, source, result.state.edgeRoutes, result.state.frozenGroups));
-    else {
-      const requiredExpansion = new Set(result.record.expanded);
-      const synchronized = synchronize(result.state.nodes, nodesRef.current.filter(node => !requiredExpansion.has(node.id)), result.state.edgeRoutes, result.state.frozenGroups);
-      session.applyStageTransition(id, { ...result.state, nodes: synchronized }, result.base, result.record, result.inheritance);
-    }
-    setPreview(undefined);
-    clearTransientState();
-  }, [baseline, baselineId, clearTransientState, flow.getViewport, preview, props.baselines, session]);
+    if (VIEW_MODES.every((mode) => (results[mode] as NavigationResult & { ok: true }).reused)) session.switchBaseline(id);
+    else session.applyStageTransitions(id, results);
+    setPreview(undefined); clearTransientState(); setMessage('三个视图已继承，待逐一审查并确认');
+  }, [baselineId, clearTransientState, flow.getViewport, preview, props.baselines, session]);
 
   const confirmStage = useCallback(() => {
     if (preview) return;
-    captureRendered.current();
-    session.confirm();
-    setPreview(undefined);
-    setMessage('已确认当前阶段布局，可作为后续阶段基础');
-  }, [preview, session.confirm]);
+    captureRendered.current(); session.confirm();
+    setMessage(`已确认 ${VIEW_LABELS[session.viewMode]}`);
+  }, [preview, session]);
   const cancelPreview = useCallback(() => { setPreview(undefined); setMessage('已取消候选预览'); }, []);
   const adoptPreview = useCallback(() => {
     if (!preview?.reset) return;
-    const {result,inheritance}=preview.reset;
-    session.applyStageTransition(preview.targetId,result.state,session.getSavedContent(preview.targetId)!.content,result.record,inheritance);
-    previewViewport.current=undefined;
-    setPreview(undefined);setMessage('已从父阶段重新继承，旧视图可撤销恢复');
-  },[preview,session]);
+    session.applyStageTransitions(preview.targetId, preview.reset);
+    previewViewport.current = undefined;
+    setPreview(undefined); setMessage('三个视图已从对应父快照重新继承，待审查确认');
+  }, [preview, session]);
 
   useEffect(() => {
     if (preview) return;
     const viewport = previewViewport.current ?? session.getViewport(baselineId);
     previewViewport.current = undefined;
     if (viewport) void flow.setViewport(viewport);
-  }, [baselineId, preview]);
-
+    else requestAnimationFrame(() => void flow.fitView({ padding: 0.22, maxZoom: 1.15 }));
+  }, [baselineId, session.viewMode, preview]);
   const locateConnection = useCallback((id: string) => {
     if (preview) return;
+    if (session.viewMode === 'overview') { setMessage('在 Structure View 或 Full View 中定位内部节点'); return; }
     const edge = baseline.stage.graph.edges.find((item) => item.id === id)!;
     const graph = new Map(baseline.stage.graph.nodes.map((node) => [node.id, node]));
     const ancestors = new Set<string>();
@@ -331,7 +338,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     commit(() => next);
     setSelectedEdge(id); setMessage('');
     requestAnimationFrame(() => void flow.fitView({ nodes: [{ id: edge.source.nodeId }, { id: edge.target.nodeId }], padding: 0.35, maxZoom: 1.15 }));
-  }, [baseline, commit, flow.fitView, preview]);
+  }, [baseline, commit, flow.fitView, preview, session.viewMode]);
   const closeConnections = useCallback(() => setConnectionEdge(undefined), []);
   const clearMessage = useCallback(() => setMessage(''), []);
   const undo = useCallback(() => { if (!preview) { captureRendered.current(); session.undo(); setMessage(''); } }, [preview, session.undo]);
@@ -372,10 +379,21 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const dragProfile = useDragProfile(scene.routeStats);
   recordConstraint.current = dragProfile.recordConstraint;
   const beginDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=true; begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
-  const finishDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=false; finish(); dragProfile.stop(); setAlignment([]); } }, [dragProfile.stop, finish, preview]);
+  const finishDrag = useCallback(() => {
+    if (preview) return;
+    if (baseline.layout?.kind === 'manual') {
+      const current = nodesRef.current, roots = new Set(selectionRoots(current).map((node) => node.id));
+      const fitted = fitAuthoredLayout(current, current, [...roots], baseline.stage, roots);
+      const issue = fitted.conflict?.message ?? validateStoredRoutes(current, fitted.nodes, session.routesRef.current, projectionRef.current)
+        ?? validateFrozenConnections(current, fitted.nodes, baseline.stage, session.routesRef.current, session.frozenRef.current)[0]?.message;
+      if (issue) setMessage(issue); else setNodes(fitted.nodes);
+    }
+    captureRendered.current(); dragging.current = false; finish(); dragProfile.stop(); setAlignment([]);
+  }, [baseline, dragProfile.stop, finish, preview, setNodes]);
   const saveViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => { if (!preview) session.saveViewport(viewport); }, [preview, session.saveViewport]);
   return {
     ...scene, ...session, saveViewport, undo, redo, baselines: props.baselines, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom,
+    viewMode: session.viewMode, selectView, confirmedAt: session.confirmedAt, confirmationStatus: session.confirmationStatus,
     setSelectedEdge, setAlignment, onNodesChange, toggleNode, chooseEdge, selectBaseline, createGroup, dissolveGroup,
     setLayoutMode, freezeLayout, beginDrag, finishDrag, confirmStage, cancelPreview, adoptPreview, preview,
     freezeSubgraph, unfreezeSelected, setEdgeRouteState, selectedRouteState,

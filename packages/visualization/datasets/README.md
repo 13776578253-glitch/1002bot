@@ -49,3 +49,7 @@ node --experimental-strip-types tools/snapshot-id.ts --write <stage.json>
 3. 在 `project.json` 的 `stages` 登记路径，在 `views/` 增加或更新视图并把 `stageId` 设为新 id。
 4. 更新 `workspace/initial.json`（或让它按新快照重新生成），源数据变化时同步提升 `project.revision`。
 5. 运行 `pnpm check:snapshots` 与 `pnpm test`。
+
+## 阶段工作视图
+
+同一阶段的 Canonical Graph 共享实体和关系，工作空间按 `stages[stageId].views.overview/structure/full` 分别保存布局、展开集合、人工路径、冻结状态、草稿、确认快照和历史检查点。项目的 View JSON 继续提供初始语义与几何；三个工作视图由画布首次生成，此后的修改保存到浏览器。后续阶段从父阶段的同名确认快照继承；三份候选全部合法后一次保存。旧工作区迁入 structure，首次写回前备份原文。

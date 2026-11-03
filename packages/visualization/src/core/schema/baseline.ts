@@ -24,6 +24,8 @@ export interface VisualizationBaseline {
   /** Authored views require complete geometry and never invoke automatic node placement. */
   layout?: {
     kind: 'manual';
+    /** Projection-wide expansion is independent of saved node geometry. */
+    expansion?: 'collapsed' | 'expanded';
     nodes: Readonly<Record<string, {
       position: { x: number; y: number };
       width: number;
@@ -61,6 +63,7 @@ export function assertValidBaselines(baselines: readonly VisualizationBaseline[]
     for (const [id, position] of Object.entries(baseline.positions ?? {})) {
       if (!graph.nodes.some((node) => node.id === id) || !Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error(`Invalid initial position: ${baseline.id}/${id}`);
     }
+    if (baseline.layout?.expansion !== undefined && baseline.layout.expansion !== 'collapsed' && baseline.layout.expansion !== 'expanded') throw new Error(`Invalid expansion policy: ${baseline.id}`);
     if (baseline.layout) for (const node of graph.nodes.filter((item) => item.id !== graph.rootId)) {
       const frame = baseline.layout.nodes[node.id];
       if (!frame || !Number.isFinite(frame.position.x) || !Number.isFinite(frame.position.y) || !Number.isFinite(frame.width) || !Number.isFinite(frame.height) || frame.width <= 0 || frame.height <= 0) throw new Error(`Missing or invalid authored frame: ${baseline.id}/${node.id}`);

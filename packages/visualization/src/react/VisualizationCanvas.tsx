@@ -14,7 +14,9 @@ import { ConnectionPanel } from './components/connection-panel.tsx';
 import { TransitionPanel } from './components/transition-panel.tsx';
 import { normalizeMarqueeSelection, type CanvasNode } from './model/grouping.ts';
 import { useCanvasController } from './canvas/use-canvas-controller.ts';
-import { baselineNodes } from './canvas/use-workspace-session.ts';
+import { baselineNodes, VIEW_MODES } from './canvas/use-workspace-session.ts';
+import { baselineForView } from './model/view-projection.ts';
+import { normalizeWorkspaceView } from './persistence/local-storage.ts';
 import { restoreNodeViews } from './model/workspace.ts';
 import { restoreFrozenGroups } from './model/frozen.ts';
 import { rebaseSavedView } from './model/stage-navigation.ts';
@@ -39,7 +41,7 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
   const onSelectionEnd = useCallback(() => { if (!canvas.preview) setNodes((current) => normalizeMarqueeSelection(current)); }, [canvas.preview, setNodes]);
   const onMove = useCallback((_event: unknown, viewport: { zoom: number }) => setZoom(Math.round(viewport.zoom * 100)), [setZoom]);
   const onMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => { if (!canvas.preview) canvas.saveViewport(viewport); }, [canvas.preview, canvas.saveViewport]);
-  return <main className="canvas-app" data-theme={theme} aria-label="架构画布" data-transition={JSON.stringify(canvas.transition)} data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-route-geometry-ms={canvas.routeStats.geometryMs.toFixed(3)} data-route-routing-ms={canvas.routeStats.routingMs.toFixed(3)} data-route-label-ms={canvas.routeStats.labelMs.toFixed(3)} data-route-group-ms={canvas.routeStats.groupMs.toFixed(3)} data-routing-engine={canvas.routingEngine} data-routing-fallback={canvas.routingStatus.fallback?.reason ?? ''} data-routing-cache={canvas.routingStatus.cache ? `${canvas.routingStatus.cache.mode}:${canvas.routingStatus.cache.reusedGroups}/${canvas.routingStatus.cache.groups}` : ''} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
+  return <main className="canvas-app" data-theme={theme} data-view-mode={canvas.viewMode} data-stage-id={baseline.id} aria-label="架构画布" data-transition={JSON.stringify(canvas.transition)} data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-route-geometry-ms={canvas.routeStats.geometryMs.toFixed(3)} data-route-routing-ms={canvas.routeStats.routingMs.toFixed(3)} data-route-label-ms={canvas.routeStats.labelMs.toFixed(3)} data-route-group-ms={canvas.routeStats.groupMs.toFixed(3)} data-routing-engine={canvas.routingEngine} data-routing-fallback={canvas.routingStatus.fallback?.reason ?? ''} data-routing-cache={canvas.routingStatus.cache ? `${canvas.routingStatus.cache.mode}:${canvas.routingStatus.cache.reusedGroups}/${canvas.routingStatus.cache.groups}` : ''} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
     <ReactFlow<CanvasNode, Edge<LinkData>>
       nodes={displayNodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodesChange={onNodesChange} nodesConnectable={false} deleteKeyCode={null}
@@ -62,7 +64,7 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
       {grid && <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--grid)" className="canvas-grid" />}
       <ViewportPortal><svg className="alignment-guides" aria-hidden="true">{visibleGuides.map((guide, index) => <line key={index} x1={guide.axis === 'x' ? guide.value : guide.start} y1={guide.axis === 'y' ? guide.value : guide.start} x2={guide.axis === 'x' ? guide.value : guide.end} y2={guide.axis === 'y' ? guide.value : guide.end} strokeWidth={1 / Math.max(0.2, zoom / 100)} />)}</svg></ViewportPortal>
     </ReactFlow>
-    <TopActions workspaceTitle={baseline.stage.title} stageLabel={baseline.stage.label} stageId={baseline.id} stages={props.baselines.map((item) => ({ id: item.id, label: item.stage.label }))} onSelectStage={selectBaseline} {...(baseline.stage.subtitle ? { description: baseline.stage.subtitle } : {})} theme={theme} onThemeChange={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+    <TopActions workspaceTitle={baseline.stage.title} stageLabel={baseline.stage.label} stageId={baseline.id} stages={props.baselines.map((item) => ({ id: item.id, label: item.stage.label }))} onSelectStage={selectBaseline} viewMode={canvas.viewMode} onSelectView={canvas.selectView} confirmationStatus={canvas.confirmationStatus} confirmedAt={canvas.confirmedAt} {...(baseline.stage.subtitle ? { description: baseline.stage.subtitle } : {})} theme={theme} onThemeChange={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
     <SelectionTools label={selectionLabel} modes={canvas.selectedModes} onMode={canvas.setLayoutMode} canGroup={roots.length > 1 && !roots.some((node) => node.data.layoutMode === 'locked')} onGroup={createGroup} canFreeze={roots.length > 0} canUnfreeze={roots.some((node) => node.data.frozen) || !!selectedGroup?.data.frozen} onFreeze={canvas.freezeSubgraph} onUnfreeze={canvas.unfreezeSelected} {...(selectedGroup && selectedGroup.data.layoutMode !== 'locked' && !canvas.nodes.some((node) => node.parentId === selectedGroup.id && node.data.layoutMode === 'locked') ? { onUngroup: () => canvas.dissolveGroup(selectedGroup.id) } : {})} />
     <CanvasControls zoom={zoom} boxMode={boxMode} grid={grid} onZoomOut={() => void zoomOut()} onZoomIn={() => void zoomIn()} onFit={() => void fitView({ padding: 0.22, maxZoom: 1.15 })} onToggleBox={() => setBoxMode(!boxMode)} onToggleGrid={() => setGrid(!grid)} onFreeze={canvas.freezeLayout} onConfirm={canvas.confirmStage} onUndo={canvas.undo} onRedo={canvas.redo} canUndo={canvas.canUndo} canRedo={canvas.canRedo} />
     {canvas.connectionEdge && <ConnectionPanel edge={canvas.connectionEdge} stage={baseline.stage} onClose={canvas.closeConnections} onLocate={canvas.locateConnection} {...(canvas.message ? { message: canvas.message } : {})} {...(canvas.selectedRouteState ? { routeState: canvas.selectedRouteState } : {})} onRouteState={canvas.setEdgeRouteState} />}
@@ -80,18 +82,21 @@ function WorkspaceLoader(props: VisualizationCanvasProps) {
     if (!props.persistence) return;
     let active = true;
     setState({ ready: false });
-    loadWorkspace(props.persistence!.storage, props.persistence!.key).then((view) => {
-      if (view) for (const baseline of props.baselines) {
-        let saved = view.baselines[baseline.id];
+    loadWorkspace(props.persistence!.storage, props.persistence!.key).then((loaded) => {
+      const view = loaded ? normalizeWorkspaceView(loaded) : undefined;
+      if (view) for (const mode of VIEW_MODES) for (const original of props.baselines) {
+        const baseline = baselineForView(original, mode);
+        let saved = view.views?.[mode]?.[baseline.id];
         if (saved && saved.revision !== (baseline.stage.graph.revision ?? baseline.stage.id)) {
           saved = rebaseSavedView(baseline, saved);
-          view.baselines[baseline.id]=saved;
+          view.views![mode]![baseline.id]=saved;
         }
         if (saved) {
           const reconciled = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes), saved.frozenGroups);
           if (reconciled.conflicts.length) throw new Error(reconciled.conflicts.map((item) => item.message).join('；'));
         }
       }
+      if (view) view.baselines = view.views![view.viewMode!]!;
       if (active) setState({ ready: true, ...(view ? { restored: view } : {}) });
     }).catch((error: unknown) => { if (active) setState({ ready: false, error: `恢复失败：${error instanceof Error ? error.message : String(error)}` }); });
     return () => { active = false; };

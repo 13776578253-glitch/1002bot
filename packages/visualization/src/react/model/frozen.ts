@@ -11,6 +11,7 @@ export interface FreezeInput {
   groupId: string;
   stage?: StageSnapshot;
   frozenGroups?: readonly FrozenGroupSnapshot[];
+  preserveExpansion?: boolean;
 }
 
 export type FreezeResult =
@@ -83,7 +84,7 @@ export function freezeSelection(input: FreezeInput): FreezeResult {
 
   let root = working.find((node) => node.id === rootId);
   if (!root) return { ok: false, conflict: { kind: 'frozen-violation', entityIds: [rootId], message: '冻结根节点不存在', actions: ['cancel'] } };
-  if (root.data.expandable && !root.data.expanded && input.stage) {
+  if (root.data.expandable && !root.data.expanded && input.stage && !input.preserveExpansion) {
     const modes = new Map(working.map((node) => [node.id, node.data.layoutMode]));
     const guarded = working.map((node) => ({ ...node, data: { ...node.data, layoutMode: node.data.layoutMode === 'locked' ? 'locked' as const : 'fixed' as const } }));
     const expanded = toggleHierarchy(guarded, rootId, input.stage);

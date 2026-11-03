@@ -4,13 +4,24 @@
 :where(.canvas-app) .flow-card.is-selected { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent); }
 :where(.canvas-app) .is-neighbor .flow-card { border-color:color-mix(in srgb,var(--accent) 62%,var(--line)); }
 :where(.canvas-app) .is-planned { border-style:dashed; }
-:where(.canvas-app) .card-title { font-size:16px; font-weight:600; display:flex; align-items:center; gap:10px; line-height:24px; }
-:where(.canvas-app) .card-name { min-width:0; flex:1; }
+:where(.canvas-app) .card-title { height:24px; font-size:16px; font-weight:600; display:flex; align-items:center; gap:10px; line-height:24px; }
+:where(.canvas-app) .card-name { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 :where(.canvas-app) .change-badge { flex:none; display:inline-flex; align-items:center; justify-content:center; padding:0 5px; border-radius:4px; color:var(--change-color); background:color-mix(in srgb,var(--change-color) 10%,var(--surface)); font-size:11px; font-weight:400; line-height:20px; white-space:nowrap; }
 :where(.canvas-app) .flow-card:not(.is-selected):is([data-change="added"],[data-change="replaced"]),:where(.canvas-app) .structure-frame:not(.is-selected):is([data-change="added"],[data-change="replaced"]) { border-color:var(--change-color); }
 :where(.canvas-app) .card-summary { font-size:12.5px; line-height:20px; margin-top:4px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-:where(.canvas-app) .card-responsibilities { display:grid; gap:8px; padding:0; margin:12px 0 0; list-style:none; }
-:where(.canvas-app) .card-responsibilities li { height:44px; display:flex; align-items:center; padding:6px 12px; border-left:2px solid var(--group-line); border-radius:0 6px 6px 0; background:var(--group-bg); color:var(--muted); font-size:12.5px; line-height:17px; }
+:where(.canvas-app) .responsibility-panel { margin-top:12px; }
+:where(.canvas-app) .card-responsibilities { display:grid; grid-template-columns:repeat(2,var(--responsibility-card-width)); grid-template-rows:repeat(2,var(--responsibility-card-height)); justify-content:start; gap:var(--responsibility-card-gap); padding:0; margin:0; list-style:none; }
+:where(.canvas-app) .responsibility-panel[data-layout="compact"] .card-responsibilities { grid-template-rows:var(--responsibility-card-height); }
+:where(.canvas-app) .card-responsibilities li { width:var(--responsibility-card-width); height:var(--responsibility-card-height); min-width:0; display:flex; flex-direction:column; justify-content:center; gap:4px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:var(--group-bg); color:var(--muted); font-size:11.5px; line-height:16px; overflow:hidden; }
+:where(.canvas-app) .card-responsibilities .responsibility-placeholder { visibility:hidden; }
+:where(.canvas-app) .responsibility-title { color:var(--text); font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+:where(.canvas-app) .responsibility-pagination { height:18px; margin-top:4px; display:flex; align-items:center; justify-content:flex-end; gap:8px; color:var(--muted); font-size:10px; line-height:18px; }
+:where(.canvas-app) .responsibility-pagination button { height:18px; border:0; border-radius:3px; padding:0 4px; background:transparent; font-size:10px; line-height:18px; }
+:where(.canvas-app) .responsibility-pagination button:hover:not(:disabled) { color:var(--text); background:var(--hover); }
+:where(.canvas-app) .responsibility-pagination button:disabled { opacity:.4; cursor:default; }
+:where(.canvas-app) .responsibility-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+:where(.canvas-app) .responsibility-text { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; overflow-wrap:anywhere; }
+:where(.canvas-app) .terminal-badge { flex:none; padding:0 7px; border-radius:10px; background:var(--hover); color:var(--muted); font-size:11px; font-weight:400; line-height:20px; }
 :where(.canvas-app) .planned-badge { margin-left:auto; font-size:11px; line-height:20px; padding:0 5px; border-radius:4px; background:var(--hover); color:var(--muted); font-weight:400; }
 :where(.canvas-app) .react-flow__handle { width:5px; height:5px; min-width:5px; min-height:5px; background:var(--accent); border:0; opacity:0; pointer-events:none; }
 :where(.canvas-app) .react-flow__node-cluster,:where(.canvas-app) .react-flow__node-structure { border:0; padding:0; border-radius:20px; background:transparent; pointer-events:none!important; }

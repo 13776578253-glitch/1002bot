@@ -1,6 +1,6 @@
 /** Authored movement fits affected ancestors while preserving unrelated node positions. */
 import type { StageSnapshot } from '../../core/schema/types.ts';
-import { layoutProtectionConflict, structureHeaderHeight, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, detailCardSize, layoutProtectionConflict, structureHeaderHeight, worldPosition, type CanvasNode } from './grouping.ts';
 import { projectGraph } from '../../core/projection/index.ts';
 import type { StageConflict } from './stage-types.ts';
 import { alignNodeRect, type AlignmentGuide } from './constraints.ts';
@@ -34,8 +34,8 @@ export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: Stag
 }
 
 /** Four-way fitting compensates child coordinates and never pushes sibling components. */
-export function fitAuthoredLayout(before: readonly CanvasNode[], proposed: readonly CanvasNode[], changedIds: readonly string[], stage: StageSnapshot, movedRoots: ReadonlySet<string> = new Set(), ignored: ReadonlySet<string> = new Set()): { nodes: CanvasNode[]; conflict?: StageConflict } {
-  const fitted = fitMovedContainers(proposed, changedIds, { moveNeighbours: false, ignored, preserveFrozen: true });
+export function fitAuthoredLayout(before: readonly CanvasNode[], proposed: readonly CanvasNode[], changedIds: readonly string[], stage: StageSnapshot, movedRoots: ReadonlySet<string> = new Set(), ignored: ReadonlySet<string> = new Set(), preserveFrames = false): { nodes: CanvasNode[]; conflict?: StageConflict } {
+  const fitted = fitMovedContainers(proposed, changedIds, { moveNeighbours: false, ignored, preserveFrozen: true, preserveFrames, anchorFrame: true });
   for (const old of before) {
     const next = fitted.find((node) => node.id === old.id)!;
     if (next.width === old.width && next.height === old.height && next.position.x === old.position.x && next.position.y === old.position.y) continue;
@@ -62,7 +62,7 @@ export function deriveAuthoredLayout(input: readonly CanvasNode[], stage: StageS
   const proposed = input.map((node) => {
     if (node.data.frozen) return node;
     const preference = preferredEditedSize(node);
-    const natural = preference ?? (node.data.expanded ? node.data.authored?.expandedSize : node.data.authored?.collapsedSize) ?? { width: node.width!, height: node.height! };
+    const natural = node.type === 'card' ? node.data.expanded ? detailCardSize(node.data.details?.length ?? 0) : CARD_SIZE : preference ?? (node.data.expanded ? node.data.authored?.expandedSize : node.data.authored?.collapsedSize) ?? { width: node.width!, height: node.height! };
     const { reflowOrigin: _reflow, expansionSizes: _sizes, ...data } = node.data;
     return { ...node, width: natural.width, height: natural.height, measured: { width: natural.width, height: natural.height }, style: { ...node.style, width: natural.width, height: natural.height }, data: { ...data, contentWidth: natural.width, contentHeight: natural.height } };
   });
@@ -75,11 +75,11 @@ export function moveAuthoredNodes(before: readonly CanvasNode[], proposed: reado
   return moveAuthoredSelection(before, proposed, movedIds, stage).nodes;
 }
 
-export function moveAlignedAuthoredNodes(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot, zoom: number, visible: ReadonlySet<string>): { nodes: CanvasNode[]; guides: AlignmentGuide[] } {
+export function moveAlignedAuthoredNodes(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot, zoom: number, visible: ReadonlySet<string>): { nodes: CanvasNode[]; guides: AlignmentGuide[]; conflict?: StageConflict } {
   return moveAuthoredSelection(before, proposed, movedIds, stage, { zoom, visible });
 }
 
-function moveAuthoredSelection(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot, alignment?: { zoom: number; visible: ReadonlySet<string> }): { nodes: CanvasNode[]; guides: AlignmentGuide[] } {
+function moveAuthoredSelection(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot, alignment?: { zoom: number; visible: ReadonlySet<string> }): { nodes: CanvasNode[]; guides: AlignmentGuide[]; conflict?: StageConflict } {
   const previous = new Map(before.map((node) => [node.id, node]));
   const movable = new Set(movedIds.filter((id) => previous.get(id)!.data.layoutMode !== 'locked'));
   const roots = before.filter((node) => movable.has(node.id) && !(() => {
@@ -113,17 +113,17 @@ function moveAuthoredSelection(before: readonly CanvasNode[], proposed: readonly
     const peers = next.filter((node) => alignment.visible.has(node.id) && node.type === primary.type && !rootIds.has(node.id) && !ancestors.has(node.id) && !hasMovingAncestor(node));
     const snap = alignNodeRect(rect(anchor), peers.map(rect), alignment.zoom);
     const snapped = next.map((node) => rootIds.has(node.id) ? { ...node, position: { x: node.position.x + snap.dx, y: node.position.y + snap.dy } } : node);
-    const fitted = fitAuthoredLayout(before, snapped, [...rootIds], stage, rootIds);
+    const fitted = fitAuthoredLayout(before, snapped, [...rootIds], stage, rootIds, new Set(), true);
     if (!fitted.conflict) return { nodes: fitted.nodes, guides: snap.guides };
   }
-  const fitted = fitAuthoredLayout(before, next, [...rootIds], stage, rootIds);
+  const fitted = fitAuthoredLayout(before, next, [...rootIds], stage, rootIds, new Set(), true);
   if (!fitted.conflict) return { nodes: fitted.nodes, guides: [] };
   let low = 0, high = 1, accepted = before as CanvasNode[];
   for (let step = 0; step < 18; step++) {
     const fraction = (low + high) / 2;
     const trial = next.map((node) => rootIds.has(node.id) ? { ...node, position: { x: previous.get(node.id)!.position.x + delta.x * fraction, y: previous.get(node.id)!.position.y + delta.y * fraction } } : node);
-    const result = fitAuthoredLayout(before, trial, [...rootIds], stage, rootIds);
+    const result = fitAuthoredLayout(before, trial, [...rootIds], stage, rootIds, new Set(), true);
     if (result.conflict) high = fraction; else { low = fraction; accepted = result.nodes; }
   }
-  return { nodes: accepted, guides: [] };
+  return { nodes: accepted, guides: [], ...(accepted === before && fitted.conflict ? { conflict: fitted.conflict } : {}) };
 }

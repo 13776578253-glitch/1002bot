@@ -2,6 +2,7 @@
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { Point } from '../../core/layout/geometry.ts';
 import type { CanvasNode, LayoutMode } from './grouping.ts';
+import { CARD_SIZE, detailCardSize } from './grouping.ts';
 import type { EdgeLabelPlacement } from './labels.ts';
 import type { UserGraphOverlay } from './overlay.ts';
 import type { StageInheritanceBase } from './snapshot-inheritance.ts';
@@ -126,16 +127,21 @@ export interface CanvasBaselineView extends CanvasBaselineContent {
   confirmedRevision?: string;
   confirmedAt?: string;
   confirmed?: CanvasBaselineContent;
+  requiresConfirmation?: boolean;
   viewport?: CanvasViewport;
   transition?: StageTransitionRecord;
   inheritance?: StageInheritanceBase;
   sourceStage?: StageSnapshot;
 }
 
+export type CanvasViewMode = 'overview' | 'structure' | 'full';
+
 export interface CanvasWorkspaceView {
   version: 2;
   baselineId: string;
   baselines: Record<string, CanvasBaselineView>;
+  viewMode?: CanvasViewMode;
+  views?: Partial<Record<CanvasViewMode, Record<string, CanvasBaselineView>>>;
 }
 
 export interface CanvasViewStorage {
@@ -187,7 +193,7 @@ export function emptyContent(nodes: CanvasNodeView[] = []): CanvasBaselineConten
   return { nodes, edgeRoutes: [], frozenGroups: [] };
 }
 
-export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonly CanvasNode[], saved: readonly CanvasNodeView[]): CanvasNode[] {
+export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonly CanvasNode[], saved: readonly CanvasNodeView[], standardizeCards = true): CanvasNode[] {
   const canonical = new Map(fresh.map((node) => [node.id, node]));
   const previous = new Map(saved.map((node) => [node.id, node]));
   const retained = new Set([...canonical.keys(), ...saved.filter((node) => node.type === 'cluster').map((node) => node.id)]);
@@ -218,11 +224,12 @@ export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonl
       const origin = parent ? world(parent) : freshParent ? freshWorld(freshParent) : { x: 0, y: 0 };
       return { x: point.x - origin.x, y: point.y - origin.y };
     })();
-    const expanded = !!view.data.expanded && !!source?.data.expandable;
+    const expanded = !!source?.data.expandable && (baseline.layout?.expansion === 'expanded' || baseline.layout?.expansion !== 'collapsed' && !!view.data.expanded);
     const cluster = view.type === 'cluster';
     const structure = expanded && (source?.data.childCount ?? 0) > 0;
-    const shapeChanged = !cluster && expanded && (view.type === 'structure') !== structure;
+    const shapeChanged = !cluster && (expanded !== !!view.data.expanded || expanded && (view.type === 'structure') !== structure);
     const size = source && (shapeChanged || !source.data.expandable && view.type === 'structure') ? { width: source.width!, height: source.height! } : { width: view.width, height: view.height };
+    if (standardizeCards && !cluster && !structure && !view.data.frozen && view.data.layoutMode !== 'locked') Object.assign(size, expanded ? detailCardSize(source?.data.details?.length ?? 0) : CARD_SIZE);
     return {
       ...(source ? (({ parentId: _parent, extent: _extent, dragHandle: _handle, ...node }) => node)(source) : { id: view.id, data: { title: view.data.title! } }),
       type: cluster ? 'cluster' : structure ? 'structure' : 'card',

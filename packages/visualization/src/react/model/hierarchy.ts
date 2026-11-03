@@ -1,6 +1,6 @@
 /** Hierarchical card tree, container expansion/collapse and cross-baseline expansion synchronization. */
 import { projectGraph, type Projection } from '../../core/projection/index.ts';
-import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, detailCardSize, worldPosition, type CanvasNode } from './grouping.ts';
 import { solveHierarchyExpansion } from './placement.ts';
 import { fitAuthoredLayout } from './manual-layout.ts';
 import type { StageConflict } from './stage-types.ts';
@@ -14,11 +14,12 @@ export function baselineNodes(baseline: VisualizationBaseline): CanvasNode[] {
   return createHierarchyNodes(baseline.stage, positions).map((node) => {
     const frame = baseline.layout?.nodes[node.id];
     const expanded = !!frame?.initiallyExpanded && !!node.data.expandable;
-    const size = frame ? expanded ? frame.expandedSize! : { width: frame.width, height: frame.height } : undefined;
     const container = (node.data.childCount ?? 0) > 0;
+    const detailSize = detailCardSize(node.data.details?.length ?? 0);
+    const size = expanded ? container ? frame?.expandedSize : detailSize : CARD_SIZE;
     return { ...node,
       ...(frame ? { position: { ...frame.position }, ...size, measured: { ...size! }, style: { ...size! }, type: expanded && container ? 'structure' : 'card', ...(expanded && container ? { dragHandle: '.structure-header' } : {}) } : {}),
-      data: { ...node.data, change: baseline.nodeChanges[node.id]!, ...(frame ? { expanded, authored: { collapsedSize: { width: frame.width, height: frame.height }, ...(frame.expandedSize ? { expandedSize: { ...frame.expandedSize } } : {}) } } : {}) },
+      data: { ...node.data, change: baseline.nodeChanges[node.id]!, ...(frame ? { expanded, authored: { collapsedSize: { ...CARD_SIZE }, ...(frame.expandedSize ? { expandedSize: container ? { ...frame.expandedSize } : { ...detailSize } } : {}) } } : {}) },
     };
   });
 }
@@ -54,7 +55,7 @@ export function createHierarchyNodes(stage: StageSnapshot, positions: Readonly<R
         layoutEdits: { version: 1 },
         expandable: parents.has(node.id) || Boolean(node.details?.length), expanded: false, childCount: parents.get(node.id) ?? 0,
         ...(node.details ? { details: node.details } : {}),
-        ...(node.details?.length && !parents.has(node.id) ? { authored: { collapsedSize: { ...CARD_SIZE }, expandedSize: { width: 400, height: 100 + node.details.length * 52 } } } : {}),
+        ...(node.details?.length && !parents.has(node.id) ? { authored: { collapsedSize: { ...CARD_SIZE }, expandedSize: { ...detailCardSize(node.details.length) } } } : {}),
       },
     };
   });
@@ -89,7 +90,8 @@ export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage:
       if (node.id !== id || !node.data.expandable) return node;
       const expanded = !node.data.expanded;
       const preference = node.data.layoutEdits?.sizes?.[expanded ? 'expanded' : 'collapsed'];
-      const selectedSize = expanded ? { width: Math.max(preference?.width ?? 0, node.data.contentWidth ?? authored.expandedSize!.width), height: Math.max(preference?.height ?? 0, node.data.contentHeight ?? authored.expandedSize!.height) } : preference ?? authored.collapsedSize;
+      const responsibility = !node.data.childCount && !!node.data.details?.length;
+      const selectedSize = expanded ? responsibility ? detailCardSize(node.data.details!.length) : { width: Math.max(preference?.width ?? 0, node.data.contentWidth ?? authored.expandedSize!.width), height: Math.max(preference?.height ?? 0, node.data.contentHeight ?? authored.expandedSize!.height) } : CARD_SIZE;
       const size = { width: selectedSize.width, height: selectedSize.height };
       const { dragHandle: _handle, ...rest } = node;
       const container = input.some((child) => child.parentId === node.id);
