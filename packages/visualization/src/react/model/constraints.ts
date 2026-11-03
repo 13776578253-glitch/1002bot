@@ -16,8 +16,8 @@ export function alignNodeRect(anchor: Rect, peers: readonly Rect[], zoom: number
     for (const t of [0.5, 0, 1]) {
       const x = other.x + other.w * t - anchor.x - anchor.w * t;
       const y = other.y + other.h * t - anchor.y - anchor.h * t;
-      if (Math.abs(x) <= threshold && Math.abs(x) < bestX) { dx = x; bestX = Math.abs(x); xGuide = { axis: 'x', value: other.x + other.w * t, start: Math.min(anchor.y, other.y) - 12, end: Math.max(anchor.y + anchor.h, other.y + other.h) + 12 }; }
-      if (Math.abs(y) <= threshold && Math.abs(y) < bestY) { dy = y; bestY = Math.abs(y); yGuide = { axis: 'y', value: other.y + other.h * t, start: Math.min(anchor.x, other.x) - 12, end: Math.max(anchor.x + anchor.w, other.x + other.w) + 12 }; }
+      if (Math.abs(x) <= threshold && Math.abs(x) < bestX) { dx = x; bestX = Math.abs(x); xGuide = { axis: 'x', value: other.x + other.w * t, start: Math.min(anchor.y, other.y), end: Math.max(anchor.y + anchor.h, other.y + other.h) }; }
+      if (Math.abs(y) <= threshold && Math.abs(y) < bestY) { dy = y; bestY = Math.abs(y); yGuide = { axis: 'y', value: other.y + other.h * t, start: Math.min(anchor.x, other.x), end: Math.max(anchor.x + anchor.w, other.x + other.w) }; }
     }
   }
   return { dx, dy, guides: [xGuide, yGuide].filter((guide): guide is AlignmentGuide => guide !== undefined) };

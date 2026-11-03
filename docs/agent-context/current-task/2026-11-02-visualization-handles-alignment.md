@@ -24,3 +24,13 @@ The current M0 view already references the historical M1 report. Keep its six-bl
 Byte-identical record copy: docs/agent-context/finish-task/2026-11-02-visualization-handles-alignment-snapshot/2026-11-02-visualization-handles-alignment.md. SHA-256 is recorded in MANIFEST.json.
 
 Commit suggestion: fix(visualization): hide port slots and restore drag alignment
+
+## Follow-up: guide endpoints
+
+Owner feedback shows a short guide protruding beyond the outer card. Remove the 12px endpoint extension from the shared alignment calculation; keep card/label clipping and snap positions unchanged. Per owner instruction, do not run automated tests for this adjustment. The earlier archive remains the completed first-change snapshot.
+
+Removed both horizontal and vertical endpoint extensions. No automated checks run; this follow-up is left uncommitted.
+
+## Follow-up regression
+
+Owner requested a regression for the guide endpoint change. `src/react/model/__tests__/alignment-guides.test.ts` asserts both axes terminate at the card-bound union, without the former 12px exterior. Package tests pass 334/334; package typecheck passes.
