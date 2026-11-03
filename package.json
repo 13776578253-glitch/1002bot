@@ -22,6 +22,7 @@
     "test:core": "node --experimental-strip-types scripts/run-tests.mjs --core",
     "typecheck:core": "pnpm --filter @1002bot/control-api build && node scripts/typecheck.mjs",
     "check:packages": "node scripts/check-packages.mjs",
+    "scratch": "node scripts/scratch/scratch.mjs",
     "wt:new": "node scripts/worktree.mjs new",
     "wt:status": "node scripts/worktree.mjs status"
   },

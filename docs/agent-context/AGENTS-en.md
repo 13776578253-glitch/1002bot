@@ -97,7 +97,11 @@ Do not interpret `__tests__/` as the directory where every test must live. It in
 
 ## 6. Scratch
 
-Put disposable work such as probes, one-off scripts, dumps, and experiments under `.scratch/`. Promote it deliberately only when it becomes a tool.
+Put disposable work such as probes, one-off scripts, dumps, and experiments under `.scratch/`. Use `pnpm scratch start --task <id> --title <title> [--agent <id>]` so logs, scripts, screenshots, reports, and evidence share one manifest-bearing run. Promote scratch work deliberately only when it becomes a tool.
+
+Browser acceptance uses `withEdgePage` from `scripts/browser-session.mjs`; temporary profiles are removed in a `finally` block. Retain a profile only for a failed run with `{ taskId, keepProfile: true }`, or use an explicitly named profile under `cache/persistent` for login state. Run `pnpm scratch profiles --legacy` after a forced termination and inspect the report before applying cleanup.
+
+Rollback files, stage snapshots, and manual acceptance evidence belong in a run marked `protected` or with `recoveryPoints`. `pnpm scratch clean` is a dry run by default and never touches `active`, `review`, protected, or recovery-bearing runs. Top-level legacy scratch directories are never auto-cleaned.
 
 ## 7. Documentation
 
