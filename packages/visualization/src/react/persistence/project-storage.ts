@@ -52,6 +52,7 @@ export function normalizeProjectWorkspace(value: unknown, projectId: string): Pr
       revision: raw.revision, ...draft.content,
       ...(confirmed ? { confirmed: confirmed.content } : {}),
       ...(raw.confirmedAt ? { confirmedAt: raw.confirmedAt } : {}),
+      ...(raw.confirmedRevision !== undefined ? { confirmedRevision: raw.confirmedRevision } : {}),
       ...(raw.viewport !== undefined ? { viewport: raw.viewport } : {}),
       ...(raw.transition !== undefined ? { transition: raw.transition } : {}),
       ...(raw.inheritance !== undefined ? { inheritance: raw.inheritance } : {}),
@@ -66,6 +67,7 @@ export function normalizeProjectWorkspace(value: unknown, projectId: string): Pr
       ...(confirmed ? { confirmed } : {}),
       ...(checked.confirmedAt ? { confirmedAt: checked.confirmedAt } : {}),
       ...(text(raw.confirmationId) ? { confirmationId: raw.confirmationId } : {}),
+      ...(checked.confirmedRevision ? { confirmedRevision: checked.confirmedRevision } : {}),
       checkpoints,
       ...(checked.viewport ? { viewport: checked.viewport } : {}),
       ...(checked.transition ? { transition: checked.transition } : {}),
@@ -88,6 +90,9 @@ export function createProjectViewStorage(storage: Pick<Storage, 'getItem' | 'set
       const workspace = canvasWorkspaceToProject(view, projectId, previous);
       // Validate the complete output before replacing the prior record.
       normalizeProjectWorkspace(workspace, projectId);
+      const original = storage.getItem(key);
+      const backupKey = `${key}:before-layout-intent-v1`;
+      if (original !== null && storage.getItem(backupKey) === null && Object.values(view.baselines).some((stage) => stage.nodes.some((node) => node.data.layoutEdits))) storage.setItem(backupKey, original);
       storage.setItem(key, JSON.stringify(workspace));
     },
   };

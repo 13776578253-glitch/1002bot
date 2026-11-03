@@ -1,7 +1,10 @@
 /** Atomic navigation and three-way rebasing over confirmed parent snapshots. */
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { CanvasBaselineContent, CanvasBaselineView } from './workspace.ts';
-import { restoreNodeViews } from './workspace.ts';
+import { captureNodeViews, restoreNodeViews } from './workspace.ts';
+import { deriveAuthoredLayout } from './manual-layout.ts';
+import { validateFrozenConnections } from './blackbox-routes.ts';
+import { layoutProtectionConflict } from './grouping.ts';
 import { baselineNodes } from './hierarchy.ts';
 import { hierarchyProjection, nodeIsVisible } from './hierarchy.ts';
 import { worldPosition } from './grouping.ts';
@@ -16,16 +19,17 @@ import { captureStageInheritance, mergeStageContent, needsStageRebase, type Stag
 
 export type NavigationResult = StageTransitionResult & { inheritance?: StageInheritanceBase; reused?: boolean; resetCandidate?: Extract<StageTransitionResult, {ok:true}> };
 
-/** A changed source creates a new draft; its old confirmation remains a historical checkpoint. */
+/** A changed source creates a new draft while preserving the prior confirmation. */
 export function rebaseSavedView(target: VisualizationBaseline, saved: CanvasBaselineView): CanvasBaselineView {
   const merged = prepareSourceRevision(target, saved);
   if (!merged.ok) throw new Error(merged.conflicts.map((item) => item.message).join('；'));
-  const { confirmed: _confirmed, confirmedAt: _stamp, confirmationId: _confirmationId, ...draft } = saved;
-  return { ...draft, ...merged.content, revision: target.stage.graph.revision ?? target.stage.id, sourceStage: target.stage };
+  return { ...saved, ...merged.content, ...(saved.confirmed ? { confirmedRevision: saved.confirmedRevision ?? saved.revision } : {}), revision: target.stage.graph.revision ?? target.stage.id, sourceStage: target.stage };
 }
 
 function finalizeMerged(target: VisualizationBaseline, previous: CanvasBaselineContent, content: CanvasBaselineContent, generated: Extract<StageTransitionResult,{ok:true}>, inheritance?: StageInheritanceBase): NavigationResult {
-  const nodes=restoreNodeViews(target,baselineNodes(target),content.nodes);
+  const restored=restoreNodeViews(target,baselineNodes(target),content.nodes);
+  const fitted=target.layout?.kind === 'manual' ? deriveAuthoredLayout(restored,target.stage) : { nodes:restored };
+  const nodes=fitted.nodes;
   const old=restoreNodeViews(target,baselineNodes(target),previous.nodes);
   const oldIds=new Set(previous.nodes.map((node)=>node.id));
   const projection=hierarchyProjection(nodes,target.stage);
@@ -33,6 +37,9 @@ function finalizeMerged(target: VisualizationBaseline, previous: CanvasBaselineC
   const hit=(a:typeof nodes[number],b:typeof nodes[number],all:typeof nodes)=>{const x=worldPosition(a,all),y=worldPosition(b,all);return x.x<y.x+b.width!&&x.x+a.width!>y.x&&x.y<y.y+b.height!&&x.y+a.height!>y.y;};
   const visible=nodes.filter(node=>nodeIsVisible(node,nodes,projection));
   const issues=[];
+  if (fitted.conflict) issues.push(fitted.conflict);
+  const movedParents = new Set(nodes.filter((node) => node.data.layoutEdits?.position?.origin === 'user' && JSON.stringify(node.data.layoutEdits.position) !== JSON.stringify(old.find((item) => item.id === node.id)?.data.layoutEdits?.position)).map((node) => node.id));
+  if (layoutProtectionConflict(old,nodes,movedParents)) issues.push({kind:'merge-conflict' as const,entityIds:[],message:'合并后布局改变了固定节点的锚点',actions:['cancel' as const]});
   for(let i=0;i<visible.length;i++)for(let j=i+1;j<visible.length;j++){
     const a=visible[i]!,b=visible[j]!;
     if(ancestor(a.id,b.id)||ancestor(b.id,a.id)||!hit(a,b,nodes))continue;
@@ -44,6 +51,7 @@ function finalizeMerged(target: VisualizationBaseline, previous: CanvasBaselineC
   if(routeConflict)issues.push({kind:'merge-conflict' as const,entityIds:[],message:routeConflict,actions:['cancel' as const]});
   const frozen=restoreFrozenGroups(nodes,content.frozenGroups);
   issues.push(...frozen.conflicts);
+  issues.push(...validateFrozenConnections(old,nodes,target.stage,content.edgeRoutes,content.frozenGroups));
   const edges=aggregateProjectedEdges(projection,target.edgeChanges),reserved=reservedLockedRoutes(content.edgeRoutes,nodes,content.frozenGroups);
   const retained=retainedCanonicalRoutes(nodes,projection,edges,content.edgeRoutes,retainedDisplayRoutes(nodes,projection,edges,content.displayRoutes,reserved),content.frozenGroups);
   const boundaryFailures=new Map<string,string>();
@@ -52,7 +60,7 @@ function finalizeMerged(target: VisualizationBaseline, previous: CanvasBaselineC
   const geometry=createDiagramGeometry(nodes,projection,reserved);
   for(const edge of edges)if(!pathIsClear(routes.get(edge.id)!.points,retained.has(edge.id)?withReservedRoutes(geometry,[]):geometry,edge.source,edge.target,edge.id))issues.push({kind:'merge-conflict' as const,entityIds:[edge.id],message:'合并后的连接无法满足路径约束',actions:['cancel' as const]});
   const snapshots=captureDisplayRoutes(nodes,projection,edges,routes,reserved);
-  const merged={...content,displayRoutes:snapshots};
+  const merged={...content,nodes:captureNodeViews(nodes),displayRoutes:snapshots};
   const state={nodes:frozen.nodes,edgeRoutes:merged.edgeRoutes,frozenGroups:frozen.groups,...(merged.overlay?{overlay:merged.overlay}:{}),displayRoutes:snapshots};
   if(issues.length)return{ok:false,base:previous,candidate:state,conflicts:issues};
   return{...generated,base:previous,content:merged,state,...(inheritance?{inheritance}:{})};

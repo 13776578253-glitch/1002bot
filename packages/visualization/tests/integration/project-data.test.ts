@@ -55,11 +55,13 @@ test('a source revision becomes a saveable draft and preserves its previous conf
   changed.stage.graph.revision = 'revised-source';
   changed.stage.graph.nodes.find((node) => node.id === 'agent')!.summary = 'Updated source description';
   view.baselines[snapshotId] = rebaseSavedView(changed, view.baselines[snapshotId]);
-  assert.equal(view.baselines[snapshotId].confirmationId, undefined);
-  assert.equal(view.baselines[snapshotId].confirmed, undefined);
+  assert.equal(view.baselines[snapshotId].confirmationId, 'initial-confirmation');
+  assert.deepEqual(view.baselines[snapshotId].confirmed, content);
+  assert.equal(view.baselines[snapshotId].confirmedRevision, baseline.stage.graph.revision ?? baseline.stage.id);
   await storage.save('project', view);
   const restored = await storage.load('project');
   assert.equal(restored!.baselines[snapshotId]!.revision, 'revised-source');
+  assert.equal(restored!.baselines[snapshotId]!.confirmedRevision, baseline.stage.graph.revision ?? baseline.stage.id);
   const persisted = normalizeProjectWorkspace(JSON.parse(records.get('project')!), project.id);
   assert.equal(persisted.stages[snapshotId]!.checkpoints.length, 1);
   assert.deepEqual(persisted.stages[snapshotId]!.checkpoints[0]!.content, content);

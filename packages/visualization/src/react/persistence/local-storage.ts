@@ -66,6 +66,21 @@ function checkNodeViews(raw: unknown): CanvasNodeView[] {
     if (!LAYOUT_MODES.has(typeof item.data.layoutMode === 'string' ? item.data.layoutMode : 'free')) throw new Error('节点视图格式不正确');
     if (item.data.frozen !== undefined && typeof item.data.frozen !== 'boolean') throw new Error('节点视图格式不正确');
     if (item.data.expanded !== undefined && typeof item.data.expanded !== 'boolean') throw new Error('节点视图格式不正确');
+    if (item.data.layoutEdits !== undefined) {
+      const edits = item.data.layoutEdits;
+      if (!isRecord(edits) || edits.version !== 1) throw new Error('布局编辑意图格式不正确');
+      if (edits.position !== undefined) {
+        checkPoint(edits.position, '布局位置编辑格式不正确');
+        if (!isRecord(edits.position) || !['user', 'legacy'].includes(String(edits.position.origin)) || edits.position.parentId !== undefined && !isText(edits.position.parentId)) throw new Error('布局位置编辑格式不正确');
+      }
+      if (edits.sizes !== undefined) {
+        if (!isRecord(edits.sizes)) throw new Error('布局尺寸编辑格式不正确');
+        for (const state of ['collapsed', 'expanded']) {
+          const size = edits.sizes[state];
+          if (size !== undefined && (!isRecord(size) || !isFiniteNumber(size.width) || !isFiniteNumber(size.height) || size.width <= 0 || size.height <= 0 || !['user', 'legacy'].includes(String(size.origin)))) throw new Error('布局尺寸编辑格式不正确');
+        }
+      }
+    }
     if (item.parentId !== undefined && !isText(item.parentId)) throw new Error('分组层级格式不正确');
     const node = item as unknown as CanvasNodeView;
     nodes.set(node.id, node);
@@ -241,6 +256,7 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
     }
     if (raw.confirmedAt !== undefined && !isText(raw.confirmedAt)) throw new Error('阶段确认时间格式不正确');
     if (raw.confirmationId !== undefined && !isText(raw.confirmationId)) throw new Error('阶段确认标识格式不正确');
+    if (raw.confirmedRevision !== undefined && (!isText(raw.confirmedRevision) || !confirmed)) throw new Error('阶段确认来源版本格式不正确');
     const viewport = checkViewport(raw.viewport);
     const transition = checkTransition(raw.transition);
     const inheritance = checkInheritance(raw.inheritance);
@@ -254,6 +270,7 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
       ...(confirmed ? { confirmed } : {}),
       ...(raw.confirmedAt !== undefined ? { confirmedAt: raw.confirmedAt as string } : {}),
       ...(raw.confirmationId !== undefined ? { confirmationId: raw.confirmationId as string } : {}),
+      ...(raw.confirmedRevision !== undefined ? { confirmedRevision: raw.confirmedRevision as string } : {}),
       ...(viewport ? { viewport } : {}),
       ...(transition ? { transition } : {}),
       ...(inheritance ? { inheritance } : {}),

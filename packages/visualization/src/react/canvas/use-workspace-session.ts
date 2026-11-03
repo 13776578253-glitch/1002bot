@@ -74,11 +74,13 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmedAt ? [[id, view.confirmedAt] as const] : []),
   ));
   const confirmationIds = useRef(new Map(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmationId ? [[id, view.confirmationId] as const] : [])));
+  const confirmedRevisions = useRef(new Map(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.confirmed ? [[id, view.confirmedRevision ?? view.revision] as const] : [])));
   const transitions = useRef(new Map<string, StageTransitionRecord>(
     Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.transition ? [[id, view.transition] as const] : []),
   ));
   const viewports = useRef(new Map(Object.entries(restored?.baselines ?? {}).flatMap(([id, view]) => view.viewport ? [[id, view.viewport] as const] : [])));
   const histories = useRef(new Map<string, ViewHistory>());
+  const checkpointMetadata = useRef(new WeakMap<CanvasBaselineContent, { inheritance: StageInheritanceBase | undefined; transition: StageTransitionRecord | undefined; revision: string | undefined; sourceStage: StageSnapshot | undefined }>());
   const pending = useRef<CanvasBaselineContent | undefined>(undefined);
   const [historyVersion, refreshHistory] = useState(0);
   const [saveError, setSaveError] = useState('');
@@ -98,7 +100,11 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const setOverlay = useCallback((next: UserGraphOverlay | undefined) => { overlayRef.current = next; publishOverlay(next); }, []);
   const setDisplayRoutes = useCallback((next: DisplayRouteSnapshot[]) => { displayRoutesRef.current = next; publishDisplayRoutes(next); }, []);
 
-  const captureCurrent = useCallback(() => captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current), []);
+  const rememberMetadata = useCallback((content: CanvasBaselineContent, id = idRef.current) => {
+    checkpointMetadata.current.set(content, { inheritance: inheritances.current.get(id), transition: transitions.current.get(id), revision: revisions.current.get(id), sourceStage: sourceStages.current.get(id) });
+    return content;
+  }, []);
+  const captureCurrent = useCallback(() => rememberMetadata(captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current)), [rememberMetadata]);
 
   const storedContent = useCallback((id: string): CanvasBaselineContent | undefined => {
     const saved = restored?.baselines[id];
@@ -138,6 +144,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
         ...(confirmed ? { confirmed } : {}),
         ...(confirmedStamp ? { confirmedAt: confirmedStamp } : {}),
         ...(confirmationIds.current.get(baseline.id) ? { confirmationId: confirmationIds.current.get(baseline.id)! } : {}),
+        ...(confirmed && confirmedRevisions.current.get(baseline.id) ? { confirmedRevision: confirmedRevisions.current.get(baseline.id)! } : {}),
         ...(transition ? { transition } : {}),
         ...(viewport ? { viewport } : {}),
       };
@@ -162,7 +169,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     const next = transform(current);
     if (next === current) return false;
     setNodes(next);
-    const after = captureContent(next, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current);
+    const after = captureCurrent();
     const changed = history().record(before, after);
     if (changed) { refreshHistory((version) => version + 1); save(); }
     return changed;
@@ -203,6 +210,13 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     if (direction === 'undo' ? !stack.canUndo : !stack.canRedo) return;
     pending.current = undefined;
     const saved = stack[direction](captureCurrent());
+    const metadata = checkpointMetadata.current.get(saved);
+    if (metadata) {
+      if (metadata.inheritance) inheritances.current.set(idRef.current, metadata.inheritance); else inheritances.current.delete(idRef.current);
+      if (metadata.transition) transitions.current.set(idRef.current, metadata.transition); else transitions.current.delete(idRef.current);
+      if (metadata.revision) revisions.current.set(idRef.current, metadata.revision); else revisions.current.delete(idRef.current);
+      if (metadata.sourceStage) sourceStages.current.set(idRef.current, metadata.sourceStage); else sourceStages.current.delete(idRef.current);
+    }
     applyContent(saved);
     refreshHistory((version) => version + 1);
     save();
@@ -225,6 +239,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   }, [captureCurrent, makeContent, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
 
   const applyStageTransition = useCallback((targetId: string, next: CanvasSessionState, before: CanvasBaselineContent, record: StageTransitionRecord, inheritance?: StageInheritanceBase) => {
+    rememberMetadata(before, targetId);
     pending.current = undefined;
     contents.current.set(idRef.current, captureCurrent());
     idRef.current = targetId;
@@ -240,11 +255,12 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     revisions.current.set(targetId, record.targetRevision);
     if (inheritance) inheritances.current.set(targetId, inheritance);
     sourceStages.current.set(targetId, structuredClone(baselines.find((item) => item.id === targetId)!.stage));
+    rememberMetadata(after, targetId);
     const stack = histories.current.get(targetId) ?? new ViewHistory();
     histories.current.set(targetId, stack);
     if (stack.record(before, after)) refreshHistory((version) => version + 1);
     save();
-  }, [captureCurrent, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
+  }, [captureCurrent, rememberMetadata, save, setFrozenGroups, setNodes, setOverlay, setRoutes]);
 
   const confirm = useCallback((renderedRoutes?: DisplayRouteSnapshot[]) => {
     if (renderedRoutes) setDisplayRoutes(renderedRoutes);
@@ -253,11 +269,13 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     confirmationIds.current.set(idRef.current, crypto.randomUUID());
     const baseline = baselines.find((item) => item.id === idRef.current)!;
     revisions.current.set(idRef.current, baseline.stage.graph.revision ?? baseline.stage.id);
+    confirmedRevisions.current.set(idRef.current, baseline.stage.graph.revision ?? baseline.stage.id);
     sourceStages.current.set(idRef.current, structuredClone(baseline.stage));
     save();
   }, [baselines, captureCurrent, save]);
 
   const getConfirmedContent = useCallback((id: string): CanvasBaselineContent | undefined => confirmedContents.current.get(id) ?? restored?.baselines[id]?.confirmed, [restored]);
+  const getConfirmedRevision = useCallback((id: string): string | undefined => confirmedRevisions.current.get(id), []);
 
   const getSavedContent = useCallback((id: string): { content: CanvasBaselineContent; revision?: string; inheritance?: StageInheritanceBase; sourceStage?: StageSnapshot } | undefined => {
     const inMemory = contents.current.get(id);
@@ -291,7 +309,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, displayRoutes, displayRoutesRef, commitContent,
     baselineId, baseline: baselines.find((item) => item.id === baselineId)!,
     initialViewport: viewports.current.get(initialId), getViewport: (id: string) => viewports.current.get(id), saveViewport,
-    begin, finish, commit, switchBaseline, applyStageTransition, confirm, getConfirmedContent, getSavedContent,
+    begin, finish, commit, switchBaseline, applyStageTransition, confirm, getConfirmedContent, getConfirmedRevision, getSavedContent,
     undo, redo, canUndo: history().canUndo, canRedo: history().canRedo, saveError, retrySave: save,
     transition:transitions.current.get(baselineId),
   };

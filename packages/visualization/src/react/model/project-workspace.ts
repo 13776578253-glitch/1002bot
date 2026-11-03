@@ -29,6 +29,7 @@ export interface ProjectStageWorkspace {
   confirmed?: ProjectWorkspaceSnapshot;
   confirmedAt?: string;
   confirmationId?: string;
+  confirmedRevision?: string;
   checkpoints: ProjectWorkspaceCheckpoint[];
   viewport?: CanvasBaselineView['viewport'];
   transition?: CanvasBaselineView['transition'];
@@ -84,6 +85,7 @@ export function canvasWorkspaceToProject(view: CanvasWorkspaceView, projectId: s
       ...(confirmed ? { confirmed } : {}),
       ...(stage.confirmedAt ? { confirmedAt: stage.confirmedAt } : {}),
       ...(stage.confirmationId ? { confirmationId: stage.confirmationId } : {}),
+      ...(stage.confirmedRevision ? { confirmedRevision: stage.confirmedRevision } : {}),
       checkpoints,
       ...(stage.viewport ? { viewport: structuredClone(stage.viewport) } : {}),
       ...(stage.transition ? { transition: structuredClone(stage.transition) } : {}),
@@ -104,6 +106,7 @@ export function projectWorkspaceToCanvas(workspace: ProjectWorkspace): CanvasWor
       ...(stage.confirmed ? { confirmed: structuredClone(stage.confirmed.content) } : {}),
       ...(stage.confirmedAt ? { confirmedAt: stage.confirmedAt } : {}),
       ...(stage.confirmationId ? { confirmationId: stage.confirmationId } : {}),
+      ...(stage.confirmedRevision ? { confirmedRevision: stage.confirmedRevision } : {}),
       ...(stage.viewport ? { viewport: structuredClone(stage.viewport) } : {}),
       ...(stage.transition ? { transition: structuredClone(stage.transition) } : {}),
       ...(stage.inheritance ? { inheritance: structuredClone(stage.inheritance) } : {}),

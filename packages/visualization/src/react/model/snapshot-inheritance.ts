@@ -3,6 +3,7 @@ import type { StageSnapshot } from '../../core/schema/types.ts';
 import { endpointFingerprint } from './edge-routes.ts';
 import type { StageConflict } from './stage-types.ts';
 import type { CanvasBaselineContent, CanvasNodeView, DisplayRouteSnapshot, EdgeRouteSnapshot, FrozenGroupSnapshot } from './workspace.ts';
+import { legacyLayoutEdits, type NodeLayoutEdits } from './layout-intent.ts';
 
 /** The parent and generated target used when the current target draft branched. */
 export interface StageInheritanceBase {
@@ -56,19 +57,42 @@ function choose<T>(base: T, local: T, incoming: T, id: string, field: string, co
   return local;
 }
 
+function chooseGeometry<T>(base: T, local: T, incoming: T, userLocal: boolean, userIncoming: boolean, id: string, field: string, conflicts: StageConflict[], retainLegacy = false): T {
+  if (equal(local, incoming)) return local;
+  if (equal(local, base)) return incoming;
+  if (equal(incoming, base)) return local;
+  if (userLocal && userIncoming) conflicts.push(conflict(id, `${id} 的${field}存在互斥的人工修改`));
+  if (userIncoming && !userLocal && !retainLegacy) return incoming;
+  return local;
+}
+
+function mergeEdits(a: NodeLayoutEdits, b: NodeLayoutEdits, c: NodeLayoutEdits, id: string, conflicts: StageConflict[]): NodeLayoutEdits {
+  const field = <T extends { origin: 'user' | 'legacy' }>(old: T | undefined, local: T | undefined, incoming: T | undefined, name: string): T | undefined => {
+    const value = (edit: T | undefined) => { if (!edit) return undefined; const { origin: _origin, ...geometry } = edit; return geometry; };
+    if (equal(value(local), value(incoming))) return local?.origin === 'user' ? local : incoming;
+    if (equal(value(local), value(old))) return incoming;
+    if (equal(value(incoming), value(old))) return local;
+    return chooseGeometry(old, local, incoming, local?.origin === 'user', incoming?.origin === 'user', id, name, conflicts, local?.origin === 'legacy');
+  };
+  const position = field(a.position, b.position, c.position, '位置');
+  const collapsed = field(a.sizes?.collapsed, b.sizes?.collapsed, c.sizes?.collapsed, '收起尺寸');
+  const expanded = field(a.sizes?.expanded, b.sizes?.expanded, c.sizes?.expanded, '展开尺寸');
+  return { version: 1, ...(position ? { position } : {}), ...((collapsed || expanded) ? { sizes: { ...(collapsed ? { collapsed } : {}), ...(expanded ? { expanded } : {}) } } : {}) };
+}
+
 function worldPositions(nodes: readonly CanvasNodeView[]): Map<string, { x: number; y: number }> {
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const result = new Map<string, { x: number; y: number }>();
-  const get = (node: CanvasNodeView): { x: number; y: number } => {
-    const existing = result.get(node.id);
-    if (existing) return existing;
-    const parent = node.parentId ? get(byId.get(node.parentId)!) : { x: 0, y: 0 };
-    const world = { x: parent.x + node.position.x, y: parent.y + node.position.y };
-    result.set(node.id, world);
-    return world;
+  const anchors = new Map<string, { x: number; y: number }>();
+  const anchor = (node: CanvasNodeView): { x: number; y: number } => {
+    const existing = anchors.get(node.id); if (existing) return existing;
+    const edit = node.data.layoutEdits?.position;
+    const parent = node.parentId ? anchor(byId.get(node.parentId)!) : { x: 0, y: 0 };
+    const parentFrame = node.parentId ? byId.get(node.parentId) : undefined;
+    const point = edit && edit.parentId === node.parentId ? { x: parent.x + edit.x, y: parent.y + edit.y } : { x: parent.x + node.position.x + (parentFrame?.data.fitOffset?.x ?? 0) - (node.data.fitOffset?.x ?? 0), y: parent.y + node.position.y + (parentFrame?.data.fitOffset?.y ?? 0) - (node.data.fitOffset?.y ?? 0) };
+    anchors.set(node.id, point); return point;
   };
-  for (const node of nodes) get(node);
-  return result;
+  for (const node of nodes) anchor(node);
+  return anchors;
 }
 
 function maps<T>(items: readonly T[], key: (item: T) => string): Map<string, T> {
@@ -166,6 +190,8 @@ function mergeNodes(base: readonly CanvasNodeView[], local: readonly CanvasNodeV
       continue;
     }
     const parentId = choose(a.parentId, b.parentId, c.parentId, id, '归属', conflicts);
+    const oldEdits = a.data.layoutEdits ?? legacyLayoutEdits(a, base), localEdits = b.data.layoutEdits ?? legacyLayoutEdits(b, local), incomingEdits = c.data.layoutEdits ?? legacyLayoutEdits(c, incoming);
+    const edits = mergeEdits(oldEdits, localEdits, incomingEdits, id, conflicts);
     const originalWorld = oldWorld.get(id)!, localWorld = editedWorld.get(id)!, incomingWorld = latestWorld.get(id)!;
     const baseParent = a.parentId && oldWorld.get(a.parentId), localParent = a.parentId && editedWorld.get(a.parentId), incomingParent = a.parentId && latestWorld.get(a.parentId);
     const sameParent = !!a.parentId && parentId === a.parentId && b.parentId === a.parentId && c.parentId === a.parentId && baseParent && localParent && incomingParent;
@@ -174,18 +200,29 @@ function mergeNodes(base: readonly CanvasNodeView[], local: readonly CanvasNodeV
     const anchored = sameParent && ((!equal(localShift, { x: 0, y: 0 }) && equal(localWorld, originalWorld) && !equal(a.position, b.position))
       || (!equal(incomingShift, { x: 0, y: 0 }) && equal(incomingWorld, originalWorld) && !equal(a.position, c.position)));
     const normal = (point: { x: number; y: number }, shift: { x: number; y: number }) => ({ x: point.x - shift.x, y: point.y - shift.y });
-    const position = choose(originalWorld, sameParent && !anchored ? normal(localWorld, localShift) : localWorld, sameParent && !anchored ? normal(incomingWorld, incomingShift) : incomingWorld, id, '世界位置', conflicts);
+    let position = chooseGeometry(originalWorld, sameParent && !anchored ? normal(localWorld, localShift) : localWorld, sameParent && !anchored ? normal(incomingWorld, incomingShift) : incomingWorld, false, false, id, '世界位置', conflicts);
+    if (edits.position && edits.position.parentId === parentId && (!anchored || edits.position.origin === 'user')) {
+      const branch = edits.position === incomingEdits.position ? latestWorld : editedWorld;
+      const origin = sameParent && !anchored ? baseParent : parentId ? branch.get(parentId)! : { x: 0, y: 0 };
+      position = { x: origin.x + edits.position.x, y: origin.y + edits.position.y };
+      if (!sameParent && parentId) addedParentOrigin.set(id, origin);
+    }
     if (sameParent && !anchored) followParent.set(id, a.parentId!);
+    const localAnchor = sameParent && !anchored ? normal(localWorld, localShift) : localWorld;
     if ((b.data.frozen || b.data.layoutMode === 'fixed' || b.data.layoutMode === 'locked')
-      && (!equal(a.parentId, c.parentId) || (!equal(originalWorld, incomingWorld) && (!sameParent || !equal(a.position, c.position))))) {
+      && (!equal(b.parentId, parentId) || !equal(localAnchor, position))) {
       conflicts.push(conflict(id, `${id} 的固定锚点受到上游变化影响`));
     }
-    if (b.data.frozen && (a.width !== c.width || a.height !== c.height)) conflicts.push(conflict(id, `${id} 的冻结尺寸受到上游变化影响`));
-    const size = choose({ width: a.width, height: a.height }, { width: b.width, height: b.height }, { width: c.width, height: c.height }, id, '尺寸', conflicts);
+    if (b.data.frozen && Object.entries(incomingEdits.sizes ?? {}).some(([state, size]) => { const oldSize = oldEdits.sizes?.[state as 'collapsed' | 'expanded'] ?? a; return size.origin === 'user' && (size.width !== oldSize.width || size.height !== oldSize.height); })) conflicts.push(conflict(id, `${id} 的冻结尺寸受到上游变化影响`));
     const shape = choose({ type: a.type, expanded: a.data.expanded }, { type: b.type, expanded: b.data.expanded }, { type: c.type, expanded: c.data.expanded }, id, '展开状态', conflicts);
+    const preference = edits.sizes?.[shape.expanded || shape.type === 'cluster' ? 'expanded' : 'collapsed'];
+    const frame = shape.expanded === b.data.expanded ? b : c;
+    const size = preference ? { width: preference.width, height: preference.height } : { width: frame.width, height: frame.height };
     const keys = new Set([...Object.keys(a.data), ...Object.keys(b.data), ...Object.keys(c.data)]);
-    keys.delete('expanded');
-    const data: Record<string, unknown> = {};
+    for (const key of ['expanded', 'layoutEdits', 'contentWidth', 'contentHeight', 'fitOffset', 'reflowOrigin', 'expansionSizes']) keys.delete(key);
+    const data: Record<string, unknown> = { ...Object.fromEntries(['contentWidth', 'contentHeight', 'fitOffset', 'reflowOrigin', 'expansionSizes'].flatMap((key) => {
+      const value = (frame.data as Record<string, unknown>)[key]; return value === undefined ? [] : [[key, structuredClone(value)]];
+    })), layoutEdits: edits };
     for (const key of keys) {
       const before = (a.data as Record<string, unknown>)[key], here = (b.data as Record<string, unknown>)[key], there = (c.data as Record<string, unknown>)[key];
       const value = choose(before, here, there, id, key, conflicts);
@@ -218,7 +255,8 @@ function mergeNodes(base: readonly CanvasNodeView[], local: readonly CanvasNodeV
       world.set(node.id, point);
     }
     const origin = parent ? world.get(parent.id)! : { x: 0, y: 0 };
-    node.position = { x: point.x - origin.x, y: point.y - origin.y };
+    node.position = { x: point.x - origin.x - (parent?.data.fitOffset?.x ?? 0) + (node.data.fitOffset?.x ?? 0), y: point.y - origin.y - (parent?.data.fitOffset?.y ?? 0) + (node.data.fitOffset?.y ?? 0) };
+    if (node.data.layoutEdits?.position?.origin === 'legacy') node.data.layoutEdits = { ...node.data.layoutEdits, position: { x: point.x - origin.x, y: point.y - origin.y, ...(node.parentId ? { parentId: node.parentId } : {}), origin: 'legacy' } };
     visiting.delete(node.id); visited.add(node.id); result.push(node);
   };
   for (const node of merged.values()) append(node);

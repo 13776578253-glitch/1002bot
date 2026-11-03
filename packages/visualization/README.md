@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
+Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/layout-intent.ts`, `src/react/model/snapshot-inheritance.ts`, `src/react/canvas/use-workspace-session.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
 
 # Visualization
 
@@ -53,7 +53,7 @@ pnpm check:snapshots
 | `src/react/styles` | 画布作用域内的主题、节点、连线和控制样式 |
 | `src/adapters/progress-reports` | 将可序列化的报告目录与阶段增量转换为完整基线；无 IO 或 UI 依赖 |
 | `src/adapters/project` | Source 增量、View 语义与人工几何的纯适配 |
-| `src/react/model/manual-layout.ts` | 人工坐标与边界检查，保持未操作节点和容器几何 |
+| `src/react/model/manual-layout.ts` | 人工坐标、局部父链扩缩与边界检查，保持无关节点位置 |
 | `src/react/model/project-workspace.ts`、`persistence/project-storage.ts` | 项目工作空间与画布合同桥接、独立确认检查点 |
 | `datasets/projects.json` | 项目注册表；默认项目指向清单 |
 | `datasets/projects/1002bot/project.json` | 当前项目清单，Source / Stages / Views / Workspace 资源 |
@@ -69,9 +69,13 @@ Core 不依赖 React；库源码不导入示例、数据集或 Playground。测�
 
 ## 项目数据
 
-当前站点从 `datasets/projects.json` 的默认项目加载首个快照的六块总览，使用人工编排模式。Source 保存累积事实与契约；Stages 选择每份快照出现的事实；Views 保存展示选择、总览／详情关系映射、容器端口和人工几何；Workspace 保存分快照用户草稿、确认快照及历史检查点。布局不会由展开、阶段切换或拖动自动重排。缺少位置、重叠和越界须显式处理。
+当前站点从 `datasets/projects.json` 加载默认项目 `runtime-evolution`，提供 M1/M2 Runtime 及协作者切片；原 `1002bot` M0 项目保留。两者均使用人工编排模式。Source 保存累积事实与契约；Stages 选择每份快照出现的事实；Views 保存展示选择、总览／详情关系映射、容器端口和人工几何；Workspace 保存分快照用户草稿、确认快照及历史检查点。新增节点先寻找空位，再尝试有限扩容；展开和拖动只贴合受影响父链，不推动其他组件。容器四向扩缩通过局部坐标补偿保持已有内容位置。
 
 项目适配器通过 `@1002bot/visualization/adapters/project` 导出，`resolveSourceStages` 负责把事实目录与阶段选择组装成适配器输入。旧报告适配器与 `tests/fixtures/legacy-reports.json` 保留用于旧数据；当前站点使用独立项目存储键。详细合同和迁移约定见 [数据说明](datasets/README.md)。
+
+## Runtime 切片
+
+[Runtime 数据说明](datasets/projects/runtime-evolution/README.md)记录两阶段的真实实体、职责区块、关系语义与来源。M1 Runtime 展开为职责卡片；M2 增加 InputChannel/InputRun 并保留旧 Event 入口。组件的 details 是卡片内职责，不创建子实体。具有独立实现边界的对象使用嵌套节点；Agent 实现通过 previousId 标记替换。
 
 ## React 接入
 
@@ -110,17 +114,21 @@ const persistence = {
 
 `CanvasWorkspaceView` v2 保存当前阶段、各阶段草稿与已确认快照、节点布局/展开/约束、手动分组与标题、冻结组、路径、覆盖层占位、容器扩容基准和视口；函数、选择状态、路由缓存与撤销栈不保存。源版本变化时按稳定 ID 合并：新节点自由，删除实体和空组移除，报告归属取当前源，合法手动归属保留。恢复冲突或存储错误会显示状态和重试入口，读取失败期间不覆盖原记录。
 
+节点可选 `data.layoutEdits` 记录版本为 1 的布局编辑意图：`position` 使用父容器稳定内容原点的相对锚点，`sizes.collapsed/expanded` 分别保存尺寸偏好。`origin=user` 由实际拖动、键盘移动、尺寸调整或重新分组写入；自动坐标补偿和测量不写人工意图。父级移动携带后代，父级自动扩缩保持已有内容锚点。尺寸偏好作为容器最小边界，内容增长仍受扩容限额约束。
+
+旧记录在工作副本中转换为 `origin=legacy`，表示来源未知；双方都改变的未知几何优先保留当前阶段草稿。旧尺寸偏好采用实际保存的 frame，扩容预算字段不作为最小尺寸。原确认快照及检查点不就地迁移。项目存储首次保存带编辑意图的草稿前，将原始 JSON 保留到原键加 `:before-layout-intent-v1` 的一次性备份键。
+
 位置与约束按阶段保存；切换时共同节点继续同步当前展开状态。展开和切换不自动缩放全图，恢复各阶段已保存视口；适应画布由按钮触发。拖动结束、标题提交及其他布局操作后保存，视口在移动结束时保存。
 
-每阶段当前页面会话保留100步撤销/重做。一次拖动包含祖先扩缩和邻居避让；冻结、分组、标题提交和展开各占一步。快捷键为 Ctrl/Cmd+Z 与 Ctrl/Cmd+Shift+Z（另支持 Ctrl+Y），输入框使用原生编辑历史。
+每阶段当前页面会话保留100步撤销/重做。一次拖动包含祖先扩缩和邻居避让；冻结、分组、标题提交和展开各占一步。阶段重新继承同时撤销布局和继承基准。快捷键为 Ctrl/Cmd+Z 与 Ctrl/Cmd+Shift+Z（另支持 Ctrl+Y），输入框使用原生编辑历史。
 
 ## 阶段增量与冻结子图
 
 工作视图 v2 把草稿和已确认快照分开保存。自动保存只更新草稿；工具栏的确认按钮写入 `confirmedAt` 与当前内容副本，后续阶段以该副本为基础。切换阶段时若来源阶段没有确认快照，画布拒绝进入下一阶段。
 
-首次进入目标阶段时，只对来源差异求解：共同叶节点沿用已确认世界坐标，容器保留 `worldPosition - fitOffset` 内容锚点。替换实体按 `previousId` 继承旧布局，归属改变的替换实体重新安置。新增节点优先填补空隙，必要时只展开所需祖先并四向有限扩容。阶段增量每轴预算为自然尺寸加 800px，成功后不抬高自然基准；手动拖动保留原比例上限，已合法生成的既有尺寸可保持。
+首次进入目标阶段时，只对来源差异求解：共同叶节点沿用已确认世界坐标，容器保留 `worldPosition - fitOffset` 内容锚点。替换实体按 `previousId` 继承旧布局，归属改变的替换实体重新安置。新增节点优先填补空隙，再四向有限扩容。人工模式保留容器展开状态，隐藏新增节点继续使用声明的局部坐标；可见新增节点避开其他容器的完整范围。人工扩缩每轴余量为自然尺寸的 100% 且不超过 800px；自动阶段安置每轴预算为自然尺寸加 800px。成功后不抬高自然基准，已合法生成的既有尺寸可保持。
 
-保存阶段同时记录生成它的父确认内容、目标来源图和生成基准。父确认与来源均未改变时直接恢复当前草稿；发生变化时重建传入内容，与当前草稿三方合并。独立编辑合并，同项不同修改、受保护对象移动和删除已编辑对象产生冲突。自动投影路径是可失效的几何缓存，人工路径及冻结账本独立保留。旧目标缺少继承基准时提供显式、可撤销的重新继承操作。
+保存阶段同时记录生成它的父确认内容、目标来源图和生成基准。父确认与来源均未改变时直接恢复当前草稿；发生变化时重建传入内容，与当前草稿三方合并。人工编辑意图与约束先合并，再根据展开状态重算容器包围盒与扩容结果。互斥的人工修改、受保护对象移动和删除已编辑对象产生冲突。自动投影路径是可失效的几何缓存，人工路径及冻结账本独立保留。来源修订保留原确认内容，并通过 `confirmedRevision` 标识确认时版本；重新确认后才能作为新版本的后续阶段基础。旧目标缺少继承基准时提供显式、可撤销的重新继承操作。
 
 阶段切换是原子事务：`Prepare → Diff → Place → Route → Validate → Commit`。校验失败时不修改源阶段、不写目标快照、不切换基线，只显示只读候选预览和结构化冲突。成功后目标阶段记一步撤销事务。
 
@@ -168,7 +176,7 @@ const persistence = {
 
 ## Port policy
 
-The authored overview uses `portPolicy: { "direction": "top-down" }`. Views without a direction preference use geometric endpoint direction. Candidate routing and snapshot compatibility are described in [the route model](src/react/model/README.md).
+The original M0 overview uses `portPolicy: { "direction": "top-down" }`; the Runtime slice uses geometric direction (`auto`). Views without a direction preference use geometric endpoint direction. Candidate routing and snapshot compatibility are described in [the route model](src/react/model/README.md).
 
 ## Routing engine switch
 

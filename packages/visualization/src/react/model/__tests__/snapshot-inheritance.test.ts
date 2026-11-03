@@ -101,10 +101,12 @@ test('different concurrent edits to one world anchor fail without mutating input
   const base = baseContent(), local = structuredClone(base), incoming = structuredClone(base);
   local.nodes[1]!.position.x += 10;
   incoming.nodes[1]!.position.x += 20;
+  local.nodes[1]!.data.layoutEdits = { version: 1, position: { ...local.nodes[1]!.position, parentId: 'parent', origin: 'user' } };
+  incoming.nodes[1]!.data.layoutEdits = { version: 1, position: { ...incoming.nodes[1]!.position, parentId: 'parent', origin: 'user' } };
   const before = JSON.stringify({ base, local, incoming });
   const result = mergeStageContent({ base, local, incoming, targetStage: graph() });
   assert.equal(result.ok, false);
-  if (!result.ok) assert.ok(result.conflicts.some((item) => item.entityIds.includes('child') && item.message.includes('世界位置')));
+  if (!result.ok) assert.ok(result.conflicts.some((item) => item.entityIds.includes('child') && item.message.includes('位置')));
   assert.equal(JSON.stringify({ base, local, incoming }), before);
 });
 

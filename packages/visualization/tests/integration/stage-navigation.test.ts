@@ -33,6 +33,9 @@ test('divergent edits conflict atomically without changing any saved input',()=>
   const view=saved();view.nodes.find(n=>n.id==='a')!.position.y=400;
   const incoming=parentContent();incoming.nodes.find(n=>n.id==='a')!.position.y=-200;
   const before=structuredClone(view);
+  view.nodes.find(n=>n.id==='a')!.data.layoutEdits = { version:1, position:{x:0,y:400,origin:'user'} };
+  incoming.nodes.find(n=>n.id==='a')!.data.layoutEdits = { version:1, position:{x:0,y:-200,origin:'user'} };
+  Object.assign(before, structuredClone(view));
   const result=prepareStageNavigation({parent,target,parentContent:incoming,saved:view});
   assert.equal(result.ok,false);assert.deepEqual(view,before);
 });

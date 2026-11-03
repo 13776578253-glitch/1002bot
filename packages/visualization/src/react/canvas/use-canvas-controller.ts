@@ -6,7 +6,7 @@ import type { VisualizationCanvasProps } from '../types.ts';
 import { groupSelection, selectionRoots, ungroup, type CanvasNode, type LayoutMode } from '../model/grouping.ts';
 import { hierarchyProjection, nodeIsVisible, toggleHierarchy, syncHierarchyExpansion } from '../model/hierarchy.ts';
 import { constrainNodeMoves, type AlignmentGuide } from '../model/constraints.ts';
-import { manualGeometryConflict, moveAlignedAuthoredNodes } from '../model/manual-layout.ts';
+import { fitAuthoredLayout, manualGeometryConflict, moveAlignedAuthoredNodes } from '../model/manual-layout.ts';
 import { aggregateProjectedEdges, type DisplayEdge } from '../model/display-edges.ts';
 import { freezeSelection, frozenGroupFor, toggleFrozenExpansion } from '../model/frozen.ts';
 import { removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints, reservedLockedRoutes } from '../model/edge-routes.ts';
@@ -19,6 +19,7 @@ import type { StageTransitionSuccess } from '../model/stage-transition.ts';
 import { captureFrozenSubgraph, validateFrozenConnections, releaseFrozenSubgraph } from '../model/blackbox-routes.ts';
 import { rebaseFrozenGrowth } from '../model/frozen-growth.ts';
 import type { StageConflict } from '../model/stage-types.ts';
+import { recordPositionEdits, recordSizeEdits } from '../model/layout-intent.ts';
 import type { CanvasWorkspaceView, EdgeRouteState, FrozenGroupSnapshot } from '../model/workspace.ts';
 import { useWorkspaceSession } from './use-workspace-session.ts';
 import { useCanvasScene } from './use-canvas-scene.ts';
@@ -76,6 +77,15 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const current = nodesRef.current;
     let next = applyNodeChanges(changes, current);
     const moved = changes.flatMap((change) => change.type === 'position' && change.position ? [change.id] : []);
+    const editedPositions = changes.flatMap((change) => change.type === 'position' && change.position && (typeof change.dragging === 'boolean' || dragging.current) ? [change.id] : []);
+    const resized = changes.flatMap((change) => change.type === 'dimensions' && change.resizing === true ? [change.id] : []);
+    if (resized.length) { begin(); next = recordSizeEdits(current, next, resized); }
+    if (resized.length && !moved.length) {
+      const fitted = fitAuthoredLayout(current, next, resized, baseline.stage);
+      const issue = fitted.conflict?.message ?? validateStoredRoutes(current, fitted.nodes, session.routesRef.current, projectionRef.current)
+        ?? validateFrozenConnections(current, fitted.nodes, baseline.stage, session.routesRef.current, session.frozenRef.current)[0]?.message;
+      if (issue) { next = current; setMessage(issue); } else next = fitted.nodes;
+    }
     if (moved.length) {
       begin();
       const visible = new Set(next.filter((node) => nodeIsVisible(node, next, projectionRef.current)).map((node) => node.id));
@@ -88,11 +98,12 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       const routeConflict = validateStoredRoutes(current, next, session.routesRef.current, projectionRef.current,grown.routes);
       const connections=routeConflict?[]:validateFrozenConnections(current,next,baseline.stage,grown.routes,grown.groups,routesRef.current);
       if (routeConflict||connections.length) { next = current; setMessage(routeConflict??connections[0]!.message); }
-      else {if(grown.routes!==session.routesRef.current)session.setRoutes(grown.routes);if(grown.groups!==session.frozenRef.current)session.setFrozenGroups(grown.groups);}
+      else { next = recordPositionEdits(current, next, editedPositions); if(grown.routes!==session.routesRef.current)session.setRoutes(grown.routes);if(grown.groups!==session.frozenRef.current)session.setFrozenGroups(grown.groups);}
       setAlignment(next !== current && changes.some((change) => change.type === 'position' && change.dragging) ? result.guides : []);
       recordConstraint.current(performance.now() - started);
     }
     setNodes(next);
+    if (changes.some((change) => change.type === 'dimensions' && change.resizing === false)) finish();
     if (moved.length && !dragging.current && !changes.some((change) => change.type === 'position' && change.dragging)) { captureRendered.current(); finish(); }
   }, [baseline, begin, finish, flow.getZoom, links, preview, setNodes]);
 
@@ -108,8 +119,9 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       setSelectedEdge(undefined);
       return;
     }
-    const next = toggleHierarchy(current, id, baseline.stage);
-    if (next === current) { setMessage('空间不足：请移动或解除相关节点的固定后再展开'); return; }
+    let expansionConflict: StageConflict | undefined;
+    const next = toggleHierarchy(current, id, baseline.stage, (conflict) => { expansionConflict = conflict; });
+    if (next === current) { setMessage(expansionConflict?.message ?? '空间不足：请移动或解除相关节点的固定后再展开'); return; }
     const conflict = validateStoredRoutes(current, next, session.routesRef.current, hierarchyProjection(next, baseline.stage));
     if (conflict) { setMessage(conflict); return; }
     if (commit(() => next)) setMessage(''); setSelectedEdge(undefined);
@@ -136,10 +148,13 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
 
   const createGroup = useCallback(() => {
     if (preview) return;
-    commit((current) => groupSelection(current, `cluster-${crypto.randomUUID()}`, baseline.layout?.kind === 'manual'));
+    commit((current) => {
+      const next = groupSelection(current, `cluster-${crypto.randomUUID()}`, baseline.layout?.kind === 'manual');
+      return recordPositionEdits(current, next, next.filter((node) => current.some((old) => old.id === node.id && old.parentId !== node.parentId)).map((node) => node.id));
+    });
     setSelectedEdge(undefined); setBoxMode(false);
   }, [baseline, commit, preview]);
-  const dissolveGroup = useCallback((id: string) => { if (!preview) commit((current) => ungroup(current, id, baseline.layout?.kind === 'manual')); }, [baseline, commit, preview]);
+  const dissolveGroup = useCallback((id: string) => { if (!preview) commit((current) => { const next = ungroup(current, id, baseline.layout?.kind === 'manual'); return recordPositionEdits(current, next, current.filter((node) => node.parentId === id).map((node) => node.id)); }); }, [baseline, commit, preview]);
   const setLayoutMode = useCallback((mode: LayoutMode) => {
     if (preview) return;
     commit((current) => current.map((node) => node.selected && !node.data.frozen && nodeIsVisible(node, current, projectionRef.current) ? { ...node, data: { ...node.data, layoutMode: mode } } : node));
@@ -237,7 +252,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
           ?? validateFrozenConnections(before, after, target.stage, routes, groups)[0]?.message;
         if (issue) { conflict = issue; return false; }
         return true;
-      });
+      }, (issue) => { conflict = issue.message; });
       const wanted = new Map(source.filter(node => node.data.expandable).map(node => [node.id, !!node.data.expanded]));
       const partial = next.some(node => !node.data.frozen && wanted.has(node.id) && node.data.expandable && wanted.get(node.id) !== !!node.data.expanded);
       setMessage(conflict || (partial ? '部分模块空间不足，已保留目标阶段的原展开状态' : ''));
@@ -252,7 +267,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const parent = parentId ? props.baselines.find((item) => item.id === parentId)! : baseline;
     const sourceContent = session.getConfirmedContent(parent.id);
     if (!sourceContent) { setMessage(`请先确认 ${parent.stage.label} 阶段布局，再进入目标阶段`); return; }
-    const sourceRevision = session.getSavedContent(parent.id)?.revision;
+    const sourceRevision = session.getConfirmedRevision(parent.id);
     if (sourceRevision !== (parent.stage.graph.revision ?? parent.stage.id)) { setMessage(`来源已更新，请先检查并重新确认 ${parent.stage.label}`); return; }
     const result = prepareStageNavigation({parent,target,parentContent:sourceContent,...(saved ? {saved:{...saved.content,revision:saved.revision!,...(saved.inheritance?{inheritance:saved.inheritance}:{}),...(saved.sourceStage?{sourceStage:saved.sourceStage}:{})}}:{})});
     if (!result.ok) {
