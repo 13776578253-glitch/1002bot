@@ -1,0 +1,307 @@
+{
+  "version": 1,
+  "projectId": "runtime-evolution",
+  "components": [
+    {
+      "id": "agent",
+      "kind": "component",
+      "label": "Agent",
+      "summary": "请求组装与 Session 声明",
+      "details": [],
+      "contractIds": [
+        "Agent"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "test-agent",
+      "kind": "component",
+      "label": "TestAgent",
+      "summary": "M1 请求组装实现",
+      "details": [
+        "输入：Event、历史与工具声明。",
+        "输出：初始请求，以及模型响应与回执后的续轮请求。",
+        "边界：历史由 Runtime 传入，工具由 Runtime 执行。"
+      ],
+      "contractIds": [
+        "Agent"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "provider",
+      "kind": "component",
+      "label": "Provider",
+      "summary": "模型协议与传输 · 装配选择实现",
+      "details": [],
+      "contractIds": [
+        "Provider"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "scripted-provider",
+      "kind": "component",
+      "label": "ScriptedProvider",
+      "summary": "脚本响应实现",
+      "details": [
+        "按样例脚本返回模型响应与工具调用。",
+        "由装配入口选择，与 HTTP Provider 是可替换实现。"
+      ],
+      "contractIds": [
+        "Provider"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "responses-provider",
+      "kind": "component",
+      "label": "Responses 适配器",
+      "summary": "Responses 兼容 HTTP 实现",
+      "details": [
+        "序列化请求，转换响应并保留原生 output。",
+        "按 call_id 回填 function_call_output。"
+      ],
+      "contractIds": [
+        "Provider"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "world",
+      "kind": "component",
+      "label": "World",
+      "summary": "工具声明、领域校验、执行与回执",
+      "details": [],
+      "contractIds": [
+        "World"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "fixture-world",
+      "kind": "component",
+      "label": "FixtureWorld",
+      "summary": "M1 / M2 样例所挂载的 World",
+      "details": [
+        "工具集合：fixture.get / set / fail。",
+        "领域校验、效果执行与 ToolOutcome 由 World 负责。",
+        "Runtime 只校验工具声明、参数形状与调用配对。"
+      ],
+      "contractIds": [
+        "World"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "session",
+      "kind": "store",
+      "label": "Session",
+      "summary": "追加事实与读取交互历史",
+      "details": [],
+      "contractIds": [
+        "SessionStore"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "jsonl-session",
+      "kind": "store",
+      "label": "JSONL SessionStore",
+      "summary": "实例内串行追加的会话存储",
+      "details": [
+        "存储 Event、模型请求 / 响应、工具调用 / 回执。",
+        "读取已完成事实；上下文选择不会删除历史。",
+        "已进入的 append 参与 Runtime 停止屏障。"
+      ],
+      "contractIds": [
+        "SessionStore"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "state",
+      "kind": "store",
+      "label": "MemoryState",
+      "summary": "已装配的实例内键值存储",
+      "details": [],
+      "contractIds": [
+        "StateStore"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "assembly",
+      "kind": "component",
+      "label": "组合根",
+      "summary": "选择依赖并创建 Runtime",
+      "details": [],
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "conversation-agent",
+      "kind": "component",
+      "label": "ConversationAgent",
+      "summary": "M2 用户输入的上下文策略",
+      "details": [
+        "选择完整、成功且配对的历史轮次。",
+        "保留当前轮与 Provider 原生项，构造后续请求。",
+        "使用公开计量接口；不直接读取 Session 或调用 World。"
+      ],
+      "contractIds": [
+        "Agent"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系",
+        "git:750bc45:src/agent/conversation-agent.ts"
+      ],
+      "previousId": "test-agent"
+    }
+  ],
+  "relations": [
+    {
+      "id": "agent-implementation",
+      "source": {
+        "nodeId": "agent"
+      },
+      "target": {
+        "nodeId": "test-agent"
+      },
+      "label": "M1 请求组装实现",
+      "relation": "implementation",
+      "direction": "directed",
+      "order": 7,
+      "semantics": "dependency",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "provider-scripted",
+      "source": {
+        "nodeId": "provider"
+      },
+      "target": {
+        "nodeId": "scripted-provider"
+      },
+      "label": "脚本实现",
+      "relation": "implementation",
+      "direction": "directed",
+      "order": 8,
+      "semantics": "dependency",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "provider-http",
+      "source": {
+        "nodeId": "provider"
+      },
+      "target": {
+        "nodeId": "responses-provider"
+      },
+      "label": "HTTP 实现",
+      "relation": "implementation",
+      "direction": "directed",
+      "order": 9,
+      "semantics": "dependency",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "world-implementation",
+      "source": {
+        "nodeId": "world"
+      },
+      "target": {
+        "nodeId": "fixture-world"
+      },
+      "label": "已挂载实现",
+      "relation": "implementation",
+      "direction": "directed",
+      "order": 10,
+      "semantics": "dependency",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "session-implementation",
+      "source": {
+        "nodeId": "session"
+      },
+      "target": {
+        "nodeId": "jsonl-session"
+      },
+      "label": "已挂载存储",
+      "relation": "implementation",
+      "direction": "directed",
+      "order": 11,
+      "semantics": "dependency",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "agent-conversation",
+      "source": {
+        "nodeId": "agent"
+      },
+      "target": {
+        "nodeId": "conversation-agent"
+      },
+      "label": "M2 上下文策略实现",
+      "relation": "implementation",
+      "direction": "directed",
+      "order": 25,
+      "semantics": "dependency",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    }
+  ],
+  "contracts": []
+}

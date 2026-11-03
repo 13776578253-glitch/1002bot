@@ -6,6 +6,7 @@ import type { EdgeLabelPlacement } from './labels.ts';
 import type { UserGraphOverlay } from './overlay.ts';
 import type { StageInheritanceBase } from './snapshot-inheritance.ts';
 import type { StageSnapshot } from '../../core/schema/types.ts';
+import { legacyLayoutEdits } from './layout-intent.ts';
 
 export interface CanvasViewport { x: number; y: number; zoom: number }
 
@@ -103,7 +104,7 @@ export interface CanvasBaselineContent {
   displayRoutes?: DisplayRouteSnapshot[];
 }
 
-type ViewData = Pick<CanvasNode['data'], 'expanded' | 'contentWidth' | 'contentHeight' | 'fitOffset' | 'reflowOrigin' | 'expansionSizes' | 'groupOrigins'> & {
+type ViewData = Pick<CanvasNode['data'], 'expanded' | 'contentWidth' | 'contentHeight' | 'fitOffset' | 'reflowOrigin' | 'expansionSizes' | 'groupOrigins' | 'layoutEdits'> & {
   layoutMode?: 'free' | 'fixed' | 'locked';
   title?: string;
   frozen?: boolean;
@@ -122,6 +123,7 @@ export interface CanvasNodeView {
 export interface CanvasBaselineView extends CanvasBaselineContent {
   revision: string;
   confirmationId?: string;
+  confirmedRevision?: string;
   confirmedAt?: string;
   confirmed?: CanvasBaselineContent;
   viewport?: CanvasViewport;
@@ -155,6 +157,7 @@ export function captureNodeViews(nodes: readonly CanvasNode[]): CanvasNodeView[]
         ...(expansionSizes ? { expansionSizes } : {}), ...(groupOrigins ? { groupOrigins } : {}),
         ...(frozen ? { frozen } : {}),
         layoutMode: node.data.layoutMode ?? 'free',
+        ...(node.data.layoutEdits ? { layoutEdits: node.data.layoutEdits } : {}),
       },
     });
   });
@@ -217,16 +220,18 @@ export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonl
     })();
     const expanded = !!view.data.expanded && !!source?.data.expandable;
     const cluster = view.type === 'cluster';
-    const size = source && !source.data.expandable && view.type === 'structure' ? { width: source.width!, height: source.height! } : { width: view.width, height: view.height };
+    const structure = expanded && (source?.data.childCount ?? 0) > 0;
+    const shapeChanged = !cluster && expanded && (view.type === 'structure') !== structure;
+    const size = source && (shapeChanged || !source.data.expandable && view.type === 'structure') ? { width: source.width!, height: source.height! } : { width: view.width, height: view.height };
     return {
       ...(source ? (({ parentId: _parent, extent: _extent, dragHandle: _handle, ...node }) => node)(source) : { id: view.id, data: { title: view.data.title! } }),
-      type: cluster ? 'cluster' : expanded && source!.data.expandable ? 'structure' : 'card',
+      type: cluster ? 'cluster' : structure ? 'structure' : 'card',
       position: { ...position }, ...size,
       measured: { ...size }, style: { ...size },
       ...(parentId ? { parentId, extent: 'parent' as const } : {}),
-      ...(cluster ? { dragHandle: '.cluster-drag-handle' } : expanded ? { dragHandle: '.structure-header' } : {}),
+      ...(cluster ? { dragHandle: '.cluster-drag-handle' } : structure ? { dragHandle: '.structure-header' } : {}),
       selected: false,
-      data: { ...source?.data, ...view.data, expanded, title: view.data.title ?? source!.data.title, ...(!cluster && view.data.title !== undefined ? { titleOverride: view.data.title } : {}), ...(source ? { change: baseline.nodeChanges[source.id]! } : {}) },
+      data: { ...source?.data, ...view.data, layoutEdits: view.data.layoutEdits ?? legacyLayoutEdits(view, saved), ...(shapeChanged && source ? { contentWidth: source.width!, contentHeight: source.height! } : {}), expanded, title: view.data.title ?? source!.data.title, ...(!cluster && view.data.title !== undefined ? { titleOverride: view.data.title } : {}), ...(source ? { change: baseline.nodeChanges[source.id]! } : {}) },
     };
   });
   const restoredIds = new Set(result.map((node) => node.id));

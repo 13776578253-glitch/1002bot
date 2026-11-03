@@ -25,7 +25,7 @@ datasets/
 
 `resolveSourceStages` 把事实目录与阶段选择组装为 `ProjectSourceStage`，`adaptProject` 再生成基线。注册表、事实目录、阶段与视图只读；用户在画布中的修改属于工作空间。
 
-当前只有 `1002bot` 一个项目。后续项目在注册表登记清单即可加载；项目选择界面尚未实现。
+当前登记 `1002bot`（原 M0）与 `runtime-evolution`（M1/M2 Runtime 切片），默认打开后者。后续项目在注册表登记清单即可加载；项目选择界面尚未实现。切片结构与来源见 [Runtime 数据说明](projects/runtime-evolution/README.md)。
 
 ## 快照 id
 

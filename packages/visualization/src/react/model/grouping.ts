@@ -1,6 +1,8 @@
 /** Interactive clustering, sibling separation and coordinate translation between local and world space. */
 import type { Node } from '@xyflow/react';
 import type { ChangeMark } from '../../core/schema/baseline.ts';
+import type { NodeLayoutEdits } from './layout-intent.ts';
+import { fitMovedContainers } from './spacing.ts';
 
 export type LayoutMode = 'free' | 'fixed' | 'locked';
 
@@ -9,12 +11,14 @@ export type CanvasNode = Node<{
   title: string;
   titleOverride?: string;
   summary?: string;
+  details?: readonly string[];
   change?: ChangeMark;
   planned?: boolean;
   expandable?: boolean;
   expanded?: boolean;
   childCount?: number;
   layoutMode?: LayoutMode;
+  layoutEdits?: NodeLayoutEdits;
   frozen?: boolean;
   authored?: { collapsedSize: { width: number; height: number }; expandedSize?: { width: number; height: number } };
   onToggle?: () => void;
@@ -29,6 +33,7 @@ export type CanvasNode = Node<{
 }>;
 
 export const CARD_SIZE = { width: 240, height: 82 };
+export const structureHeaderHeight = (node: Pick<CanvasNode, 'data'>): number => 68 + (node.data.details?.length ?? 0) * 52;
 export const MIN_EDGE_GAP = 64;
 const GROUP_PADDING = { x: 24, top: 60, bottom: 24 };
 const SIBLING_GAP = 24;
@@ -289,7 +294,7 @@ export function groupSelection(nodes: readonly CanvasNode[], id: string, manual 
   });
   const oldParents = roots.flatMap((node) => node.parentId ? [node.parentId] : []);
   let grouped = removeEmptyClusters([group, ...result]);
-  if (manual) return parentFirst(grouped);
+  if (manual) return parentFirst(fitMovedContainers(grouped, [id], { moveNeighbours: false, preserveFrozen: true }));
   grouped = encloseChildren(grouped, oldParents);
   grouped = separateSiblings(grouped, id);
   grouped = encloseChildren(grouped, parentId ? [parentId] : [], true);
@@ -318,7 +323,7 @@ export function ungroup(nodes: readonly CanvasNode[], id: string, manual = false
       data: { ...data, ...(Object.keys(origins).length ? { groupOrigins: origins } : {}) } };
   });
   const restored = removeEmptyClusters(result);
-  if (manual) return parentFirst(restored);
+  if (manual) return parentFirst(fitMovedContainers(restored, restored.filter((node) => node.selected).map((node) => node.id), { moveNeighbours: false, preserveFrozen: true }));
   const affected = [...ancestors(parent, nodes), ...restored.filter((node) => node.selected).flatMap((node) => ancestors(node, restored))];
   const next = parentFirst(recordNaturalSizes(encloseChildren(restored, affected), affected));
   return layoutProtectionConflict(nodes, next, new Set([id])) ? nodes as CanvasNode[] : next;

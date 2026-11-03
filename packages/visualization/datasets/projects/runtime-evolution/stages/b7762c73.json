@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "id": "b7762c73",
+  "label": "M2.0",
+  "title": "Runtime 交互输入闭环",
+  "subtitle": "InputChannel / InputRun；旧 Event 兼容路径并存",
+  "date": "2026-10-05",
+  "doc": "docs/进度汇报/2026-10-05-M2.0进度与架构图.md",
+  "previousId": "16d69bf0",
+  "select": {
+    "componentIds": [
+      "console",
+      "input-channel",
+      "input-run",
+      "conversation-agent"
+    ],
+    "relationIds": [
+      "console-submit",
+      "channel-run",
+      "run-agent",
+      "run-provider",
+      "run-world",
+      "run-history",
+      "run-append",
+      "channel-append",
+      "channel-output",
+      "runtime-channel",
+      "runtime-run",
+      "runtime-channel-stop",
+      "agent-conversation"
+    ],
+    "contractIds": [
+      "InputReceipt",
+      "RunResult",
+      "OutputEvent",
+      "InputLimits"
+    ]
+  },
+  "remove": {
+    "componentIds": [
+      "test-agent"
+    ],
+    "relationIds": [
+      "agent-implementation"
+    ],
+    "contractIds": []
+  }
+}

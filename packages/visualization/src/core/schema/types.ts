@@ -55,7 +55,8 @@ export interface CanonicalEdge {
   id: GraphEdgeId;
   source: CanonicalEndpoint;
   target: CanonicalEndpoint;
-  relation: 'data' | 'control' | 'call' | 'event' | 'storage' | 'unknown';
+  relation: 'data' | 'control' | 'call' | 'event' | 'storage' | 'ownership' | 'implementation' | 'lifecycle' | 'unknown';
+  semantics?: 'dependency' | 'interaction';
   direction: 'directed' | 'bidirectional';
   label?: string;
   order: number;

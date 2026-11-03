@@ -16,7 +16,7 @@ export interface ValidationIssue {
 const NODE_KINDS = new Set(['root', 'group', 'component', 'actor', 'store', 'adapter', 'planned']);
 const PORT_DIRECTIONS = new Set(['in', 'out', 'bidirectional']);
 const PORT_SIDES = new Set(['top', 'right', 'bottom', 'left', 'auto']);
-const RELATIONS = new Set(['data', 'control', 'call', 'event', 'storage', 'unknown']);
+const RELATIONS = new Set(['data', 'control', 'call', 'event', 'storage', 'ownership', 'implementation', 'lifecycle', 'unknown']);
 const DIRECTIONS = new Set(['directed', 'bidirectional']);
 
 function requiredString(value: unknown, field: string, path: string, issues: ValidationIssue[]): void {
@@ -64,6 +64,7 @@ function checkGraphShape(graph: CanonicalGraph, issues: ValidationIssue[]): void
       if (!edge.source || typeof edge.source.nodeId !== 'string') issues.push({ message: 'edge source must reference a node id', path });
       if (!edge.target || typeof edge.target.nodeId !== 'string') issues.push({ message: 'edge target must reference a node id', path });
       if (!RELATIONS.has(edge.relation)) issues.push({ message: 'unknown edge relation "' + String(edge.relation) + '"', path });
+      if (edge.semantics !== undefined && !['dependency', 'interaction'].includes(edge.semantics)) issues.push({ message: 'unknown edge semantics', path });
       if (!DIRECTIONS.has(edge.direction)) issues.push({ message: 'unknown edge direction "' + String(edge.direction) + '"', path });
       if (!Number.isFinite(edge.order)) issues.push({ message: 'edge order must be finite', path });
       if (edge.label !== undefined && typeof edge.label !== 'string') issues.push({ message: 'edge label must be a string', path });

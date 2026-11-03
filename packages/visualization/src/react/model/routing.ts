@@ -7,7 +7,7 @@ import {
 } from '../../core/layout/geometry.ts';
 import { validateRoute } from '../../core/layout/legality.ts';
 import { DEFAULT_SEARCH_LIMITS } from '../../core/layout/search-limits.ts';
-import { CARD_SIZE, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, structureHeaderHeight, type CanvasNode } from './grouping.ts';
 import { nodeIsVisible } from './hierarchy.ts';
 import { SpatialIndex, expandBounds } from './spatial-index.ts';
 
@@ -62,8 +62,8 @@ export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: 
     const full = rect(node);
     if (!nodeIsVisible(node, nodes, projection)) continue;
     const card = node.type === 'card';
-    const obstacle = protectedFrames.get(node.id) ?? (card ? full : { ...full, h: node.type === 'structure' ? 68 : 54 });
-    const entry = { id: node.id, bounds: obstacle, padded: expandBounds(obstacle, card ? 10 : 0), card, endpointBounds: card ? full : { ...full, h: node.type === 'structure' ? 68 : 54 } };
+    const obstacle = protectedFrames.get(node.id) ?? (card ? full : { ...full, h: node.type === 'structure' ? structureHeaderHeight(node) : 54 });
+    const entry = { id: node.id, bounds: obstacle, padded: expandBounds(obstacle, card ? 10 : 0), card, endpointBounds: card ? full : { ...full, h: node.type === 'structure' ? structureHeaderHeight(node) : 54 } };
     obstacles.set(node.id, entry);
     obstacleIndex.set(node.id, entry.padded, entry);
     blockers.push(obstacle);

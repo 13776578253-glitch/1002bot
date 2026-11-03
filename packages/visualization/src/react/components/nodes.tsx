@@ -1,7 +1,7 @@
 /** Memoized node renderers subscribe only to their own supplied view data. */
 import type { NodeProps } from '@xyflow/react';
 import { memo } from 'react';
-import type { CanvasNode } from '../model/grouping.ts';
+import { structureHeaderHeight, type CanvasNode } from '../model/grouping.ts';
 import { ChangeBadge } from './change-badge.tsx';
 import { Icon } from './icon.tsx';
 import { Ports } from './ports.tsx';
@@ -10,19 +10,24 @@ function LayoutMark({ mode }: { mode: CanvasNode['data']['layoutMode'] }) {
   return mode && mode !== 'free' ? <span className="layout-mark" title={mode === 'fixed' ? '固定' : '锁定'} aria-label={mode === 'fixed' ? '固定' : '锁定'}><Icon name={mode === 'fixed' ? 'pin' : 'lock'} /></span> : null;
 }
 
+function Responsibilities({ details }: { details: readonly string[] | undefined }) {
+  return details?.length ? <ul className="card-responsibilities" aria-label="内部职责">{details.map((detail, index) => <li key={index}>{detail}</li>)}</ul> : null;
+}
+
 export const Card = memo(function Card({ data, selected, width, height }: NodeProps<CanvasNode>) {
   return <div className={`flow-card ${selected ? 'is-selected' : ''} ${data.planned ? 'is-planned' : ''}`} data-change={data.change?.kind} data-layout-mode={data.layoutMode ?? 'free'} data-frozen={data.frozen ? 'true' : undefined}>
     <Ports width={width ?? 0} height={height ?? 0} />
-    <div className="card-title"><span className="card-name">{data.title}</span><LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} />{data.planned && <span className="planned-badge">规划</span>}{data.expandable && <button className="structure-toggle nodrag nopan" aria-label={`展开${data.title}`} aria-expanded={false} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}><span>{data.childCount}</span><Icon name="expand" /></button>}</div>
+    <div className="card-title"><span className="card-name">{data.title}</span><LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} />{data.planned && <span className="planned-badge">规划</span>}{data.expandable && <button className="structure-toggle nodrag nopan" aria-label={`${data.expanded ? '收起' : '展开'}${data.title}`} aria-expanded={!!data.expanded} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}>{!!data.childCount && <span>{data.childCount}</span>}<Icon name={data.expanded ? 'collapse' : 'expand'} /></button>}</div>
     <div className="card-summary" title={data.summary}>{data.summary}</div>
+    {data.expanded && <Responsibilities details={data.details} />}
   </div>;
 });
 
 export const Structure = memo(function Structure({ data, selected, width, height }: NodeProps<CanvasNode>) {
   return <div className={`structure-frame ${selected ? 'is-selected' : ''}`} data-change={data.change?.kind} data-layout-mode={data.layoutMode ?? 'free'} data-frozen={data.frozen ? 'true' : undefined}>
     <Ports width={width ?? 0} height={height ?? 0} />
-    <div className="structure-header">
-      <div className="structure-heading"><div className="card-title">{data.title}<LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} /></div><div className="card-summary">{data.summary}</div></div>
+    <div className="structure-header" style={{ height: structureHeaderHeight({ data }) }}>
+      <div className="structure-heading"><div className="card-title">{data.title}<LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} /></div><div className="card-summary">{data.summary}</div><Responsibilities details={data.details} /></div>
       <button className="structure-toggle nodrag nopan" aria-label={`收起${data.title}`} aria-expanded={true} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}><span>{data.childCount}</span><Icon name="collapse" /></button>
     </div>
   </div>;

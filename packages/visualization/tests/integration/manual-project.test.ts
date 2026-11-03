@@ -87,15 +87,18 @@ test('authored multi-selection alignment preserves one displacement and locked a
   assert.deepEqual(protectedMove.guides, []);
 });
 
-test('authored alignment rejects overlap and container escape without displaying false guides', () => {
+test('authored overlap clamps to legal geometry and outward movement fits the parent', () => {
   const [baseline] = fixture();
   const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
   const visible = new Set(nodes.map((node) => node.id));
-  for (const point of [{ x: 360, y: 136 }, { x: 700, y: 136 }]) {
-    const result = moveAlignedAuthoredNodes(nodes, propose(nodes, { first: point }), ['first'], baseline!.stage, 1, visible);
-    assert.equal(result.nodes, nodes);
-    assert.deepEqual(result.guides, []);
-  }
+  const result = moveAlignedAuthoredNodes(nodes, propose(nodes, { first: { x: 360, y: 136 } }), ['first'], baseline!.stage, 1, visible);
+  assert.equal(manualGeometryConflict(result.nodes, baseline!.stage), undefined);
+  assert.ok(position(result.nodes, 'first').x > position(nodes, 'first').x);
+  assert.ok(position(result.nodes, 'first').x + result.nodes.find((node) => node.id === 'first')!.width! <= position(nodes, 'second').x);
+  assert.deepEqual(result.guides, []);
+  const outward = moveAlignedAuthoredNodes(nodes, propose(nodes, { first: { x: 700, y: 136 } }), ['first'], baseline!.stage, 1, visible);
+  assert.equal(manualGeometryConflict(outward.nodes, baseline!.stage), undefined);
+  assert.ok(outward.nodes.find((node) => node.id === 'module')!.width! > nodes.find((node) => node.id === 'module')!.width!);
 });
 
 test('manual expansion and saved view restoration preserve the authored local geometry', () => {
@@ -112,8 +115,8 @@ test('manual expansion and saved view restoration preserve the authored local ge
   const reopened = toggleHierarchy(collapsed, 'module', baseline!.stage);
   assert.deepEqual(position(reopened, 'first'), position(expanded, 'first'));
   assert.deepEqual(position(reopened, 'second'), position(expanded, 'second'));
-  assert.equal(reopened.find((node) => node.id === 'module')!.width, 740);
-  assert.equal(reopened.find((node) => node.id === 'module')!.height, 400);
+  assert.equal(reopened.find((node) => node.id === 'module')!.width, expanded.find((node) => node.id === 'module')!.width);
+  assert.equal(reopened.find((node) => node.id === 'module')!.height, expanded.find((node) => node.id === 'module')!.height);
 });
 
 test('collapsing a manually arranged container clears only selections that become hidden', () => {
@@ -134,7 +137,7 @@ test('manual drags move only selected roots; parent translation preserves local 
   assert.deepEqual(position(moved, 'first'), { x: 90, y: 160 });
   assert.deepEqual(position(moved, 'second'), position(nodes, 'second'));
   assert.deepEqual(position(moved, 'module'), position(nodes, 'module'));
-  assert.equal(moved.find((node) => node.id === 'module')!.width, 740);
+  assert.equal(moved.find((node) => node.id === 'module')!.width, nodes.find((node) => node.id === 'module')!.width);
   const translation = moveAuthoredNodes(moved, propose(moved, { module: { x: 250, y: 130 } }), ['module'], baseline!.stage);
   assert.deepEqual(position(translation, 'module'), { x: 250, y: 130 });
   assert.deepEqual(position(translation, 'first'), position(moved, 'first'));
@@ -142,17 +145,20 @@ test('manual drags move only selected roots; parent translation preserves local 
   assert.deepEqual(position(translation, 'outside'), position(moved, 'outside'));
 });
 
-test('locked direct drags and overlaps are rejected without moving neighbors or expanding frames', () => {
+test('locked direct drags stay put while collision-limited drags preserve neighbors', () => {
   const [baseline] = fixture();
   const nodes = toggleHierarchy(baselineNodes(baseline!), 'module', baseline!.stage);
   const locked = nodes.map((node) => node.id === 'first' ? { ...node, data: { ...node.data, layoutMode: 'locked' as const } } : node);
   const refused = moveAuthoredNodes(locked, propose(locked, { first: { x: 90, y: 160 } }), ['first'], baseline!.stage);
   assert.deepEqual(position(refused, 'first'), position(locked, 'first'));
   const collision = moveAuthoredNodes(nodes, propose(nodes, { first: { x: 360, y: 140 } }), ['first'], baseline!.stage);
-  assert.deepEqual(collision.map((node) => ({ id: node.id, position: node.position, width: node.width, height: node.height })), nodes.map((node) => ({ id: node.id, position: node.position, width: node.width, height: node.height })));
+  assert.equal(manualGeometryConflict(collision, baseline!.stage), undefined);
+  assert.deepEqual(position(collision, 'second'), position(nodes, 'second'));
+  assert.deepEqual(position(collision, 'outside'), position(nodes, 'outside'));
   const outside = moveAuthoredNodes(nodes, propose(nodes, { first: { x: 700, y: 140 } }), ['first'], baseline!.stage);
-  assert.deepEqual(position(outside, 'first'), position(nodes, 'first'));
-  assert.equal(outside.find((node) => node.id === 'module')!.width, 740);
+  assert.equal(manualGeometryConflict(outside, baseline!.stage), undefined);
+  assert.deepEqual(position(outside, 'first'), { x: 700, y: 140 });
+  assert.ok(outside.find((node) => node.id === 'module')!.width! > nodes.find((node) => node.id === 'module')!.width!);
 });
 
 test('manual stage increment uses authored coordinates without expanding or moving the confirmed nodes', () => {
@@ -183,7 +189,7 @@ test('manual groups and ungrouping preserve world positions and unrelated author
   for (const id of ['module', 'first', 'second', 'outside']) assert.deepEqual(worldPosition(grouped.find((node) => node.id === id)!, grouped), before[id]);
   const restored = ungroup(grouped, 'group-one', true);
   for (const id of ['module', 'first', 'second', 'outside']) assert.deepEqual(worldPosition(restored.find((node) => node.id === id)!, restored), before[id]);
-  assert.equal(restored.find((node) => node.id === 'module')!.width, 740);
+  assert.equal(restored.find((node) => node.id === 'module')!.width, expanded.find((node) => node.id === 'module')!.width);
 });
 
 test('manual baseline validation rejects missing and invalid frames rather than generating a grid', () => {

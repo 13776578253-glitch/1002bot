@@ -1,11 +1,13 @@
-/** Authored layouts move only the user's targets and never resize or displace their neighbors. */
+/** Authored movement fits affected ancestors while preserving unrelated node positions. */
 import type { StageSnapshot } from '../../core/schema/types.ts';
-import { worldPosition, type CanvasNode } from './grouping.ts';
+import { layoutProtectionConflict, structureHeaderHeight, worldPosition, type CanvasNode } from './grouping.ts';
 import { projectGraph } from '../../core/projection/index.ts';
 import type { StageConflict } from './stage-types.ts';
 import { alignNodeRect, type AlignmentGuide } from './constraints.ts';
+import { containerGrowthCeiling, fitMovedContainers } from './spacing.ts';
+import { preferredEditedSize } from './layout-intent.ts';
 
-export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: StageSnapshot): StageConflict | undefined {
+export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: StageSnapshot, ignored: ReadonlySet<string> = new Set()): StageConflict | undefined {
   const projection = projectGraph(stage, new Set(nodes.filter((node) => node.data.expanded).map((node) => node.id)));
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const ancestor = (id: string, child: CanvasNode): boolean => {
@@ -13,10 +15,10 @@ export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: Stag
     while (parent) { if (parent === id) return true; parent = byId.get(parent)?.parentId; }
     return false;
   };
-  const visible = nodes.filter((node) => projection.nodeById.has(node.id) || node.type === 'cluster' && nodes.some((child) => projection.nodeById.has(child.id) && ancestor(node.id, child)));
+  const visible = nodes.filter((node) => !ignored.has(node.id) && ![...ignored].some((id) => ancestor(id, node)) && (projection.nodeById.has(node.id) || node.type === 'cluster' && nodes.some((child) => projection.nodeById.has(child.id) && ancestor(node.id, child))));
   for (const node of visible) {
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
-    if (parent && (node.position.x < 24 || node.position.y < (parent.type === 'cluster' ? 60 : 72)
+    if (parent && (node.position.x < 24 || node.position.y < (parent.type === 'cluster' ? 60 : structureHeaderHeight(parent) + 4)
       || node.position.x + node.width! > parent.width! - 24 || node.position.y + node.height! > parent.height! - 24)) {
       return { kind: 'no-space', entityIds: [node.id], containerId: parent.id, message: `人工编排超出容器边界：${node.data.title}`, actions: ['cancel'] };
     }
@@ -29,6 +31,44 @@ export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: Stag
     }
   }
   return undefined;
+}
+
+/** Four-way fitting compensates child coordinates and never pushes sibling components. */
+export function fitAuthoredLayout(before: readonly CanvasNode[], proposed: readonly CanvasNode[], changedIds: readonly string[], stage: StageSnapshot, movedRoots: ReadonlySet<string> = new Set(), ignored: ReadonlySet<string> = new Set()): { nodes: CanvasNode[]; conflict?: StageConflict } {
+  const fitted = fitMovedContainers(proposed, changedIds, { moveNeighbours: false, ignored, preserveFrozen: true });
+  for (const old of before) {
+    const next = fitted.find((node) => node.id === old.id)!;
+    if (next.width === old.width && next.height === old.height && next.position.x === old.position.x && next.position.y === old.position.y) continue;
+    if (old.data.frozen) {
+      let owner: CanvasNode | undefined = old;
+      while (owner && !movedRoots.has(owner.id)) owner = before.find((node) => node.id === owner!.parentId);
+      const oldOrigin = worldPosition(old, before), nextOrigin = worldPosition(next, fitted);
+      const oldOwner = owner ? worldPosition(owner, before) : { x: 0, y: 0 };
+      const nextOwner = owner ? worldPosition(fitted.find((node) => node.id === owner.id)!, fitted) : { x: 0, y: 0 };
+      if (old.width !== next.width || old.height !== next.height || Math.abs(nextOrigin.x - oldOrigin.x - nextOwner.x + oldOwner.x) > 0.000001 || Math.abs(nextOrigin.y - oldOrigin.y - nextOwner.y + oldOwner.y) > 0.000001) return { nodes: before as CanvasNode[], conflict: { kind: 'frozen-violation', entityIds: [old.id], message: `冻结边界保持不变：${old.data.title}`, actions: ['unfreeze', 'cancel'] } };
+    }
+    if (next.type !== 'structure' && next.type !== 'cluster') continue;
+    const ceiling = containerGrowthCeiling(!old.data.expanded && next.data.expanded && old.data.authored?.expandedSize ? { ...old, ...old.data.authored.expandedSize } : old);
+    if (next.width! > Math.max(old.width!, ceiling.width) || next.height! > Math.max(old.height!, ceiling.height)) return { nodes: before as CanvasNode[], conflict: { kind: 'growth-ceiling', entityIds: [old.id], message: `容器达到扩容上限：${old.data.title}`, actions: ['cancel'] } };
+  }
+  const conflict = manualGeometryConflict(fitted, stage, ignored);
+  if (conflict) return { nodes: before as CanvasNode[], conflict };
+  if (layoutProtectionConflict(before, fitted, movedRoots)) return { nodes: before as CanvasNode[], conflict: { kind: 'no-space', entityIds: [...movedRoots], message: '容器调整会改变固定节点的锚点', actions: ['cancel'] } };
+  return { nodes: fitted };
+}
+
+/** Rebuild fitted frames after edit intents and expansion have been merged; frozen geometry remains literal. */
+export function deriveAuthoredLayout(input: readonly CanvasNode[], stage: StageSnapshot): { nodes: CanvasNode[]; conflict?: StageConflict } {
+  const proposed = input.map((node) => {
+    if (node.data.frozen) return node;
+    const preference = preferredEditedSize(node);
+    const natural = preference ?? (node.data.expanded ? node.data.authored?.expandedSize : node.data.authored?.collapsedSize) ?? { width: node.width!, height: node.height! };
+    const { reflowOrigin: _reflow, expansionSizes: _sizes, ...data } = node.data;
+    return { ...node, width: natural.width, height: natural.height, measured: { width: natural.width, height: natural.height }, style: { ...node.style, width: natural.width, height: natural.height }, data: { ...data, contentWidth: natural.width, contentHeight: natural.height } };
+  });
+  const projection = projectGraph(stage, new Set(input.filter((node) => node.data.expanded).map((node) => node.id)));
+  const changed = input.filter((node) => projection.nodeById.has(node.id) || node.type === 'cluster').map((node) => node.id);
+  return fitAuthoredLayout(input, proposed, changed, stage);
 }
 
 export function moveAuthoredNodes(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot): CanvasNode[] {
@@ -73,7 +113,17 @@ function moveAuthoredSelection(before: readonly CanvasNode[], proposed: readonly
     const peers = next.filter((node) => alignment.visible.has(node.id) && node.type === primary.type && !rootIds.has(node.id) && !ancestors.has(node.id) && !hasMovingAncestor(node));
     const snap = alignNodeRect(rect(anchor), peers.map(rect), alignment.zoom);
     const snapped = next.map((node) => rootIds.has(node.id) ? { ...node, position: { x: node.position.x + snap.dx, y: node.position.y + snap.dy } } : node);
-    if (!manualGeometryConflict(snapped, stage)) return { nodes: snapped, guides: snap.guides };
+    const fitted = fitAuthoredLayout(before, snapped, [...rootIds], stage, rootIds);
+    if (!fitted.conflict) return { nodes: fitted.nodes, guides: snap.guides };
   }
-  return { nodes: manualGeometryConflict(next, stage) ? before as CanvasNode[] : next, guides: [] };
+  const fitted = fitAuthoredLayout(before, next, [...rootIds], stage, rootIds);
+  if (!fitted.conflict) return { nodes: fitted.nodes, guides: [] };
+  let low = 0, high = 1, accepted = before as CanvasNode[];
+  for (let step = 0; step < 18; step++) {
+    const fraction = (low + high) / 2;
+    const trial = next.map((node) => rootIds.has(node.id) ? { ...node, position: { x: previous.get(node.id)!.position.x + delta.x * fraction, y: previous.get(node.id)!.position.y + delta.y * fraction } } : node);
+    const result = fitAuthoredLayout(before, trial, [...rootIds], stage, rootIds);
+    if (result.conflict) high = fraction; else { low = fraction; accepted = result.nodes; }
+  }
+  return { nodes: accepted, guides: [] };
 }

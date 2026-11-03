@@ -62,8 +62,8 @@ export interface Projection {
   hiddenToVisible: Map<GraphNodeId, GraphNodeId>;
 }
 
-function hasChildren(graph: IndexedGraph, id: GraphNodeId): boolean {
-  return (graph.childrenOf.get(id)?.length ?? 0) > 0;
+function canExpand(graph: IndexedGraph, id: GraphNodeId): boolean {
+  return (graph.childrenOf.get(id)?.length ?? 0) > 0 || Boolean(graph.byId.get(id)?.details?.length);
 }
 
 /** 节点可见性判断：当且仅当其到图根路径上的所有祖先节点均处于展开状态时可见。 */
@@ -141,7 +141,7 @@ export function projectGraph(
       ? expandedInput.expanded
       : new Set(expandedInput);
   const expanded = new Set<GraphNodeId>();
-  for (const id of requested) if (graph.byId.has(id) && hasChildren(graph, id)) expanded.add(id);
+  for (const id of requested) if (graph.byId.has(id) && canExpand(graph, id)) expanded.add(id);
 
   const nodes: VisibleNode[] = [];
   const nodeById = new Map<GraphNodeId, VisibleNode>();
@@ -159,7 +159,7 @@ export function projectGraph(
       ...(parentId === undefined ? {} : { parentId }),
       depth,
       expanded: expanded.has(node.id),
-      expandable: hasChildren(graph, node.id),
+      expandable: canExpand(graph, node.id),
     };
     nodes.push(visible);
     nodeById.set(node.id, visible);

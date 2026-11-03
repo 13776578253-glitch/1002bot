@@ -5,7 +5,7 @@ import type { CanonicalEdge } from '../../core/schema/types.ts';
 import type { DisplayEdge } from './display-edges.ts';
 import type { CachedRoute } from './route-cache.ts';
 import { createDiagramGeometry, pathIsClear, segmentCrossesRect, type DiagramGeometry, type ReservedRoute } from './routing.ts';
-import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, structureHeaderHeight, worldPosition, type CanvasNode } from './grouping.ts';
 import { nodeIsVisible } from './hierarchy.ts';
 import type { EdgeRouteSnapshot, EdgeRouteState, FrozenGroupSnapshot } from './workspace.ts';
 import { boundaryWorldPoints, resolveFrozenBoundaryRoute } from './blackbox-routes.ts';
@@ -153,7 +153,7 @@ export function validateStoredRoutes(before: readonly CanvasNode[], after: reado
     }
     const crosses = (node: CanvasNode, list: readonly CanvasNode[], points: readonly Point[]) => {
       const p = worldPosition(node, list);
-      const bounds = { x: p.x, y: p.y, w: node.width ?? CARD_SIZE.width, h: node.type === 'card' ? node.height ?? CARD_SIZE.height : node.type === 'structure' ? 68 : 54 };
+      const bounds = { x: p.x, y: p.y, w: node.width ?? CARD_SIZE.width, h: node.type === 'card' ? node.height ?? CARD_SIZE.height : node.type === 'structure' ? structureHeaderHeight(node) : 54 };
       return points.slice(1).some((point, index) => segmentCrossesRect(points[index]!, point, bounds));
     };
     for (const node of after) {

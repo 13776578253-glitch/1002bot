@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "id": "runtime-evolution",
+  "title": "Runtime · M1 / M2",
+  "revision": "runtime-slice-v1",
+  "source": [
+    "source/runtime.json",
+    "source/collaborators.json",
+    "source/contracts.json"
+  ],
+  "stages": [
+    "stages/16d69bf0.json",
+    "stages/b7762c73.json"
+  ],
+  "views": [
+    "views/m1-runtime.json",
+    "views/m2-runtime.json"
+  ]
+}

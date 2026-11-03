@@ -20,7 +20,7 @@ export interface DisplayEdge {
 }
 
 export const relationNames: Record<CanonicalEdge['relation'], string> = {
-  data: '数据关系', control: '控制关系', call: '调用', event: '事件关系', storage: '存储关系', unknown: '关系',
+  data: '数据关系', control: '控制关系', call: '调用', event: '事件关系', storage: '存储关系', ownership: '所有权', implementation: '实现', lifecycle: '生命周期', unknown: '关系',
 };
 
 function visibleEndpoints(edge: ProjectedEdge): [string, string] {
@@ -33,7 +33,7 @@ export function aggregateProjectedEdges(projection: Projection, changes: Readonl
   const buckets = new Map<string, ProjectedEdge[]>();
   for (const edge of [...projection.edges].sort((a, b) => a.edge.order - b.edge.order || a.canonicalEdgeId.localeCompare(b.canonicalEdgeId))) {
     const [source, target] = visibleEndpoints(edge);
-    const key = JSON.stringify([source, target, edge.direction, edge.relation]);
+    const key = JSON.stringify([source, target, edge.direction, edge.relation, edge.edge.semantics ?? 'interaction']);
     const bucket = buckets.get(key);
     if (bucket) bucket.push(edge);
     else buckets.set(key, [edge]);

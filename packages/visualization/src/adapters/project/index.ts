@@ -61,6 +61,7 @@ function stageFacts(stage: ProjectSourceStage, parent: Facts | undefined): Facts
   for (const component of components.values()) {
     text(component.label, `component ${component.id} label`);
     references(component.sourceRefs, `component ${component.id}`);
+    if (component.details !== undefined && (!Array.isArray(component.details) || component.details.some((item: unknown) => typeof item !== 'string'))) throw new Error(`component ${component.id} details must be strings`);
     contractRefs(component.contractIds, `component ${component.id}`);
   }
   for (const contract of contracts.values()) {
@@ -90,11 +91,15 @@ function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, i
   uniqueIds(view.relations, 'view relation');
   const nodeViews = new Map(view.nodes.map((node) => [node.id, node]));
   const relationViews = new Map(view.relations.map((relation) => [relation.id, relation]));
-  const expandable = new Set(view.nodes.map((node) => node.parentId).filter((id) => id !== view.rootId));
+  const expandable = new Set([
+    ...view.nodes.map((node) => node.parentId).filter((id) => id !== view.rootId),
+    ...view.nodes.filter((node) => (node.details ?? facts.components.get(node.componentId)?.details)?.length).map((node) => node.id),
+  ]);
   const root: CanonicalNode = { id: view.rootId, parentId: null, kind: 'root', label: project.title, order: 0, ports: [] };
   const nodes: CanonicalNode[] = [root, ...view.nodes.map((node) => {
     const component = facts.components.get(node.componentId);
     if (!component) throw new Error(`view node ${node.id} references unknown component "${node.componentId}"`);
+    if (node.details !== undefined && (!Array.isArray(node.details) || node.details.some((item: unknown) => typeof item !== 'string'))) throw new Error(`view node ${node.id} details must be strings`);
     if (!node.frame || ![node.frame.x, node.frame.y, node.frame.width, node.frame.height].every(Number.isFinite) || node.frame.width <= 0 || node.frame.height <= 0) throw new Error(`view node ${node.id} requires a finite positive authored frame`);
     if (expandable.has(node.id) && (!node.expandedSize || ![node.expandedSize.width, node.expandedSize.height].every(Number.isFinite) || node.expandedSize.width <= 0 || node.expandedSize.height <= 0)) throw new Error(`view container ${node.id} requires an authored expanded size`);
     if (node.expandedSize && (![node.expandedSize.width, node.expandedSize.height].every(Number.isFinite) || node.expandedSize.width <= 0 || node.expandedSize.height <= 0)) throw new Error(`view node ${node.id} has an invalid expanded size`);
@@ -102,6 +107,7 @@ function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, i
       id: node.id, parentId: node.parentId, kind: component.kind,
       label: node.label ?? component.label, ...(node.summary ?? component.summary ? { summary: node.summary ?? component.summary! } : {}),
       order: node.order, ports: node.ports.map((port) => ({ ...port })), sourceRefs: [...component.sourceRefs],
+      ...((node.details ?? component.details) ? { details: [...(node.details ?? component.details)!] } : {}),
     };
   })];
   for (const relation of view.relations) {
@@ -130,6 +136,7 @@ function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, i
   const edges: CanonicalEdge[] = view.relations.map((relation) => ({
     id: relation.id, source: { ...relation.source }, target: { ...relation.target }, label: relation.label,
     relation: relation.relation, direction: relation.direction, order: relation.order,
+    ...(relation.semantics ? { semantics: relation.semantics } : {}),
   }));
   const graph: CanonicalGraph = { rootId: view.rootId, nodes, edges, revision: `${project.revision}:${stage.id}:${view.id}` };
   assertValidGraph(graph);
@@ -145,7 +152,18 @@ function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, i
     ...(node.initiallyExpanded === undefined ? {} : { initiallyExpanded: node.initiallyExpanded }),
   }])) };
   const nodeChanges = mark(view.nodes.map((node) => node.id), (id) => parent?.components.has(nodeViews.get(id)!.componentId) ?? false, !parent);
-  const edgeChanges = mark(view.relations.map((relation) => relation.id), (id) => relationViews.get(id)!.sourceRelationIds.every((sourceId) => parent?.relations.has(sourceId)), !parent);
+  const previousView = project.views.find((item) => item.stageId === stage.previousId);
+  for (const node of view.nodes) {
+    const component = facts.components.get(node.componentId)!;
+    if (!component.previousId || !parent?.components.has(component.previousId)) continue;
+    const previous = previousView?.nodes.find((item) => item.componentId === component.previousId);
+    if (previous) nodeChanges[node.id] = { kind: 'replaced', label: '替换', previousId: previous.id };
+  }
+  const priorRelations = new Map(previousView?.relations.map((relation) => [relation.id, relation]));
+  const edgeChanges = mark(view.relations.map((relation) => relation.id), (id) => {
+    const current = relationViews.get(id)!, previous = priorRelations.get(id);
+    return Boolean(previous?.sourceRelationIds.every((sourceId) => current.sourceRelationIds.includes(sourceId))) || current.sourceRelationIds.every((sourceId) => parent?.relations.has(sourceId));
+  }, !parent);
   return {
     id: stage.id, stage: snapshot, ...(stage.previousId ? { previousStageId: stage.previousId } : {}),
     positions: Object.fromEntries(view.nodes.map((node) => [node.id, { x: node.frame.x, y: node.frame.y }])),

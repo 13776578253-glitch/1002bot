@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "projectId": "runtime-evolution",
+  "components": [],
+  "relations": [],
+  "contracts": [
+    {
+      "id": "Event",
+      "label": "Event",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "Agent",
+      "label": "Agent",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "Provider",
+      "label": "Provider",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "World",
+      "label": "World",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "SessionStore",
+      "label": "SessionStore",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "StateStore",
+      "label": "StateStore",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "InputReceipt",
+      "label": "InputReceipt",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "RunResult",
+      "label": "RunResult",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "OutputEvent",
+      "label": "OutputEvent",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#交付范围"
+      ]
+    },
+    {
+      "id": "InputLimits",
+      "label": "InputLimits",
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#交付范围"
+      ]
+    }
+  ]
+}

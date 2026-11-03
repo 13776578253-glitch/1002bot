@@ -1,0 +1,713 @@
+{
+  "id": "runtime-m2",
+  "stageId": "b7762c73",
+  "rootId": "project-root",
+  "portPolicy": {
+    "direction": "auto"
+  },
+  "nodes": [
+    {
+      "id": "event-caller",
+      "componentId": "event-caller",
+      "parentId": "project-root",
+      "order": 0,
+      "frame": {
+        "x": 440,
+        "y": 24,
+        "width": 320,
+        "height": 96
+      },
+      "ports": [],
+      "summary": "旧 Event 兼容入口 · 不经过 FIFO"
+    },
+    {
+      "id": "runtime",
+      "componentId": "runtime",
+      "parentId": "project-root",
+      "order": 1,
+      "frame": {
+        "x": 440,
+        "y": 250,
+        "width": 320,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 1000,
+        "height": 900
+      },
+      "initiallyExpanded": true,
+      "summary": "生命周期、写入屏障；新输入与旧 Event 互斥",
+      "details": [
+        "生命周期：generation / lease、启停与写入屏障。",
+        "兼容路径：handleEvent 直接执行，不进入 FIFO。",
+        "实例所有权：InputChannel 与 InputRun 均归 Runtime 管理。"
+      ]
+    },
+    {
+      "id": "agent",
+      "componentId": "agent",
+      "parentId": "project-root",
+      "order": 2,
+      "frame": {
+        "x": 1580,
+        "y": 250,
+        "width": 320,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 480,
+        "height": 390
+      }
+    },
+    {
+      "id": "conversation-agent",
+      "componentId": "conversation-agent",
+      "parentId": "agent",
+      "order": 3,
+      "frame": {
+        "x": 24,
+        "y": 100,
+        "width": 432,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 432,
+        "height": 260
+      }
+    },
+    {
+      "id": "provider",
+      "componentId": "provider",
+      "parentId": "project-root",
+      "order": 4,
+      "frame": {
+        "x": 1580,
+        "y": 740,
+        "width": 320,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 480,
+        "height": 530
+      }
+    },
+    {
+      "id": "scripted-provider",
+      "componentId": "scripted-provider",
+      "parentId": "provider",
+      "order": 5,
+      "frame": {
+        "x": 24,
+        "y": 100,
+        "width": 432,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 432,
+        "height": 210
+      }
+    },
+    {
+      "id": "responses-provider",
+      "componentId": "responses-provider",
+      "parentId": "provider",
+      "order": 6,
+      "frame": {
+        "x": 24,
+        "y": 325,
+        "width": 432,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 432,
+        "height": 180
+      }
+    },
+    {
+      "id": "world",
+      "componentId": "world",
+      "parentId": "project-root",
+      "order": 7,
+      "frame": {
+        "x": -120,
+        "y": 950,
+        "width": 320,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 480,
+        "height": 390
+      }
+    },
+    {
+      "id": "fixture-world",
+      "componentId": "fixture-world",
+      "parentId": "world",
+      "order": 8,
+      "frame": {
+        "x": 24,
+        "y": 100,
+        "width": 432,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 432,
+        "height": 260
+      }
+    },
+    {
+      "id": "session",
+      "componentId": "session",
+      "parentId": "project-root",
+      "order": 9,
+      "frame": {
+        "x": 1580,
+        "y": 1320,
+        "width": 320,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 480,
+        "height": 390
+      }
+    },
+    {
+      "id": "jsonl-session",
+      "componentId": "jsonl-session",
+      "parentId": "session",
+      "order": 10,
+      "frame": {
+        "x": 24,
+        "y": 100,
+        "width": 432,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 432,
+        "height": 260
+      }
+    },
+    {
+      "id": "console",
+      "componentId": "console",
+      "parentId": "project-root",
+      "order": 11,
+      "frame": {
+        "x": -120,
+        "y": 380,
+        "width": 320,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 460,
+        "height": 270
+      }
+    },
+    {
+      "id": "input-channel",
+      "componentId": "input-channel",
+      "parentId": "runtime",
+      "order": 12,
+      "frame": {
+        "x": 40,
+        "y": 310,
+        "width": 380,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 380,
+        "height": 380
+      }
+    },
+    {
+      "id": "input-run",
+      "componentId": "input-run",
+      "parentId": "runtime",
+      "order": 13,
+      "frame": {
+        "x": 560,
+        "y": 310,
+        "width": 400,
+        "height": 96
+      },
+      "ports": [],
+      "expandedSize": {
+        "width": 400,
+        "height": 440
+      }
+    }
+  ],
+  "relations": [
+    {
+      "id": "event-entry",
+      "source": {
+        "nodeId": "event-caller"
+      },
+      "target": {
+        "nodeId": "runtime"
+      },
+      "label": "handleEvent · 兼容",
+      "sourceRelationIds": [
+        "event-entry"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 0,
+      "visibility": {
+        "expanded": [],
+        "collapsed": []
+      }
+    },
+    {
+      "id": "overview-agent",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "conversation-agent"
+      },
+      "label": "请求组装",
+      "sourceRelationIds": [
+        "event-agent",
+        "run-agent"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 1,
+      "visibility": {
+        "expanded": [],
+        "collapsed": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "id": "event-agent",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "conversation-agent"
+      },
+      "label": "Event · 历史 / 请求",
+      "sourceRelationIds": [
+        "event-agent"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 2,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-agent"
+    },
+    {
+      "id": "input-agent",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "conversation-agent"
+      },
+      "label": "输入 / 历史 → 请求",
+      "sourceRelationIds": [
+        "run-agent"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 3,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-agent"
+    },
+    {
+      "id": "overview-provider",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "provider"
+      },
+      "label": "模型调用",
+      "sourceRelationIds": [
+        "event-provider",
+        "run-provider"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 4,
+      "visibility": {
+        "expanded": [],
+        "collapsed": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "id": "event-provider",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "provider"
+      },
+      "label": "Event · complete",
+      "sourceRelationIds": [
+        "event-provider"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 5,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-provider"
+    },
+    {
+      "id": "input-provider",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "provider"
+      },
+      "label": "计量 / complete",
+      "sourceRelationIds": [
+        "run-provider"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 6,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-provider"
+    },
+    {
+      "id": "overview-world",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "fixture-world"
+      },
+      "label": "工具执行",
+      "sourceRelationIds": [
+        "event-world",
+        "run-world"
+      ],
+      "relation": "call",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 7,
+      "visibility": {
+        "expanded": [],
+        "collapsed": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "id": "event-world",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "fixture-world"
+      },
+      "label": "Event · 工具 / 回执",
+      "sourceRelationIds": [
+        "event-world"
+      ],
+      "relation": "call",
+      "direction": "bidirectional",
+      "semantics": "interaction",
+      "order": 8,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-world"
+    },
+    {
+      "id": "input-world",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "fixture-world"
+      },
+      "label": "工具调用 / 回执",
+      "sourceRelationIds": [
+        "run-world"
+      ],
+      "relation": "call",
+      "direction": "bidirectional",
+      "semantics": "interaction",
+      "order": 9,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-world"
+    },
+    {
+      "id": "overview-session",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "jsonl-session"
+      },
+      "label": "事实存取",
+      "sourceRelationIds": [
+        "event-history",
+        "event-append",
+        "run-history",
+        "run-append",
+        "channel-append"
+      ],
+      "relation": "storage",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 10,
+      "visibility": {
+        "expanded": [],
+        "collapsed": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "id": "event-storage",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "jsonl-session"
+      },
+      "label": "Event · 读写事实",
+      "sourceRelationIds": [
+        "event-history",
+        "event-append"
+      ],
+      "relation": "storage",
+      "direction": "bidirectional",
+      "semantics": "interaction",
+      "order": 11,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-session"
+    },
+    {
+      "id": "history-dependency",
+      "source": {
+        "nodeId": "jsonl-session"
+      },
+      "target": {
+        "nodeId": "conversation-agent"
+      },
+      "label": "历史依赖",
+      "sourceRelationIds": [
+        "event-history",
+        "event-agent",
+        "run-history",
+        "run-agent"
+      ],
+      "relation": "data",
+      "direction": "directed",
+      "semantics": "dependency",
+      "order": 12,
+      "visibility": {
+        "expanded": [],
+        "collapsed": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "id": "overview-console",
+      "source": {
+        "nodeId": "console"
+      },
+      "target": {
+        "nodeId": "runtime"
+      },
+      "label": "用户输入 / 公开输出",
+      "sourceRelationIds": [
+        "console-submit",
+        "channel-output"
+      ],
+      "relation": "event",
+      "direction": "bidirectional",
+      "semantics": "interaction",
+      "order": 13,
+      "visibility": {
+        "expanded": [],
+        "collapsed": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "id": "console-submit",
+      "source": {
+        "nodeId": "console"
+      },
+      "target": {
+        "nodeId": "input-channel"
+      },
+      "label": "提交 / 回执",
+      "sourceRelationIds": [
+        "console-submit"
+      ],
+      "relation": "call",
+      "direction": "bidirectional",
+      "semantics": "interaction",
+      "order": 14,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-console"
+    },
+    {
+      "id": "channel-output",
+      "source": {
+        "nodeId": "input-channel"
+      },
+      "target": {
+        "nodeId": "console"
+      },
+      "label": "诊断 / run_finished",
+      "sourceRelationIds": [
+        "channel-output"
+      ],
+      "relation": "event",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 15,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-console"
+    },
+    {
+      "id": "channel-run",
+      "source": {
+        "nodeId": "input-channel"
+      },
+      "target": {
+        "nodeId": "input-run"
+      },
+      "label": "出队",
+      "sourceRelationIds": [
+        "channel-run"
+      ],
+      "relation": "control",
+      "direction": "bidirectional",
+      "semantics": "interaction",
+      "order": 16,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      }
+    },
+    {
+      "id": "run-storage",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "jsonl-session"
+      },
+      "label": "历史 / 过程事实",
+      "sourceRelationIds": [
+        "run-history",
+        "run-append"
+      ],
+      "relation": "storage",
+      "direction": "bidirectional",
+      "semantics": "interaction",
+      "order": 17,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-session"
+    },
+    {
+      "id": "channel-append",
+      "source": {
+        "nodeId": "input-channel"
+      },
+      "target": {
+        "nodeId": "jsonl-session"
+      },
+      "label": "最终记录",
+      "sourceRelationIds": [
+        "channel-append"
+      ],
+      "relation": "storage",
+      "direction": "directed",
+      "semantics": "interaction",
+      "order": 18,
+      "visibility": {
+        "expanded": [
+          "runtime"
+        ],
+        "collapsed": []
+      },
+      "refines": "overview-session"
+    }
+  ]
+}

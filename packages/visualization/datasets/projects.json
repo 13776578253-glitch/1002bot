@@ -1,11 +1,16 @@
 {
   "version": 1,
-  "defaultProjectId": "1002bot",
+  "defaultProjectId": "runtime-evolution",
   "projects": [
     {
       "id": "1002bot",
       "title": "1002bot",
       "manifest": "projects/1002bot/project.json"
+    },
+    {
+      "id": "runtime-evolution",
+      "title": "Runtime · M1 / M2",
+      "manifest": "projects/runtime-evolution/project.json"
     }
   ]
 }

@@ -1,4 +1,4 @@
-/** Incremental stage geometry: open required ancestors and place additions without moving inherited content. */
+/** Incremental placement preserves inherited content and follows the view's expansion policy. */
 import type { Projection } from '../../core/projection/index.ts';
 import type { StageSnapshot } from '../../core/schema/types.ts';
 import type { Point, Rect } from '../../core/layout/geometry.ts';
@@ -8,6 +8,7 @@ import { toggleFrozenExpansion } from './frozen.ts';
 import { containerInset, preferredContainerSize, MAX_CONTAINER_EXTRA } from './spacing.ts';
 import type { EdgeRouteSnapshot, FrozenGroupSnapshot, StagePlacementRecord } from './workspace.ts';
 import type { StageConflict } from './stage-types.ts';
+import { fitAuthoredLayout } from './manual-layout.ts';
 
 export interface PlacementInput {
   nodes: readonly CanvasNode[];
@@ -18,6 +19,7 @@ export interface PlacementInput {
   frozenGroups?: readonly FrozenGroupSnapshot[];
   routes?: readonly EdgeRouteSnapshot[];
   reservedPaths?: readonly { points: Point[]; source: string; target: string; label?:{x:number;y:number;width:number;height:number} }[];
+  preserveExpansion?: boolean;
 }
 export interface PlacementResult {
   nodes: CanvasNode[];
@@ -172,7 +174,55 @@ function candidates(node: CanvasNode, nodes: readonly CanvasNode[], stage: Stage
   return positions;
 }
 
+function placeAuthoredAdditions(input: PlacementInput): PlacementResult {
+  let working = [...input.nodes];
+  const pending = new Set(input.addedNodeIds);
+  const placements: StagePlacementRecord[] = [], conflicts: StageConflict[] = [];
+  const ids = [...input.addedNodeIds].sort((a, b) => ancestorIds(working, b).length - ancestorIds(working, a).length);
+  for (const id of ids) {
+    const node = byId(working, id);
+    const projection = hierarchyProjection(working, input.stage);
+    if (!nodeIsVisible(node, working, projection)) {
+      pending.delete(id); placements.push({ nodeId: id, mode: 'provided' }); continue;
+    }
+    const parent = node.parentId ? byId(working, node.parentId) : undefined;
+    const origin = parent ? worldPosition(parent, working) : { x: 0, y: 0 };
+    const preferred = worldPosition(node, working);
+    const choices = candidates(node, working, input.stage, pending);
+    choices.sort((a, b) => Math.abs(a.x - preferred.x) + Math.abs(a.y - preferred.y) - Math.abs(b.x - preferred.x) - Math.abs(b.y - preferred.y));
+    let accepted: CanvasNode[] | undefined;
+    let acceptedPoint: Point | undefined;
+    let growthCandidate: { nodes: CanvasNode[]; point: Point } | undefined;
+    const frames = ancestorIds(working, id).map((ancestor) => byId(working, ancestor));
+    for (const point of choices) {
+      const rect = { ...point, ...size(node) };
+      if (routeBlocked(rect, input.routes ?? [], [], working, id)) continue;
+      const trialPending = new Set(pending); trialPending.delete(id);
+      const trial = replace(working, { ...node, position: { x: point.x - origin.x, y: point.y - origin.y } });
+      const fitted = fitAuthoredLayout(input.nodes, trial, [id], input.stage, new Set(), trialPending);
+      if (fitted.conflict) continue;
+      const projection = hierarchyProjection(fitted.nodes, input.stage);
+      const visible = fitted.nodes.filter((item) => !trialPending.has(item.id) && nodeIsVisible(item, fitted.nodes, projection));
+      const actual = box(byId(fitted.nodes, id), fitted.nodes);
+      if (visible.some((peer) => peer.id !== id && peer.parentId === node.parentId && overlaps(actual, box(peer, fitted.nodes), GAP))) continue;
+      const grows = frames.some((frame) => {
+        const next = byId(fitted.nodes, frame.id);
+        return next.width! > frame.width! || next.height! > frame.height!;
+      });
+      if (grows) { growthCandidate ??= { nodes: fitted.nodes, point }; continue; }
+      accepted = fitted.nodes; acceptedPoint = point;
+      break;
+    }
+    if (!accepted && growthCandidate) { accepted = growthCandidate.nodes; acceptedPoint = growthCandidate.point; }
+    if (!accepted) return { nodes: working, placements, expanded: [], conflicts: [{ kind: 'no-space', entityIds: [id], ...(parent ? { containerId: parent.id } : {}), message: `新增节点没有合法空位：${node.data.title}`, actions: ['cancel'] }] };
+    placements.push({ nodeId: id, mode: acceptedPoint!.x === preferred.x && acceptedPoint!.y === preferred.y ? 'provided' : 'gap' });
+    working = accepted; pending.delete(id);
+  }
+  return { nodes: working, placements, expanded: [], conflicts };
+}
+
 export function placeAddedNodes(input: PlacementInput): PlacementResult {
+  if (input.preserveExpansion) return placeAuthoredAdditions(input);
   let working = [...input.nodes];
   const pending = new Set(input.addedNodeIds), opened = new Set<string>();
   const routes = input.routes ?? [];

@@ -2,7 +2,8 @@
 import { projectGraph, type Projection } from '../../core/projection/index.ts';
 import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
 import { solveHierarchyExpansion } from './placement.ts';
-import { manualGeometryConflict } from './manual-layout.ts';
+import { fitAuthoredLayout } from './manual-layout.ts';
+import type { StageConflict } from './stage-types.ts';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { CanonicalNode, StageSnapshot } from '../../core/schema/types.ts';
 import { indexGraph } from '../../core/graph/index.ts';
@@ -14,8 +15,9 @@ export function baselineNodes(baseline: VisualizationBaseline): CanvasNode[] {
     const frame = baseline.layout?.nodes[node.id];
     const expanded = !!frame?.initiallyExpanded && !!node.data.expandable;
     const size = frame ? expanded ? frame.expandedSize! : { width: frame.width, height: frame.height } : undefined;
+    const container = (node.data.childCount ?? 0) > 0;
     return { ...node,
-      ...(frame ? { position: { ...frame.position }, ...size, measured: { ...size! }, style: { ...size! }, type: expanded ? 'structure' : 'card', ...(expanded ? { dragHandle: '.structure-header' } : {}) } : {}),
+      ...(frame ? { position: { ...frame.position }, ...size, measured: { ...size! }, style: { ...size! }, type: expanded && container ? 'structure' : 'card', ...(expanded && container ? { dragHandle: '.structure-header' } : {}) } : {}),
       data: { ...node.data, change: baseline.nodeChanges[node.id]!, ...(frame ? { expanded, authored: { collapsedSize: { width: frame.width, height: frame.height }, ...(frame.expandedSize ? { expandedSize: { ...frame.expandedSize } } : {}) } } : {}) },
     };
   });
@@ -49,7 +51,10 @@ export function createHierarchyNodes(stage: StageSnapshot, positions: Readonly<R
       ...(internal ? { parentId, extent: 'parent' as const } : {}),
       data: {
         title: node.label, ...(node.summary ? { summary: node.summary } : {}), ...(node.planned ? { planned: true } : {}),
-        expandable: parents.has(node.id), expanded: false, childCount: parents.get(node.id) ?? 0,
+        layoutEdits: { version: 1 },
+        expandable: parents.has(node.id) || Boolean(node.details?.length), expanded: false, childCount: parents.get(node.id) ?? 0,
+        ...(node.details ? { details: node.details } : {}),
+        ...(node.details?.length && !parents.has(node.id) ? { authored: { collapsedSize: { ...CARD_SIZE }, expandedSize: { width: 400, height: 100 + node.details.length * 52 } } } : {}),
       },
     };
   });
@@ -77,20 +82,25 @@ export function nodeIsVisible(node: CanvasNode, nodes: readonly CanvasNode[], pr
 }
 
 /** Toggle through the shared incremental geometry solver. */
-export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
+export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage: StageSnapshot, onConflict?: (conflict: StageConflict) => void): CanvasNode[] {
   const authored = input.find((node) => node.id === id)?.data.authored;
   if (authored) {
     const next = input.map((node) => {
       if (node.id !== id || !node.data.expandable) return node;
       const expanded = !node.data.expanded;
-      const size = expanded ? { width: node.data.contentWidth ?? authored.expandedSize!.width, height: node.data.contentHeight ?? authored.expandedSize!.height } : authored.collapsedSize;
+      const preference = node.data.layoutEdits?.sizes?.[expanded ? 'expanded' : 'collapsed'];
+      const selectedSize = expanded ? { width: Math.max(preference?.width ?? 0, node.data.contentWidth ?? authored.expandedSize!.width), height: Math.max(preference?.height ?? 0, node.data.contentHeight ?? authored.expandedSize!.height) } : preference ?? authored.collapsedSize;
+      const size = { width: selectedSize.width, height: selectedSize.height };
       const { dragHandle: _handle, ...rest } = node;
-      return { ...rest, type: expanded ? 'structure' : 'card', ...size, measured: { ...size }, style: { ...node.style, ...size }, ...(expanded ? { dragHandle: '.structure-header' } : {}),
+      const container = input.some((child) => child.parentId === node.id);
+      return { ...rest, type: expanded && container ? 'structure' : 'card', ...size, measured: { ...size }, style: { ...node.style, ...size }, ...(expanded && container ? { dragHandle: '.structure-header' } : {}),
         data: { ...node.data, expanded, ...(!expanded ? { contentWidth: node.width!, contentHeight: node.height! } : {}) } };
     });
-    if (manualGeometryConflict(next, stage)) return input as CanvasNode[];
-    const projection = hierarchyProjection(next, stage);
-    return next.map((node) => nodeIsVisible(node, next, projection) || !node.selected ? node : { ...node, selected: false });
+    const changed = [id, ...next.filter((node) => node.parentId === id && next.find((item) => item.id === id)!.data.expanded).map((node) => node.id)];
+    const fitted = fitAuthoredLayout(input, next, changed, stage);
+    if (fitted.conflict) { onConflict?.(fitted.conflict); return input as CanvasNode[]; }
+    const projection = hierarchyProjection(fitted.nodes, stage);
+    return fitted.nodes.map((node) => nodeIsVisible(node, fitted.nodes, projection) || !node.selected ? node : { ...node, selected: false });
   }
   const nodes = solveHierarchyExpansion(input, id, stage);
   if (nodes === input) return nodes;
@@ -102,7 +112,7 @@ export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage:
  * 跨基线展开状态同步。
  * 关闭操作按层级由深至浅执行，打开操作按层级由浅至深执行，确保容器尺寸级联计算正确。
  */
-export function syncHierarchyExpansion(target: readonly CanvasNode[], source: readonly CanvasNode[], stage: StageSnapshot, accept: (before: CanvasNode[], after: CanvasNode[]) => boolean = () => true): CanvasNode[] {
+export function syncHierarchyExpansion(target: readonly CanvasNode[], source: readonly CanvasNode[], stage: StageSnapshot, accept: (before: CanvasNode[], after: CanvasNode[]) => boolean = () => true, onConflict?: (conflict: StageConflict) => void): CanvasNode[] {
   const sourceState = new Map(source.filter((node) => node.data.expandable).map((node) => [node.id, !!node.data.expanded]));
   const depth = (node: CanvasNode): number => {
     let count = 0, parentId = node.parentId;
@@ -113,7 +123,7 @@ export function syncHierarchyExpansion(target: readonly CanvasNode[], source: re
   const closing = changed.filter((node) => !sourceState.get(node.id)).sort((a, b) => depth(b) - depth(a));
   const opening = changed.filter((node) => sourceState.get(node.id)).sort((a, b) => depth(a) - depth(b));
   return [...closing, ...opening].reduce((nodes, node) => {
-    const next = toggleHierarchy(nodes, node.id, stage);
+    const next = toggleHierarchy(nodes, node.id, stage, onConflict);
     return accept(nodes, next) ? next : nodes;
   }, [...target]);
 }

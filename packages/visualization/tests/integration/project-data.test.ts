@@ -11,7 +11,7 @@ import { projectWorkspaceToCanvas, type ProjectWorkspace } from '../../src/react
 const datasets = new URL('../../datasets/', import.meta.url);
 const read = async <T>(path: string): Promise<T> => JSON.parse(await readFile(new URL(path, datasets), 'utf8')) as T;
 const registry = await read<ProjectRegistry>('projects.json');
-const entry = registry.projects.find((item) => item.id === registry.defaultProjectId)!;
+const entry = registry.projects.find((item) => item.id === '1002bot')!;
 const manifest = await read<ProjectManifest>(entry.manifest);
 const directory = entry.manifest.slice(0, entry.manifest.lastIndexOf('/'));
 const at = (path: string) => `${directory}/${path}`;
@@ -25,8 +25,7 @@ const snapshotId = stages[0]!.id;
 const baseline = adaptProject(project)[0]!;
 
 test('the first snapshot selects the six report overview components while retaining supporting source facts and original relations', async () => {
-  assert.equal(registry.projects.length, 1);
-  assert.equal(manifest.id, registry.defaultProjectId);
+  assert.equal(manifest.id, '1002bot');
   assert.equal(baseline.id, snapshotId);
   assert.deepEqual(baseline.stage.graph.nodes.filter((node) => node.parentId !== null).map((node) => node.id), ['event-caller', 'runtime', 'agent', 'provider', 'world', 'session']);
   assert.equal(baseline.stage.graph.edges.length, 5);
@@ -35,7 +34,12 @@ test('the first snapshot selects the six report overview components while retain
   assert.ok(project.source.stages[0]!.upsert.contracts.some((contract) => contract.id === 'state-store'));
   assert.ok(project.source.stages[0]!.upsert.components.every((node) => !('frame' in node) && !('position' in node)));
   const seed = normalizeProjectWorkspace(await read<ProjectWorkspace>(at(manifest.workspace!)), project.id);
-  assert.deepEqual(seed.stages[snapshotId]!.draft.nodes, captureContent(baselineNodes(baseline)).nodes);
+  const comparable = (nodes: typeof seed.stages[string]['draft']['nodes']) => nodes.map((item) => {
+    const copy = structuredClone(item);
+    if (JSON.stringify(copy.data.layoutEdits) === JSON.stringify({ version: 1 })) delete copy.data.layoutEdits;
+    return copy;
+  });
+  assert.deepEqual(comparable(seed.stages[snapshotId]!.draft.nodes), comparable(captureContent(baselineNodes(baseline)).nodes));
   assert.equal(seed.stages[snapshotId]!.confirmed, undefined);
   assert.deepEqual(seed.stages[snapshotId]!.checkpoints, []);
 });

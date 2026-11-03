@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "id": "16d69bf0",
+  "label": "M1.0",
+  "title": "Runtime 最小运行基座",
+  "subtitle": "Event 入口、单体 Runtime 与契约协作",
+  "date": "2026-10-04",
+  "doc": "docs/进度汇报/2026-10-04-M1.0进度与架构图.md",
+  "select": {
+    "componentIds": [
+      "event-caller",
+      "runtime",
+      "agent",
+      "test-agent",
+      "provider",
+      "scripted-provider",
+      "responses-provider",
+      "world",
+      "fixture-world",
+      "session",
+      "jsonl-session",
+      "state",
+      "assembly"
+    ],
+    "relationIds": [
+      "event-entry",
+      "event-agent",
+      "event-provider",
+      "event-world",
+      "event-history",
+      "event-append",
+      "runtime-world-stop",
+      "agent-implementation",
+      "provider-scripted",
+      "provider-http",
+      "world-implementation",
+      "session-implementation",
+      "assembly-runtime"
+    ],
+    "contractIds": [
+      "Event",
+      "Agent",
+      "Provider",
+      "World",
+      "SessionStore",
+      "StateStore"
+    ]
+  },
+  "remove": {
+    "componentIds": [],
+    "relationIds": [],
+    "contractIds": []
+  }
+}

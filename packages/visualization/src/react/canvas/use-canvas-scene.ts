@@ -4,7 +4,7 @@ import { MarkerType, type Edge } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { Projection } from '../../core/projection/index.ts';
 import type { LinkData } from '../components/relation-edge.tsx';
-import { leafMembers, selectionRoots, worldPosition, type CanvasNode } from '../model/grouping.ts';
+import { leafMembers, selectionRoots, structureHeaderHeight, worldPosition, type CanvasNode } from '../model/grouping.ts';
 import { nodeIsVisible } from '../model/hierarchy.ts';
 import { DiagramRouteCache, type CachedRoute } from '../model/route-cache.ts';
 import type { GroupSolveOutcome } from '../model/route-groups.ts';
@@ -139,7 +139,7 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
       id: edge.id, source: edge.source, target: edge.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle,
       type: 'link', label: edge.text, selected, zIndex: 50,
       data: { active, relation: edge.relation, change: edge.change, points: route.points, label: route.label, labelFallback: route.labelFallback, labelState: route.labelState, onSelect: chooseEdge, ...(edge.aggregated ? { counts: { added: edge.added, replaced: edge.replaced, title: edge.text.split(' · ')[0]! } } : {}) },
-      style: { stroke: `var(--change-${edge.change.kind})`, strokeWidth: active ? 2.3 : 1.5, ...(edge.relation === 'event' ? { strokeDasharray: '5 5' } : {}) },
+      style: { stroke: `var(--change-${edge.change.kind})`, strokeWidth: active ? 2.3 : 1.5, ...(edge.members[0]?.edge.semantics === 'dependency' ? { strokeDasharray: '3 5' } : edge.relation === 'event' ? { strokeDasharray: '5 5' } : {}) },
       markerEnd: marker, ...(edge.direction === 'bidirectional' ? { markerStart: marker } : {}),
     };
     edgeCache.current.set(edge.id, { route, source: edge, active, selected, callback: chooseEdge, value });
@@ -174,7 +174,7 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const selectedRoots = useMemo(() => new Set(selectionRoots(nodes).map((node) => node.id)), [selectedKey, parentKey]);
   const roots = nodes.filter((node) => selectedRoots.has(node.id) && nodeIsVisible(node, nodes, projection));
   const selectedGroup = selected.length === 1 && selected[0]?.type === 'cluster' ? selected[0] : undefined;
-  const guideBlockers = alignment.length ? displayNodes.filter((node) => !node.hidden).map((node) => ({ ...worldPosition(node, nodes), w: node.width!, h: node.type === 'card' ? node.height! : node.type === 'structure' ? 68 : 54 })) : [];
+  const guideBlockers = alignment.length ? displayNodes.filter((node) => !node.hidden).map((node) => ({ ...worldPosition(node, nodes), w: node.width!, h: node.type === 'card' ? node.height! : node.type === 'structure' ? structureHeaderHeight(node) : 54 })) : [];
   if (alignment.length) for (const { label } of routes.values()) guideBlockers.push({ x: label.x - label.width / 2, y: label.y - label.height / 2, w: label.width, h: label.height });
   return {
     displayNodes, edges, routes, routingEngine, routingStatus, blockedRoutes: [...routes].filter(([, route]) => route.feasible === false).map(([id]) => id), visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,

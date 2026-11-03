@@ -1,7 +1,7 @@
 /** Atomic stage transition: inherit confirmed layout, place differences, then commit or fail. */
 import { diffStages } from '../../core/graph/diff.ts';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
-import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
+import { CARD_SIZE, structureHeaderHeight, worldPosition, type CanvasNode } from './grouping.ts';
 import { baselineNodes, hierarchyProjection } from './hierarchy.ts';
 import { restoreFrozenGroups } from './frozen.ts';
 import { rebaseFrozenGrowth } from './frozen-growth.ts';
@@ -11,7 +11,6 @@ import { createDiagramGeometry, pathIsClear, segmentCrossesRect, withReservedRou
 import { DiagramRouteCache } from './route-cache.ts';
 import { aggregateProjectedEdges } from './display-edges.ts';
 import { placeAddedNodes } from './placement.ts';
-import { manualGeometryConflict } from './manual-layout.ts';
 import type { StageConflict } from './stage-types.ts';
 import {
   captureContent,
@@ -110,7 +109,7 @@ function routeConflicts(nodes: readonly CanvasNode[], visible: ReadonlySet<strin
       const origin = worldPosition(node, nodes);
       const rect = node.type === 'card'
         ? { x: origin.x, y: origin.y, w: node.width ?? CARD_SIZE.width, h: node.height ?? CARD_SIZE.height }
-        : { x: origin.x, y: origin.y, w: node.width ?? CARD_SIZE.width, h: node.type === 'structure' ? 68 : 54 };
+        : { x: origin.x, y: origin.y, w: node.width ?? CARD_SIZE.width, h: node.type === 'structure' ? structureHeaderHeight(node) : 54 };
       for (let index = 1; index < points.length; index += 1) {
         if (segmentCrossesRect(points[index - 1]!, points[index]!, rect)) {
           conflicts.push({ kind: 'locked-route', entityIds: [route.canonicalEdgeId, node.id], message: '锁定路径与新布局节点相交', actions: ['move-free-nodes', 'unfreeze', 'cancel'] });
@@ -205,17 +204,12 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     if ((route.state === 'locked'||route.frozenBoundaries?.length) && endpointFingerprint(edge) !== route.endpointFingerprint) conflicts.push({ kind: 'locked-route', entityIds: [route.canonicalEdgeId], message: '来源更改了锁定路径的端点或端口，请先解除路径锁定', actions: ['unfreeze', 'cancel'] });
   }
   const projection = hierarchyProjection(working, target.stage);
-  const manualConflict = target.layout?.kind === 'manual' ? manualGeometryConflict(working, target.stage) : undefined;
-  const placement = target.layout?.kind === 'manual' ? {
-    nodes: working,
-    placements: addedNodeIds.map((nodeId) => ({ nodeId, mode: 'provided' as const })),
-    expanded: [] as string[],
-    conflicts: manualConflict ? [manualConflict] : [],
-  } : placeAddedNodes({
+  const placement = placeAddedNodes({
     nodes: working,
     stage: target.stage,
     projection,
     addedNodeIds,
+    ...(target.layout?.kind === 'manual' ? { preserveExpansion: true } : {}),
     ...(target.positions ? { preferredPositions: target.positions } : {}),
     frozenGroups: baseFrozen,
     routes: baseRoutes,

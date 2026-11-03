@@ -1,0 +1,499 @@
+{
+  "version": 1,
+  "projectId": "runtime-evolution",
+  "components": [
+    {
+      "id": "event-caller",
+      "kind": "actor",
+      "label": "Event 调用方",
+      "summary": "直接调用 handleEvent",
+      "details": [],
+      "contractIds": [
+        "Event"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "runtime",
+      "kind": "component",
+      "label": "Runtime",
+      "summary": "生命周期与 Event 执行的所有者",
+      "details": [
+        "生命周期：start / stop、启动清理与停止屏障。",
+        "执行身份：generation、lease 与异步边界后的失效检查。",
+        "Event 循环：协调请求组装、模型响应与工具续轮。",
+        "会话事实：读取历史，按发生顺序追加模型与工具记录。",
+        "停止收束：等待已进入的写入，并执行 World 有界清理。",
+        "运行观察：Runtime trace 保留实例内执行记录。"
+      ],
+      "contractIds": [
+        "Event",
+        "Agent",
+        "Provider",
+        "World",
+        "SessionStore",
+        "StateStore"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "console",
+      "kind": "actor",
+      "label": "Console",
+      "summary": "文本编辑、本地命令与诊断",
+      "details": [
+        "通过 runtime.inputs 提交 UserInput。",
+        "订阅诊断、查看快照并补读有限输出。",
+        "受理回执与 run_finished 分别表达接收和完成。"
+      ],
+      "contractIds": [
+        "InputReceipt",
+        "OutputEvent"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系",
+        "git:750bc45:src/console/terminal.ts"
+      ]
+    },
+    {
+      "id": "input-channel",
+      "kind": "component",
+      "label": "InputChannel",
+      "summary": "FIFO 受理与输入生命周期",
+      "details": [
+        "受理：去重、容量检查与 accepted / rejected。",
+        "调度：单 Session FIFO，出队后创建 runId。",
+        "取消：排队输入移除，活动输入发出 abort。",
+        "终态：等待最终记录写入，再发布 run_finished。",
+        "诊断：inspect、eventsSince、订阅与有限缓存。"
+      ],
+      "contractIds": [
+        "InputReceipt",
+        "RunResult",
+        "OutputEvent",
+        "InputLimits"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系",
+        "git:750bc45:src/runtime/input-channel.ts"
+      ]
+    },
+    {
+      "id": "input-run",
+      "kind": "component",
+      "label": "InputRun",
+      "summary": "一次输入的执行边界",
+      "details": [
+        "上下文：读取 Session 历史事实，交给 Agent 选择并组装。",
+        "调用：计量请求，调用 Provider 和已声明的 World 工具。",
+        "约束：单输入期限、子调用信号、容量与轮次。",
+        "配对：工具参数形状、callId 与回执匹配。",
+        "提交：追加过程事实，结果交回 InputChannel。",
+        "unknown：关闭受理并收束；不重试或重放。"
+      ],
+      "contractIds": [
+        "Agent",
+        "Provider",
+        "World",
+        "SessionStore",
+        "InputLimits"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#组件关系",
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系",
+        "git:750bc45:src/runtime/input-run.ts"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "event-entry",
+      "source": {
+        "nodeId": "event-caller"
+      },
+      "target": {
+        "nodeId": "runtime"
+      },
+      "label": "handleEvent",
+      "relation": "call",
+      "direction": "directed",
+      "order": 0,
+      "semantics": "interaction",
+      "contractIds": [
+        "Event"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "event-agent",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "agent"
+      },
+      "label": "Event 与历史 → 初始 / 续轮请求",
+      "relation": "call",
+      "direction": "directed",
+      "order": 1,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "event-provider",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "provider"
+      },
+      "label": "complete",
+      "relation": "call",
+      "direction": "directed",
+      "order": 2,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "event-world",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "world"
+      },
+      "label": "executeTool",
+      "relation": "call",
+      "direction": "bidirectional",
+      "order": 3,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "event-history",
+      "source": {
+        "nodeId": "session"
+      },
+      "target": {
+        "nodeId": "runtime"
+      },
+      "label": "读取历史事实",
+      "relation": "storage",
+      "direction": "directed",
+      "order": 4,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "event-append",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "session"
+      },
+      "label": "追加执行事实",
+      "relation": "storage",
+      "direction": "directed",
+      "order": 5,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "runtime-world-stop",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "world"
+      },
+      "label": "有界清理",
+      "relation": "lifecycle",
+      "direction": "directed",
+      "order": 6,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "assembly-runtime",
+      "source": {
+        "nodeId": "assembly"
+      },
+      "target": {
+        "nodeId": "runtime"
+      },
+      "label": "依赖注入与装配",
+      "relation": "control",
+      "direction": "directed",
+      "order": 12,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-04-M1.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "console-submit",
+      "source": {
+        "nodeId": "console"
+      },
+      "target": {
+        "nodeId": "input-channel"
+      },
+      "label": "submit / 受理回执",
+      "relation": "call",
+      "direction": "bidirectional",
+      "order": 13,
+      "semantics": "interaction",
+      "contractIds": [
+        "InputReceipt"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "channel-run",
+      "source": {
+        "nodeId": "input-channel"
+      },
+      "target": {
+        "nodeId": "input-run"
+      },
+      "label": "FIFO 出队 / 结果",
+      "relation": "control",
+      "direction": "bidirectional",
+      "order": 14,
+      "semantics": "interaction",
+      "contractIds": [
+        "RunResult"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "run-agent",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "agent"
+      },
+      "label": "输入与历史 → 请求",
+      "relation": "call",
+      "direction": "directed",
+      "order": 15,
+      "semantics": "interaction",
+      "contractIds": [
+        "Agent"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "run-provider",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "provider"
+      },
+      "label": "计量 / complete",
+      "relation": "call",
+      "direction": "directed",
+      "order": 16,
+      "semantics": "interaction",
+      "contractIds": [
+        "Provider"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "run-world",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "world"
+      },
+      "label": "工具调用 / 回执",
+      "relation": "call",
+      "direction": "bidirectional",
+      "order": 17,
+      "semantics": "interaction",
+      "contractIds": [
+        "World"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "run-history",
+      "source": {
+        "nodeId": "session"
+      },
+      "target": {
+        "nodeId": "input-run"
+      },
+      "label": "Session 历史事实",
+      "relation": "storage",
+      "direction": "directed",
+      "order": 18,
+      "semantics": "interaction",
+      "contractIds": [
+        "SessionStore"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "run-append",
+      "source": {
+        "nodeId": "input-run"
+      },
+      "target": {
+        "nodeId": "session"
+      },
+      "label": "过程事实",
+      "relation": "storage",
+      "direction": "directed",
+      "order": 19,
+      "semantics": "interaction",
+      "contractIds": [
+        "SessionStore"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "channel-append",
+      "source": {
+        "nodeId": "input-channel"
+      },
+      "target": {
+        "nodeId": "session"
+      },
+      "label": "最终记录",
+      "relation": "storage",
+      "direction": "directed",
+      "order": 20,
+      "semantics": "interaction",
+      "contractIds": [
+        "SessionStore"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "channel-output",
+      "source": {
+        "nodeId": "input-channel"
+      },
+      "target": {
+        "nodeId": "console"
+      },
+      "label": "诊断 / run_finished",
+      "relation": "event",
+      "direction": "directed",
+      "order": 21,
+      "semantics": "interaction",
+      "contractIds": [
+        "OutputEvent"
+      ],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "runtime-channel",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "input-channel"
+      },
+      "label": "拥有受理通道",
+      "relation": "ownership",
+      "direction": "directed",
+      "order": 22,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "runtime-run",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "input-run"
+      },
+      "label": "拥有执行器",
+      "relation": "ownership",
+      "direction": "directed",
+      "order": 23,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    },
+    {
+      "id": "runtime-channel-stop",
+      "source": {
+        "nodeId": "runtime"
+      },
+      "target": {
+        "nodeId": "input-channel"
+      },
+      "label": "shutdown / 取消并等待",
+      "relation": "lifecycle",
+      "direction": "directed",
+      "order": 24,
+      "semantics": "interaction",
+      "contractIds": [],
+      "sourceRefs": [
+        "docs/进度汇报/2026-10-05-M2.0进度与架构图.md#详细关系"
+      ]
+    }
+  ],
+  "contracts": []
+}

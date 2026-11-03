@@ -1,4 +1,4 @@
-Owner: `../VisualizationCanvas.tsx`, `top-actions.tsx`, `snapshot-menu.tsx`, `snapshot-dialog.tsx`, `ports.tsx`, `../styles/nodes.css`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`, `../styles/canvas.css`
+Owner: `../VisualizationCanvas.tsx`, `top-actions.tsx`, `snapshot-menu.tsx`, `snapshot-dialog.tsx`, `ports.tsx`, `nodes.tsx`, `../styles/nodes.css`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`, `../styles/canvas.css`
 
 # Canvas controls
 
@@ -15,3 +15,5 @@ Canvas chrome has scoped light/dark tokens. Node geometry, routing, persistence 
 Routing handles stay transparent during hover and selection. Their mounted geometry remains available to both routing engines; selecting a card uses its border highlight.
 
 Edges with no feasible obstacle-free route are omitted and reported by the canvas notice. The edge renderer consumes the selected geometry; port policy and cost comparison belong to the route model.
+
+Responsibility cards use the same expand/collapse control as containers, with no synthetic child count. Structure headers include their own responsibility blocks; actual children remain separately selectable nodes.

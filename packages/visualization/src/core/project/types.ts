@@ -7,6 +7,8 @@ export interface ProjectComponent {
   kind: Exclude<NodeKind, 'root'>;
   label: string;
   summary?: string;
+  details?: string[];
+  previousId?: string;
   contractIds: string[];
   sourceRefs: string[];
 }
@@ -45,6 +47,7 @@ export interface ProjectViewNode {
   order: number;
   label?: string;
   summary?: string;
+  details?: string[];
   frame: AuthoredFrame;
   expandedSize?: { width: number; height: number };
   initiallyExpanded?: boolean;
@@ -63,6 +66,7 @@ export interface ProjectViewRelation {
   label: string;
   relation: CanonicalEdge['relation'];
   direction: CanonicalEdge['direction'];
+  semantics?: CanonicalEdge['semantics'];
   order: number;
   sourceRelationIds: string[];
   /** Detail relations point to the overview relation whose meaning they refine. */
