@@ -1,0 +1,23 @@
+# Stage snapshots with three independent views
+
+## Intent
+
+Each canonical stage owns Overview View, Structure View and Full View. Overview seeds all nodes collapsed; Structure seeds one real component level expanded and supports chosen recursive expansion; Full seeds the complete expanded projection. Each view owns its node geometry, viewport, manual paths, frozen ledger, draft, confirmation, inheritance basis and history. View switching restores saved geometry without recalculating expand/collapse fits or synchronizing expansion from another view.
+
+Keep one source graph per stage. Apply stage changes to each view against the confirmed same-name parent view, with isolated conflicts and atomic stage commit only when all three candidates succeed. Preserve existing anchors and paths through the existing incremental placement/rebase pipeline. Initial view generation lays out independent projections; subsequent view switching never regenerates them. Existing saved single-view data becomes Structure, with original confirmations/checkpoints preserved; new Overview/Full drafts require explicit confirmation. Back up original browser JSON before the first three-view write.
+
+Use additive compatible canvas/project storage fields, retain old active-view aliases, and validate the storage boundary. Add visible view selection and snapshot metadata identifying both stage and view. Keep old terminal-card changes intact. No automated tests or benchmarks. Verify types/builds if needed and inspect switching, independent layouts, confirmation, stage inheritance and refresh in the native browser.
+
+## Result
+
+Added per-stage Overview/Structure/Full snapshots to canvas and project workspace contracts and storage validation. Existing single-view records migrate only into Structure. Project and local-storage adapters preserve the original JSON before the first three-view save. Checkpoints remain independent by stage and mode. `requiresConfirmation` separates a newly rebased draft from its historical confirmed content.
+
+The view selector restores each view's nodes, paths, frozen ledger, viewport and in-memory history. New projections are seeded from shared canonical facts using independent bottom-up geometry; saved views retain their dimensions and anchors. Overview and Full enforce their projection scope across source changes; Structure retains interactive expansion. Stage navigation no longer synchronizes expansion from the current stage/view. It prepares all three same-name parent inheritances, displays view-labelled conflicts and commits the complete batch only on success.
+
+Native browser verification used the actual M1/M2 dataset with a separate preview storage key. M1 saved three independent confirmation checkpoints. M2 successfully inherited all three: Overview had 0 expanded nodes, Structure 4 and Full 13, with 14 canonical nodes in each saved content set. New InputChannel/InputRun/Console appeared expanded in Full. Switching across all three left their serialized node snapshots identical. A fixed Event caller and pinned event-provider route in Full did not change either other view. A frozen Event caller was saved only in Full. Refresh restored M2 Full, its projection and constraint state.
+
+Freezing M1 TestAgent and confirming Full produced a real replacement conflict entering M2. The conflict preview initially exposed a missing-owner crash; its render boundary now omits invalid frozen/route references while retaining the complete reported conflicts and original saved data. Reverification displayed Full View's freeze conflicts, kept the current stage at M1 and preserved all three stored M2 snapshots byte-for-byte. Candidate preview was cancelled. No generated confirmations were written into the user's ordinary project during this verification.
+
+Overview does not expand itself to freeze a hidden subtree. The existing hidden-boundary validator may refuse a collapsed container freeze when it cannot resolve an actual exit (observed for World); the original collapsed geometry remains intact. Fixed-position constraints remain available. New-element placement still uses the existing incremental solver; an AI placement service is not connected.
+
+Package/browser TypeScript checks, library build, dist contract check and site build passed. No automated tests or benchmarks were run. The temporary preview HTML was removed and its tab closed. The formal page remains open on Full View. Evidence: `.scratch/three-views-overview.jpg`, `three-views-structure.jpg`, `three-views-full.jpg`, `three-views-conflict.jpg`, and `three-view-browser-workspace.json`. No commit or push. Prior terminal-card changes remain in the working tree.
