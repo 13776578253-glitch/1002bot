@@ -46,3 +46,28 @@ Verification:
 - Architecture tests: 5/5 passed.
 - Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
 - No behavior changes and no fallback or compatibility shim was added.
+
+## Phase 3 Result
+
+- Consolidated repeated reader checks in `workspace-schema.ts`:
+  - named the repeated error messages instead of duplicating literals;
+  - added `optionalText`, `checkRectFields`, `checkBounds` and `checkBaseline`, each used by at least two readers;
+  - kept `checkNodeViews` two-pass so duplicate-ID errors stay ahead of node-shape errors;
+  - normalized display-route validation to check the record before its optional policy fields, with the same messages and ordering;
+  - kept the display-route label-attachment stripping rule unchanged.
+- `normalizeV2` now reads optional confirmation fields through `optionalText`, while preserving cross-field validation order and output fields.
+- No field, reference/copy, migration, storage or public API behavior changed.
+
+Complexity:
+
+- Diff: 81 insertions and 49 deletions, +32 net lines.
+- Repetition decreased: seven repeated error literals were named, three rect/label loops and two bounds checks were centralized.
+- The additional lines are shared helpers and invariant comments, not a new abstraction layer or manager.
+- `checkEdgeRoutes` endpoint checks intentionally remain in their original order to preserve error behavior.
+
+Verification:
+
+- Package typecheck passed.
+- Persistence tests: 16/16 passed.
+- Architecture tests: 5/5 passed.
+- Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.

@@ -264,3 +264,40 @@ Append all future code-change reports below.
 - Package typecheck passed; persistence tests 16/16; architecture tests 5/5.
 - Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
 - Next phase: optimize reader composition without changing `checkNodeViews` error order, field/copy behavior, migration output or `save()` semantics.
+
+## 2026-11-04 — Persistence reader consolidation
+
+**1. Problems Fixed**
+
+- No runtime behavior changed. Reduced repeated error literals and repeated rect/bounds/baseline checks in the persisted-workspace schema.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- Added named constants for the repeated schema error messages.
+- Added `optionalText`, `checkRectFields`, `checkBounds` and `checkBaseline`; each is shared by multiple readers.
+- `checkNodeViews` remains two-pass and keeps duplicate-ID errors ahead of node-shape errors.
+- Display-route validation checks the record before optional policy fields with the same messages; invalid label attachments are still stripped without rewriting path geometry.
+- `normalizeV2` uses `optionalText` while preserving cross-field validation order and output fields.
+
+**3. Files Modified**
+
+- `src/react/persistence/workspace-schema.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-persistence-refactor.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Diff: 81 insertions, 49 deletions, +32 net lines.
+- Repeated literals and three rect/label loops were consolidated; the added lines are shared helpers and invariant comments.
+- No new layer, manager, fallback or compatibility path was added.
+- Endpoint checks remain in their original order to preserve error behavior.
+
+**5. Legacy Mechanism Cleanup**
+
+- None removed. No field, copy rule, migration branch or storage behavior was replaced.
+
+**6. Validation and Remaining Technical Debt**
+
+- Package typecheck passed; persistence tests 16/16; architecture tests 5/5.
+- Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
+- Next phase: storage narrowing and comments without changing backup order or failure side effects.

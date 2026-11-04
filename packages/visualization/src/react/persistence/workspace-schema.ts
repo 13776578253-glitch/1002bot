@@ -21,6 +21,13 @@ const LAYOUT_MODES = new Set(['free', 'fixed', 'locked']);
 const ROUTE_STATES = new Set(['auto', 'pinned', 'locked']);
 const FROZEN_SIDES = new Set<FrozenBoundarySide>(['top', 'right', 'bottom', 'left']);
 const VIEW_MODES = new Set<CanvasViewMode>(['overview', 'structure', 'full']);
+const NODE_ERROR = '节点视图格式不正确';
+const ROUTE_ERROR = '路径视图格式不正确';
+const FROZEN_ERROR = '冻结组视图格式不正确';
+const PIN_ERROR = '标签固定位置格式不正确';
+const DISPLAY_ERROR = '投影路径快照格式不正确';
+const TRANSITION_ERROR = '阶段切换记录格式不正确';
+const LABEL_ERROR = '路径标签格式不正确';
 
 function isRecord(value: unknown): value is UnknownRecord {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -30,6 +37,12 @@ function isText(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
+function optionalText(value: unknown, message: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (!isText(value)) throw new Error(message);
+  return value;
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -37,6 +50,15 @@ function isFiniteNumber(value: unknown): value is number {
 function checkPoint(value: unknown, message: string): { x: number; y: number } {
   if (!isRecord(value) || !isFiniteNumber(value.x) || !isFiniteNumber(value.y)) throw new Error(message);
   return { x: value.x, y: value.y };
+}
+
+function checkRectFields(value: UnknownRecord, message: string): void {
+  for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(value[key])) throw new Error(message);
+}
+
+function checkBounds(value: unknown, message: string): void {
+  checkPoint(value, message);
+  if (!isRecord(value) || !isFiniteNumber(value.w) || !isFiniteNumber(value.h)) throw new Error(message);
 }
 
 function checkViewport(raw: unknown): CanvasViewport | undefined {
@@ -49,6 +71,7 @@ function checkViewport(raw: unknown): CanvasViewport | undefined {
 
 function checkNodeViews(raw: unknown): CanvasNodeView[] {
   if (!Array.isArray(raw)) throw new Error('阶段视图格式不正确');
+  // 两遍扫描保持原有错误优先级：重复 ID 先于节点形状错误。
   const seen = new Set<string>();
   for (const item of raw) {
     if (!isRecord(item) || !isText(item.id)) continue;
@@ -57,16 +80,16 @@ function checkNodeViews(raw: unknown): CanvasNodeView[] {
   }
   const nodes = new Map<string, CanvasNodeView>();
   for (const item of raw) {
-    if (!isRecord(item)) throw new Error('节点视图格式不正确');
+    if (!isRecord(item)) throw new Error(NODE_ERROR);
     if (!isText(item.id) || typeof item.type !== 'string' || !NODE_TYPES.has(item.type) || !isRecord(item.data) || !isRecord(item.position)) {
-      throw new Error('节点视图格式不正确');
+      throw new Error(NODE_ERROR);
     }
     if (!isFiniteNumber(item.position.x) || !isFiniteNumber(item.position.y) || !isFiniteNumber(item.width) || !isFiniteNumber(item.height) || !(item.width > 0) || !(item.height > 0)) {
-      throw new Error('节点视图格式不正确');
+      throw new Error(NODE_ERROR);
     }
-    if (!LAYOUT_MODES.has(typeof item.data.layoutMode === 'string' ? item.data.layoutMode : 'free')) throw new Error('节点视图格式不正确');
-    if (item.data.frozen !== undefined && typeof item.data.frozen !== 'boolean') throw new Error('节点视图格式不正确');
-    if (item.data.expanded !== undefined && typeof item.data.expanded !== 'boolean') throw new Error('节点视图格式不正确');
+    if (!LAYOUT_MODES.has(typeof item.data.layoutMode === 'string' ? item.data.layoutMode : 'free')) throw new Error(NODE_ERROR);
+    if (item.data.frozen !== undefined && typeof item.data.frozen !== 'boolean') throw new Error(NODE_ERROR);
+    if (item.data.expanded !== undefined && typeof item.data.expanded !== 'boolean') throw new Error(NODE_ERROR);
     if (item.data.layoutEdits !== undefined) {
       const edits = item.data.layoutEdits;
       if (!isRecord(edits) || edits.version !== 1) throw new Error('布局编辑意图格式不正确');
@@ -87,6 +110,7 @@ function checkNodeViews(raw: unknown): CanvasNodeView[] {
     nodes.set(node.id, node);
   }
   if (nodes.size !== raw.length) throw new Error('视图包含重复节点');
+  // 父链必须闭合且无环；缺失父级与环使用同一层级错误。
   for (const node of nodes.values()) {
     const ancestors = new Set([node.id]);
     let parent = node.parentId;
@@ -101,27 +125,27 @@ function checkNodeViews(raw: unknown): CanvasNodeView[] {
 
 function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
   if (raw === undefined) return [];
-  if (!Array.isArray(raw)) throw new Error('路径视图格式不正确');
+  if (!Array.isArray(raw)) throw new Error(ROUTE_ERROR);
   const ids = new Set<string>();
   return raw.map((item) => {
     if (!isRecord(item) || !isText(item.canonicalEdgeId) || !ROUTE_STATES.has(typeof item.state === 'string' ? item.state : '') || !isRecord(item.source) || !isRecord(item.target) || !Array.isArray(item.points) || !isRecord(item.space) || !isText(item.endpointFingerprint)) {
-      throw new Error('路径视图格式不正确');
+      throw new Error(ROUTE_ERROR);
     }
     if (ids.has(item.canonicalEdgeId)) throw new Error('路径视图包含重复关系');
     if (item.policyKey !== undefined && !isText(item.policyKey)) throw new Error('路径策略版本格式不正确');
     ids.add(item.canonicalEdgeId);
-    if (!isText(item.source.nodeId) || !isText(item.target.nodeId)) throw new Error('路径视图格式不正确');
-    if (item.source.portId !== undefined && !isText(item.source.portId)) throw new Error('路径视图格式不正确');
-    if (item.target.portId !== undefined && !isText(item.target.portId)) throw new Error('路径视图格式不正确');
-    if (item.source.handle !== undefined && !isText(item.source.handle)) throw new Error('路径视图格式不正确');
-    if (item.target.handle !== undefined && !isText(item.target.handle)) throw new Error('路径视图格式不正确');
-    if (item.space.kind !== 'world' && item.space.kind !== 'owner') throw new Error('路径视图格式不正确');
-    if (item.space.kind === 'owner' && !isText(item.space.ownerId)) throw new Error('路径视图格式不正确');
-    if (!item.points.length) throw new Error('路径视图格式不正确');
-    for (const point of item.points) checkPoint(point, '路径视图格式不正确');
+    if (!isText(item.source.nodeId) || !isText(item.target.nodeId)) throw new Error(ROUTE_ERROR);
+    if (item.source.portId !== undefined && !isText(item.source.portId)) throw new Error(ROUTE_ERROR);
+    if (item.target.portId !== undefined && !isText(item.target.portId)) throw new Error(ROUTE_ERROR);
+    if (item.source.handle !== undefined && !isText(item.source.handle)) throw new Error(ROUTE_ERROR);
+    if (item.target.handle !== undefined && !isText(item.target.handle)) throw new Error(ROUTE_ERROR);
+    if (item.space.kind !== 'world' && item.space.kind !== 'owner') throw new Error(ROUTE_ERROR);
+    if (item.space.kind === 'owner' && !isText(item.space.ownerId)) throw new Error(ROUTE_ERROR);
+    if (!item.points.length) throw new Error(ROUTE_ERROR);
+    for (const point of item.points) checkPoint(point, ROUTE_ERROR);
     if (item.label !== undefined) {
-      if (!isRecord(item.label)) throw new Error('路径标签格式不正确');
-      for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(item.label[key])) throw new Error('路径标签格式不正确');
+      if (!isRecord(item.label)) throw new Error(LABEL_ERROR);
+      checkRectFields(item.label, LABEL_ERROR);
     }
     if (item.frozenBoundaries !== undefined) {
       if (!Array.isArray(item.frozenBoundaries)) throw new Error('冻结路径分段格式不正确');
@@ -136,17 +160,17 @@ function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
 
 function checkFrozenGroups(raw: unknown, nodes: readonly CanvasNodeView[]): FrozenGroupSnapshot[] {
   if (raw === undefined) return [];
-  if (!Array.isArray(raw)) throw new Error('冻结组视图格式不正确');
+  if (!Array.isArray(raw)) throw new Error(FROZEN_ERROR);
   const nodeIds = new Set(nodes.map((node) => node.id));
   const groups: FrozenGroupSnapshot[] = [];
   const used = new Set<string>();
   for (const item of raw) {
     if (!isRecord(item) || !isText(item.id) || !isText(item.rootId) || !Array.isArray(item.memberIds) || !isRecord(item.worldBounds) || !Array.isArray(item.boundaryPorts) || !isText(item.createdAt)) {
-      throw new Error('冻结组视图格式不正确');
+      throw new Error(FROZEN_ERROR);
     }
     if (groups.some((group) => group.id === item.id)) throw new Error('冻结组视图包含重复标识');
-    if (!Number.isFinite(item.worldBounds.x) || !Number.isFinite(item.worldBounds.y) || !Number.isFinite(item.worldBounds.w) || !Number.isFinite(item.worldBounds.h)) throw new Error('冻结组视图格式不正确');
-    if (!item.memberIds.every((id) => isText(id))) throw new Error('冻结组视图格式不正确');
+    if (!Number.isFinite(item.worldBounds.x) || !Number.isFinite(item.worldBounds.y) || !Number.isFinite(item.worldBounds.w) || !Number.isFinite(item.worldBounds.h)) throw new Error(FROZEN_ERROR);
+    if (!item.memberIds.every((id) => isText(id))) throw new Error(FROZEN_ERROR);
     const memberIds = item.memberIds as string[];
     for (const id of [item.rootId, ...memberIds]) {
       if (used.has(id)) throw new Error('冻结组视图成员重叠');
@@ -176,12 +200,12 @@ function checkFrozenGroups(raw: unknown, nodes: readonly CanvasNodeView[]): Froz
 function checkTransition(raw: unknown): StageTransitionRecord | undefined {
   if (raw === undefined) return undefined;
   if (!isRecord(raw) || !isText(raw.toStageId) || !isText(raw.sourceRevision) || !isText(raw.targetRevision) || !isText(raw.startedAt) || !isFiniteNumber(raw.durationMs) || !Array.isArray(raw.placements) || !Array.isArray(raw.expanded)) {
-    throw new Error('阶段切换记录格式不正确');
+    throw new Error(TRANSITION_ERROR);
   }
-  if (raw.fromStageId !== undefined && !isText(raw.fromStageId)) throw new Error('阶段切换记录格式不正确');
-  if (!raw.expanded.every((id) => isText(id))) throw new Error('阶段切换记录格式不正确');
+  if (raw.fromStageId !== undefined && !isText(raw.fromStageId)) throw new Error(TRANSITION_ERROR);
+  if (!raw.expanded.every((id) => isText(id))) throw new Error(TRANSITION_ERROR);
   for (const placement of raw.placements) {
-    if (!isRecord(placement) || !isText(placement.nodeId) || !['provided', 'gap', 'expanded', 'relocated'].includes(String(placement.mode))) throw new Error('阶段切换记录格式不正确');
+    if (!isRecord(placement) || !isText(placement.nodeId) || !['provided', 'gap', 'expanded', 'relocated'].includes(String(placement.mode))) throw new Error(TRANSITION_ERROR);
   }
   return raw as unknown as StageTransitionRecord;
 }
@@ -200,12 +224,12 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   const frozenGroups = checkFrozenGroups(raw.frozenGroups, nodes);
   const overlay = checkOverlay(raw.overlay);
   if (raw.labelPins !== undefined) {
-    if (!Array.isArray(raw.labelPins)) throw new Error('标签固定位置格式不正确');
+    if (!Array.isArray(raw.labelPins)) throw new Error(PIN_ERROR);
     const ids = new Set<string>();
     for (const pin of raw.labelPins) {
-      if (!isRecord(pin) || !isText(pin.id) || !isText(pin.source) || !isText(pin.target) || !Array.isArray(pin.memberIds) || !pin.memberIds.length || !pin.memberIds.every(isText) || new Set(pin.memberIds).size !== pin.memberIds.length || !isRecord(pin.label)) throw new Error('标签固定位置格式不正确');
-      for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(pin.label[key])) throw new Error('标签固定位置格式不正确');
-      if (Number(pin.label.width) <= 0 || Number(pin.label.height) <= 0) throw new Error('标签固定位置格式不正确');
+      if (!isRecord(pin) || !isText(pin.id) || !isText(pin.source) || !isText(pin.target) || !Array.isArray(pin.memberIds) || !pin.memberIds.length || !pin.memberIds.every(isText) || new Set(pin.memberIds).size !== pin.memberIds.length || !isRecord(pin.label)) throw new Error(PIN_ERROR);
+      checkRectFields(pin.label, PIN_ERROR);
+      if (Number(pin.label.width) <= 0 || Number(pin.label.height) <= 0) throw new Error(PIN_ERROR);
       if (pin.memberFingerprints !== undefined && (!isRecord(pin.memberFingerprints) || Object.keys(pin.memberFingerprints).length !== pin.memberIds.length || pin.memberIds.some((id) => !isText((pin.memberFingerprints as UnknownRecord)[String(id)])))) throw new Error('标签固定身份格式不正确');
       const key = JSON.stringify([pin.id, pin.source, pin.target, [...pin.memberIds].sort()]);
       if (ids.has(key)) throw new Error('标签固定位置重复');
@@ -214,18 +238,17 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   }
   let displayRoutes: CanvasBaselineContent['displayRoutes'];
   if (raw.displayRoutes !== undefined) {
-    if (!Array.isArray(raw.displayRoutes)) throw new Error('投影路径快照格式不正确');
+    if (!Array.isArray(raw.displayRoutes)) throw new Error(DISPLAY_ERROR);
     for (const route of raw.displayRoutes) {
-      if (isRecord(route) && route.policyKey !== undefined && !isText(route.policyKey)) throw new Error('投影路径策略版本格式不正确');
-      if (isRecord(route) && route.barrierKey !== undefined && !isText(route.barrierKey)) throw new Error('投影路径障碍版本格式不正确');
-      if (!isRecord(route) || !isText(route.id) || !isText(route.source) || !isText(route.target) || !isText(route.sourceHandle) || !isText(route.targetHandle) || typeof route.text !== 'string' || !Array.isArray(route.memberIds) || !route.memberIds.every(isText) || !Array.isArray(route.points) || route.points.length < 2 || !isRecord(route.label)) throw new Error('投影路径快照格式不正确');
-      for (const point of route.points) checkPoint(point, '投影路径快照格式不正确');
-      for (const bounds of [route.sourceBounds, route.targetBounds]) {
-        checkPoint(bounds, '投影路径端点格式不正确');
-        if (!isRecord(bounds) || !isFiniteNumber(bounds.w) || !isFiniteNumber(bounds.h)) throw new Error('投影路径端点格式不正确');
-      }
-      for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(route.label[key])) throw new Error('投影路径标签格式不正确');
+      if (!isRecord(route)) throw new Error(DISPLAY_ERROR);
+      if (route.policyKey !== undefined && !isText(route.policyKey)) throw new Error('投影路径策略版本格式不正确');
+      if (route.barrierKey !== undefined && !isText(route.barrierKey)) throw new Error('投影路径障碍版本格式不正确');
+      if (!isText(route.id) || !isText(route.source) || !isText(route.target) || !isText(route.sourceHandle) || !isText(route.targetHandle) || typeof route.text !== 'string' || !Array.isArray(route.memberIds) || !route.memberIds.every(isText) || !Array.isArray(route.points) || route.points.length < 2 || !isRecord(route.label)) throw new Error(DISPLAY_ERROR);
+      for (const point of route.points) checkPoint(point, DISPLAY_ERROR);
+      for (const bounds of [route.sourceBounds, route.targetBounds]) checkBounds(bounds, '投影路径端点格式不正确');
+      checkRectFields(route.label, '投影路径标签格式不正确');
     }
+    // 旧的自动标签附着是可丢弃缓存；非法附件只剥离元数据，路径几何保留。
     displayRoutes = raw.displayRoutes.map((rawRoute) => {
       const route = structuredClone(rawRoute) as UnknownRecord, anchor = route.labelAttachment;
       const validPoint = (point: unknown) => isRecord(point) && isFiniteNumber(point.x) && isFiniteNumber(point.y);
@@ -249,12 +272,18 @@ function checkInheritance(raw: unknown): StageInheritanceBase | undefined {
   return raw as unknown as StageInheritanceBase;
 }
 
+/** 基线条目先校验稳定 ID 和源修订，随后才读取视图内容。 */
+function checkBaseline(id: string, raw: unknown): asserts raw is UnknownRecord & { revision: string } {
+  if (!isText(id) || !isRecord(raw) || !isText(raw.revision)) throw new Error('阶段视图格式不正确');
+}
+
+/** v1 只保留节点和视口；路径与冻结账本为空，确认信息不补造。 */
 function normalizeV1(view: UnknownRecord): CanvasWorkspaceView {
   const rawBaselines = view.baselines;
   if (!isRecord(rawBaselines)) throw new Error('工作视图格式不正确');
   const baselines: Record<string, CanvasWorkspaceView['baselines'][string]> = {};
   for (const [id, raw] of Object.entries(rawBaselines)) {
-    if (!isText(id) || !isRecord(raw) || !isText(raw.revision)) throw new Error('阶段视图格式不正确');
+    checkBaseline(id, raw);
     const nodes = checkNodeViews(raw.nodes);
     const viewport = checkViewport(raw.viewport);
     baselines[id] = {
@@ -273,16 +302,19 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
   if (!isRecord(rawBaselines)) throw new Error('工作视图格式不正确');
   const baselines: Record<string, CanvasWorkspaceView['baselines'][string]> = {};
   for (const [id, raw] of Object.entries(rawBaselines)) {
-    if (!isText(id) || !isRecord(raw) || !isText(raw.revision)) throw new Error('阶段视图格式不正确');
+    checkBaseline(id, raw);
     const content = checkContent(raw);
     let confirmed: CanvasBaselineContent | undefined;
     if (raw.confirmed !== undefined) {
       if (!isRecord(raw.confirmed)) throw new Error('阶段确认快照格式不正确');
       confirmed = checkContent(raw.confirmed);
     }
-    if (raw.confirmedAt !== undefined && !isText(raw.confirmedAt)) throw new Error('阶段确认时间格式不正确');
-    if (raw.confirmationId !== undefined && (!isText(raw.confirmationId) || !confirmed || !isText(raw.confirmedAt))) throw new Error('阶段确认标识格式不正确');
-    if (raw.confirmedRevision !== undefined && (!isText(raw.confirmedRevision) || !confirmed)) throw new Error('阶段确认来源版本格式不正确');
+    // 确认字段必须成组出现；来源修订只记录确认时的版本，不改写历史内容。
+    const confirmedAt = optionalText(raw.confirmedAt, '阶段确认时间格式不正确');
+    const confirmationId = optionalText(raw.confirmationId, '阶段确认标识格式不正确');
+    if (confirmationId !== undefined && (!confirmed || confirmedAt === undefined)) throw new Error('阶段确认标识格式不正确');
+    const confirmedRevision = optionalText(raw.confirmedRevision, '阶段确认来源版本格式不正确');
+    if (confirmedRevision !== undefined && !confirmed) throw new Error('阶段确认来源版本格式不正确');
     if (raw.requiresConfirmation !== undefined && typeof raw.requiresConfirmation !== 'boolean') throw new Error('阶段确认状态格式不正确');
     const viewport = checkViewport(raw.viewport);
     const transition = checkTransition(raw.transition);
@@ -295,9 +327,9 @@ function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
       revision: raw.revision,
       ...content,
       ...(confirmed ? { confirmed } : {}),
-      ...(raw.confirmedAt !== undefined ? { confirmedAt: raw.confirmedAt as string } : {}),
-      ...(raw.confirmationId !== undefined ? { confirmationId: raw.confirmationId as string } : {}),
-      ...(raw.confirmedRevision !== undefined ? { confirmedRevision: raw.confirmedRevision as string } : {}),
+      ...(confirmedAt !== undefined ? { confirmedAt } : {}),
+      ...(confirmationId !== undefined ? { confirmationId } : {}),
+      ...(confirmedRevision !== undefined ? { confirmedRevision } : {}),
       ...(raw.requiresConfirmation !== undefined ? { requiresConfirmation: raw.requiresConfirmation as boolean } : {}),
       ...(viewport ? { viewport } : {}),
       ...(transition ? { transition } : {}),
