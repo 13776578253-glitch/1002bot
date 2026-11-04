@@ -10,10 +10,11 @@ import { normalizeCardLayout } from '../model/normalize-card-layout.ts';
 import { hierarchyProjection } from '../model/hierarchy.ts';
 import { validateStoredRoutes } from '../model/edge-routes.ts';
 import type { UserGraphOverlay } from '../model/overlay.ts';
-import { captureContent, restoreNodeViews, ViewHistory, type CanvasBaselineContent, type CanvasBaselineView, type CanvasViewMode, type CanvasViewport, type CanvasWorkspaceView, type EdgeRouteSnapshot, type FrozenGroupSnapshot, type DisplayRouteSnapshot } from '../model/workspace.ts';
+import { captureContent, restoreNodeViews, ViewHistory, type CanvasBaselineContent, type CanvasBaselineView, type CanvasViewMode, type CanvasViewport, type CanvasWorkspaceView, type EdgeRouteSnapshot, type FrozenGroupSnapshot, type DisplayRouteSnapshot, type EdgeLabelPin } from '../model/workspace.ts';
 import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
 import type { StageTransitionSuccess } from '../model/stage-transition.ts';
 import { saveWorkspace } from '../persistence/storage-session.ts';
+import { sceneGeometryKey } from '../model/label-snapshots.ts';
 
 export interface CanvasSessionState {
   nodes: CanvasNode[];
@@ -21,6 +22,7 @@ export interface CanvasSessionState {
   frozenGroups: FrozenGroupSnapshot[];
   overlay?: UserGraphOverlay;
   displayRoutes?: DisplayRouteSnapshot[];
+  labelPins?: EdgeLabelPin[];
 }
 export const VIEW_MODES = ['overview', 'structure', 'full'] as const;
 export const VIEW_LABELS: Record<CanvasViewMode, string> = { overview: 'Overview View', structure: 'Structure View', full: 'Full View' };
@@ -29,10 +31,10 @@ export { baselineNodes };
 
 function contentOf(view: CanvasBaselineView): CanvasBaselineContent {
   return { nodes: view.nodes, edgeRoutes: view.edgeRoutes, frozenGroups: view.frozenGroups,
-    ...(view.overlay ? { overlay: view.overlay } : {}), ...(view.displayRoutes ? { displayRoutes: view.displayRoutes } : {}) };
+    ...(view.overlay ? { overlay: view.overlay } : {}), ...(view.displayRoutes ? { displayRoutes: view.displayRoutes } : {}), ...(view.labelPins?.length ? { labelPins: view.labelPins } : {}) };
 }
 function replaceContent(view: CanvasBaselineView, content: CanvasBaselineContent): CanvasBaselineView {
-  const { overlay: _overlay, displayRoutes: _display, ...metadata } = view;
+  const { overlay: _overlay, displayRoutes: _display, labelPins: _pins, ...metadata } = view;
   return { ...metadata, ...content };
 }
 
@@ -69,7 +71,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     normalizationMessage.current = issue ? `卡片规格调整冲突：${issue}` : '';
     const working = issue ? original : normalized.nodes;
     return { nodes: working, edgeRoutes: structuredClone(saved.edgeRoutes), frozenGroups: structuredClone(frozen.groups),
-      ...(saved.overlay ? { overlay: structuredClone(saved.overlay) } : {}), displayRoutes: structuredClone(saved.displayRoutes ?? []) };
+      ...(saved.overlay ? { overlay: structuredClone(saved.overlay) } : {}), displayRoutes: structuredClone(saved.displayRoutes ?? []), labelPins: structuredClone(saved.labelPins ?? []) };
   }, [getBaseline]);
   const [initialContent] = useState(() => makeContent(initialId, initialMode));
   const [nodes, publishNodes] = useState(initialContent.nodes), nodesRef = useRef(nodes);
@@ -77,6 +79,8 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const [frozenGroups, publishFrozen] = useState(initialContent.frozenGroups), frozenRef = useRef(frozenGroups);
   const [overlay, publishOverlay] = useState(initialContent.overlay), overlayRef = useRef(overlay);
   const [displayRoutes, publishDisplay] = useState(initialContent.displayRoutes ?? []), displayRoutesRef = useRef(displayRoutes);
+  const displayGeometry = useRef(sceneGeometryKey(initialContent.nodes));
+  const [labelPins, publishLabelPins] = useState(initialContent.labelPins ?? []), labelPinsRef = useRef(labelPins);
   const histories = useRef(new Map<string, ViewHistory>());
   const metadata = useRef(new WeakMap<CanvasBaselineContent, CanvasBaselineView>());
   const pending = useRef<CanvasBaselineContent | undefined>(undefined);
@@ -89,12 +93,18 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     return stack;
   };
   const setNodes = useCallback((action: SetStateAction<CanvasNode[]>) => { const next = typeof action === 'function' ? action(nodesRef.current) : action; nodesRef.current = next; publishNodes(next); }, []);
-  const setRoutes = useCallback((next: EdgeRouteSnapshot[]) => { routesRef.current = next; publishRoutes(next); }, []);
-  const setFrozenGroups = useCallback((next: FrozenGroupSnapshot[]) => { frozenRef.current = next; publishFrozen(next); }, []);
+  const setRoutes = useCallback((next: EdgeRouteSnapshot[]) => { if (next !== routesRef.current) displayGeometry.current = ''; routesRef.current = next; publishRoutes(next); }, []);
+  const setFrozenGroups = useCallback((next: FrozenGroupSnapshot[]) => { if (next !== frozenRef.current) displayGeometry.current = ''; frozenRef.current = next; publishFrozen(next); }, []);
   const setOverlay = useCallback((next: UserGraphOverlay | undefined) => { overlayRef.current = next; publishOverlay(next); }, []);
-  const setDisplayRoutes = useCallback((next: DisplayRouteSnapshot[]) => { displayRoutesRef.current = next; publishDisplay(next); }, []);
+  const setDisplayRoutes = useCallback((next: DisplayRouteSnapshot[], geometry = sceneGeometryKey(nodesRef.current), stageId = idRef.current, mode = modeRef.current) => {
+    if (stageId !== idRef.current || mode !== modeRef.current || geometry !== sceneGeometryKey(nodesRef.current)) return false;
+    displayGeometry.current = geometry;
+    if (JSON.stringify(next) === JSON.stringify(displayRoutesRef.current)) return false;
+    displayRoutesRef.current = next; publishDisplay(next); return true;
+  }, []);
+  const setLabelPins = useCallback((next: EdgeLabelPin[]) => { if (next !== labelPinsRef.current) displayGeometry.current = ''; labelPinsRef.current = next; publishLabelPins(next); }, []);
   const captureCurrent = useCallback(() => {
-    const content = captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayRoutesRef.current);
+    const content = captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayGeometry.current === sceneGeometryKey(nodesRef.current) ? displayRoutesRef.current : [], labelPinsRef.current);
     metadata.current.set(content, structuredClone(views.current[modeRef.current][idRef.current]!));
     return content;
   }, []);
@@ -110,8 +120,16 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
       (error: unknown) => setSaveError(`保存失败：${error instanceof Error ? error.message : String(error)}`));
   }, [persistence, storeCurrent]);
   const publishContent = useCallback((state: CanvasSessionState) => {
-    setNodes(state.nodes); setRoutes(state.edgeRoutes); setFrozenGroups(state.frozenGroups); setOverlay(state.overlay); setDisplayRoutes(state.displayRoutes ?? []);
-  }, [setNodes, setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes]);
+    setNodes(state.nodes); setRoutes(state.edgeRoutes); setFrozenGroups(state.frozenGroups); setOverlay(state.overlay); setLabelPins(state.labelPins ?? []); setDisplayRoutes(state.displayRoutes ?? []);
+  }, [setNodes, setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, setLabelPins]);
+  const cacheRenderedRoutes = useCallback((routes: DisplayRouteSnapshot[], geometry: string, stageId: string, mode: CanvasViewMode) => {
+    const changed = setDisplayRoutes(routes, geometry, stageId, mode);
+    if (pending.current || stageId !== idRef.current || mode !== modeRef.current || geometry !== sceneGeometryKey(nodesRef.current)) return;
+    const saved = views.current[modeRef.current][idRef.current]!;
+    if (!changed && sceneGeometryKey(saved.nodes) === geometry) return;
+    views.current[modeRef.current][idRef.current] = replaceContent(saved, captureCurrent());
+    save(false);
+  }, [setDisplayRoutes, captureCurrent, save]);
   const begin = useCallback(() => { pending.current ??= captureCurrent(); }, [captureCurrent]);
   const finish = useCallback(() => {
     const before = pending.current; pending.current = undefined;
@@ -129,10 +147,11 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   }, [captureCurrent, save, setNodes]);
   const commitContent = useCallback((transform: (current: CanvasSessionState) => CanvasSessionState | undefined) => {
     const before = captureCurrent();
-    const current: CanvasSessionState = { nodes: nodesRef.current, edgeRoutes: routesRef.current, frozenGroups: frozenRef.current, ...(overlayRef.current ? { overlay: overlayRef.current } : {}), displayRoutes: displayRoutesRef.current };
+    const current: CanvasSessionState = { nodes: nodesRef.current, edgeRoutes: routesRef.current, frozenGroups: frozenRef.current, ...(overlayRef.current ? { overlay: overlayRef.current } : {}), displayRoutes: displayRoutesRef.current, labelPins: labelPinsRef.current };
     const next = transform(current);
     if (!next || next === current) return false;
-    publishContent({ ...next, displayRoutes: next.displayRoutes ?? displayRoutesRef.current });
+    const constraintsChanged = JSON.stringify([current.edgeRoutes, current.frozenGroups, current.labelPins]) !== JSON.stringify([next.edgeRoutes, next.frozenGroups, next.labelPins]);
+    publishContent({ ...next, displayRoutes: constraintsChanged ? [] : next.displayRoutes ?? displayRoutesRef.current, labelPins: next.labelPins ?? labelPinsRef.current });
     const changed = history().record(before, captureCurrent());
     if (changed) { refresh((value) => value + 1); save(); }
     return changed;
@@ -200,13 +219,13 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   }, [getBaseline]);
   const saveViewport = useCallback((viewport: CanvasViewport) => { views.current[modeRef.current][idRef.current]!.viewport = viewport; if (!pending.current) save(false); }, [save]);
   return {
-    nodes, nodesRef, setNodes, edgeRoutes, routesRef, frozenGroups, frozenRef, overlay, overlayRef,
-    setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, displayRoutes, displayRoutesRef, commitContent,
+    nodes, nodesRef, setNodes, edgeRoutes, routesRef, frozenGroups, frozenRef, overlay, overlayRef, labelPins, labelPinsRef, setLabelPins,
+    setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, cacheRenderedRoutes, displayRoutes, displayRoutesRef, commitContent,
     baselineId, baseline: getBaseline(baselineId, viewMode), viewMode, switchView, getBaseline,
     initializationMessage: normalizationMessage.current || (restored?.baselineId && restored.baselineId !== initialId ? '旧阶段尚未建立三个视图，先确认首阶段的三个视图；原有阶段草稿和快照已保留' : !restored && props.initialBaselineId && props.initialBaselineId !== initialId ? '目标阶段尚未建立三个视图，请先确认首阶段的三个视图' : ''),
     initialViewport: views.current[initialMode][initialId]?.viewport,
     getViewport: (id: string, mode = modeRef.current) => views.current[mode][id]?.viewport, saveViewport,
-    begin, finish, commit, switchBaseline, applyStageTransitions, confirm, getConfirmedContent, getConfirmedRevision, getSavedContent,
+    begin, finish, commit, switchBaseline, applyStageTransitions, confirm, getConfirmedContent, getConfirmedRevision, getSavedContent, transactionPending: () => !!pending.current,
     undo: () => travel('undo'), redo: () => travel('redo'), canUndo: history().canUndo, canRedo: history().canRedo, saveError, retrySave: () => save(),
     transition: views.current[viewMode][baselineId]?.transition, confirmedAt: views.current[viewMode][baselineId]?.confirmedAt,
     confirmationStatus: VIEW_MODES.map((mode) => {

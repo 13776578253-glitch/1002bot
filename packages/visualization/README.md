@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/layout-intent.ts`, `src/react/model/snapshot-inheritance.ts`, `src/react/canvas/use-workspace-session.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`, `src/react/model/view-projection.ts`, `src/react/model/normalize-card-layout.ts`
+Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/layout-intent.ts`, `src/react/model/snapshot-inheritance.ts`, `src/react/canvas/use-workspace-session.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`, `src/react/model/view-projection.ts`, `src/react/model/normalize-card-layout.ts`, `src/react/model/label-layout.ts`, `src/react/model/label-pins.ts`, `src/react/model/label-snapshots.ts`
 
 # Visualization
 
@@ -138,6 +138,12 @@ Canvas v2 增加 `viewMode` 与 `views[mode][stageId]`；项目 Workspace v1 增
 
 ## 阶段增量与冻结子图
 
+Legacy 和 Group 只负责路径与线段几何；最终恢复路径统一交给 `label-layout.ts`，点列和端口保持不变。标签中心沿线放置，侧放时胶囊与所属线段的间距最多为 2 个世界坐标单位。节点、标题栏、边框及其他标签碰撞会排除候选；无合法位置直接隐藏，Hover 和选中不恢复非法位置。长文本缩略到 140px 预算，完整文字保留在线路 Tooltip 和连接面板。选中时弱化无关标签，聚焦和视口变化不求解线路。
+
+路径变化时先按上次锚点与线段几何投影，保留仍然合法的位置。新候选评分至少改善 20 分才切换；线段数组下标不承担身份。自动位置按阶段、视图缓存，带语义身份、路径和策略指纹；失效缓存丢弃后重新求解，不参与人工编辑的三方合并或撤销比较。快照从同一已提交的节点、路径和标签帧捕获，拖动结束先完成父框贴合再保存。
+
+连接面板支持固定当前标签与恢复自动位置。`labelPins` 按显示边、可见端点、完整 Canonical 成员及其真实端口指纹匹配，参与确认、撤销和阶段继承；真实端口变化会失效旧固定约束。固定位置冲突或远离所属线路时保留约束并隐藏显示。路径锁定与标签固定独立，历史路径附带的标签仅作为兼容缓存。历史工作区缺省为空，存储版本保持兼容。
+
 工作视图 v2 把草稿和已确认快照分开保存。自动保存只更新草稿；工具栏的确认按钮写入 `confirmedAt` 与当前内容副本，后续阶段以该副本为基础。切换阶段前，来源阶段的三份视图都须有当前版本的确认快照。
 
 首次进入目标阶段时，只对来源差异求解：共同叶节点沿用已确认世界坐标，容器保留 `worldPosition - fitOffset` 内容锚点。替换实体按 `previousId` 继承旧布局，归属改变的替换实体重新安置。新增节点优先填补空隙，再四向有限扩容。人工模式保留容器展开状态，隐藏新增节点继续使用声明的局部坐标；可见新增节点避开其他容器的完整范围。人工扩缩每轴余量为自然尺寸的 100% 且不超过 800px；自动阶段安置每轴预算为自然尺寸加 800px。成功后不抬高自然基准，已合法生成的既有尺寸可保持。
@@ -150,7 +156,7 @@ Canvas v2 增加 `viewMode` 与 `views[mode][stageId]`；项目 Workspace v1 增
 
 整体拖动只改变组原点，内部坐标不变。折叠状态也预检隐藏端口的可行性，展开按已保存尺寸恢复。折叠后的路由将内部障碍压缩为完整保护框，点列仍保留在账本中。解冻恢复原约束与人工路径，并保留其他冻结组的边界保护；收展、拖动和解冻均可撤销。成员或锁定连接的来源删除、更改归属产生冲突。
 
-路径状态为 `auto`、`pinned`、`locked`。`auto` 由算法自由计算；`pinned` 优先保留，失效时可局部重算；`locked` 逐点保留并阻止自动修改。路径按 Canonical Edge ID 保存，折叠聚合展示边不继承独立路径；展开且端点指纹匹配后恢复。锁定路径的标签位置一并保存。
+路径状态为 `auto`、`pinned`、`locked`。`auto` 由算法自由计算；`pinned` 优先保留，失效时可局部重算；`locked` 逐点保留并阻止自动修改。路径按 Canonical Edge ID 保存，折叠聚合展示边不继承独立路径；展开且端点指纹匹配后恢复。标签的人工固定位置由独立的 `labelPins` 保存。
 
 工作视图保存投影路径与障碍版本提示，恢复时直接复用仍可行的路径。改变节点、端口或障碍时只失效受影响几何；冻结时保留已经建立的交叉，后续改变障碍位置须重新校验。选择和视口导航不触发寻路。性能记录同时包含约束预检、自动路由及冻结外部段计算。
 
@@ -196,12 +202,12 @@ The original M0 overview uses `portPolicy: { "direction": "top-down" }`; the Run
 
 The default remains the incremental candidate router. `?routing=group` enables the experimental offline group solver; omitting the parameter or using `?routing=legacy` keeps the old path. The group engine only takes over when the solution covers every expected edge and there are no stored pinned/locked paths, frozen groups, aggregated display edges or preview state. Any incomplete or illegal group transaction falls back to the last legal legacy routes, so no edge disappears.
 
-The group solver keeps a group-level cache. Unchanged groups reuse their route objects; only dirty groups and groups sharing a node with a dirty group re-solve. Their previous paths remain reserved. The group engine stays active through drag and release; there is no release-time full solve. A complete group solution skips the legacy cache entirely, so group-mode `data-route-geometry-ms`, `data-route-routing-ms` and `data-route-label-ms` remain 0 and `data-route-ms` is the group time. Visible-route references update after React commits. When the group engine becomes ineligible, the committed group paths seed the legacy cache once so the engine switch preserves the current routes, including a cold legacy cache. Snapshots are captured from the visible node/route render, not solved again. Labels with `space-exhausted` stay hidden until their edge is hovered, then use the stored fallback box. When group mode is requested but cannot take over, a bottom notice explains why; drag and preview fallbacks stay silent.
+The group solver keeps a group-level cache. Unchanged groups reuse their route objects; only dirty groups and groups sharing a node with a dirty group re-solve. Their previous paths remain reserved. The group engine stays active through drag and release; there is no release-time full solve. A complete group solution skips the legacy cache entirely, so group-mode `data-route-geometry-ms`, `data-route-routing-ms` and `data-route-label-ms` remain 0 and `data-route-ms` is the group time. Visible-route references update after React commits. When the group engine becomes ineligible, the committed group paths seed the legacy cache once so the engine switch preserves the current routes, including a cold legacy cache. Snapshots are captured from the visible node/route render, not solved again. The final label pass omits invalid capsules during hover and selection. Full text remains available through the path tooltip and connection panel. When group mode is requested but cannot take over, a bottom notice explains why; drag and preview fallbacks stay silent.
 
 The playground exposes `?lab=routing`: a 36-node routing lab with 1,584 physical handles and a deliberately hidden label for hover/performance checks.
 
 ### Default engine policy (P5)
 
-Legacy remains the default. Group promotion requires all of the following: 50/100/200-edge cold and local-update P95 at or below 16 ms; zero cross-group label overlaps and no hidden labels without hover; crossings no worse than Legacy on fixed layouts; and passing rollback/failure-injection tests. The P5 benchmark currently fails these gates at 50+ edges for local latency, cross-group labels and crossings, so Group stays opt-in with `?routing=group`; Legacy remains available with `?routing=legacy`. See the P5 report for measurements and the decision.
+Legacy remains the default. Group promotion requires all of the following: 50/100/200-edge cold and local-update P95 at or below 16 ms; zero visible-label node/label overlaps and tight path attachment; labels may hide when no legal placement exists; crossings no worse than Legacy on fixed layouts; and passing rollback/failure-injection tests. The P5 benchmark currently fails these gates at 50+ edges for local latency, cross-group labels and crossings, so Group stays opt-in with `?routing=group`; Legacy remains available with `?routing=legacy`. See the P5 report for measurements and the decision.
 
 统一卡片规格首次保存前，将完整原工作区备份到 <key>:before-uniform-cards-v1。尺寸迁移保留原确认和检查点，更新的工作副本需要重新确认；冻结或锁定几何发生冲突时显示原因。

@@ -33,20 +33,22 @@ test('a cold legacy cache consumes a seed without re-solving different paths', (
   }
 });
 
-test('a seed replaces the legacy cache routes once and keeps their object identity afterwards', () => {
+test('a seed retains path identity, discards labels and reuses cached routes afterwards', () => {
   const cache = new DiagramRouteCache();
   const first = cache.update(nodes, projection, inputs);
   const seededA: CachedRoute = { ...first.get('a-b')!, points: [{ x: 10, y: 20 }, { x: 10, y: 100 }, { x: 300, y: 100 }], label: { x: 100, y: 100, width: 60, height: 24 }, text: 'a to b' };
   const seededB: CachedRoute = { ...first.get('c-d')!, points: [{ x: 20, y: 400 }, { x: 20, y: 480 }, { x: 300, y: 480 }], label: { x: 100, y: 480, width: 60, height: 24 }, text: 'c to d' };
   const seed = new Map([['a-b', seededA], ['c-d', seededB]]);
   const next = cache.update(nodes, projection, inputs, [], new Map(), {}, seed);
-  assert.equal(next.get('a-b'), seededA);
-  assert.equal(next.get('c-d'), seededB);
+  assert.equal(next.get('a-b')!.points, seededA.points);
+  assert.equal(next.get('c-d')!.points, seededB.points);
+  assert.equal(next.get('a-b')!.label.width, 0);
+  assert.equal(next.get('c-d')!.label.width, 0);
   const retained = cache.update(nodes, projection, inputs);
-  assert.equal(retained.get('a-b'), seededA);
-  assert.equal(retained.get('c-d'), seededB);
+  assert.equal(retained.get('a-b'), next.get('a-b'));
+  assert.equal(retained.get('c-d'), next.get('c-d'));
   const moved = nodes.map((node) => node.id === 'a' ? { ...node, position: { x: 20, y: 0 } } : node);
   const after = cache.update(moved, projection, inputs);
-  assert.notEqual(after.get('a-b'), seededA);
-  assert.equal(after.get('c-d'), seededB);
+  assert.notEqual(after.get('a-b')!.points, seededA.points);
+  assert.equal(after.get('c-d'), next.get('c-d'));
 });

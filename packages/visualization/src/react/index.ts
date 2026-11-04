@@ -4,7 +4,7 @@ export type { VisualizationCanvasProps } from './types.ts';
 export type { VisualizationBaseline, ChangeKind, ChangeMark } from '../core/schema/baseline.ts';
 export type {
   CanvasBaselineContent, CanvasBaselineView, CanvasNodeView, CanvasViewport, CanvasViewMode, CanvasViewStorage, CanvasWorkspaceView,
-  DisplayRouteSnapshot, EdgeRouteEndpointView, EdgeRouteSnapshot, EdgeRouteState, FrozenBoundaryPort, FrozenBoundarySegment, FrozenBoundarySide, FrozenGroupSnapshot,
+  DisplayRouteSnapshot, EdgeLabelPin, EdgeRouteEndpointView, EdgeRouteSnapshot, EdgeRouteState, FrozenBoundaryPort, FrozenBoundarySegment, FrozenBoundarySide, FrozenGroupSnapshot,
   StagePlacementRecord, StageTransitionRecord,
 } from './model/workspace.ts';
 export type { StageConflict, StageConflictAction, StageConflictKind } from './model/stage-types.ts';

@@ -24,6 +24,8 @@ import {
 import type { UserGraphOverlay } from './overlay.ts';
 import { captureDisplayRoutes, retainedDisplayRoutes } from './display-route-snapshots.ts';
 import type { DisplayRouteSnapshot } from './workspace.ts';
+import type { EdgeLabelPin } from './workspace.ts';
+import { retainLabelPins } from './label-pins.ts';
 
 export interface StageViewState {
   nodes: CanvasNode[];
@@ -31,6 +33,7 @@ export interface StageViewState {
   frozenGroups: FrozenGroupSnapshot[];
   overlay?: UserGraphOverlay;
   displayRoutes?: DisplayRouteSnapshot[];
+  labelPins?: EdgeLabelPin[];
 }
 
 export interface StageTransitionInput {
@@ -178,7 +181,8 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
   const baseRoutes = inheritRoutes(input.targetSaved ?? input.sourceContent, target);
   const reconciled = restoreFrozenGroups(restoredBase, structuredClone(origin.frozenGroups));
   const baseFrozen = reconciled.groups;
-  const base = captureContent(reconciled.nodes, baseRoutes, baseFrozen);
+  const pins = retainLabelPins(origin.labelPins ?? [], target.stage, mapped.views, input.targetSaved ? undefined : input.source.stage);
+  const base = captureContent(reconciled.nodes, baseRoutes, baseFrozen, undefined, undefined, pins);
 
   const inherited = new Set(mapped.views.map((view) => view.id));
   for (const id of mapped.mappedIds) {
@@ -247,12 +251,13 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
         conflicts.push({ kind: 'locked-route', entityIds: [edge.id], message: '连接无法避开当前节点或锁定路径', actions: ['unfreeze', 'cancel'] });
       }
     }
-    displayRoutes = captureDisplayRoutes(working, finalProjection, visibleEdges, routes, reserved);
+    const pathOnly = new Map([...routes].map(([id, route]) => [id, { ...route, label: { x: 0, y: 0, width: 0, height: 0 } }]));
+    if (!conflicts.length) displayRoutes = captureDisplayRoutes(working, finalProjection, visibleEdges, pathOnly, reserved);
   }
-  const state: StageViewState = { nodes: working, edgeRoutes: activeRoutes, frozenGroups: activeFrozen, displayRoutes };
+  const state: StageViewState = { nodes: working, edgeRoutes: activeRoutes, frozenGroups: activeFrozen, displayRoutes, ...(pins.length ? { labelPins: pins } : {}) };
   if (conflicts.length) return { ok: false, base, candidate: state, conflicts };
 
-  const content = captureContent(working, activeRoutes, activeFrozen, undefined, displayRoutes);
+  const content = captureContent(working, activeRoutes, activeFrozen, undefined, displayRoutes, pins);
   const record: StageTransitionRecord = {
     fromStageId: input.source.id,
     toStageId: target.id,

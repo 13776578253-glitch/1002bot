@@ -45,13 +45,10 @@ test('a star group solves every edge with a shared allocator', () => {
   assert.equal(result.routes.size, 4);
   assert.deepEqual(result.failures, []);
   assert.ok(result.plans[0]!.routes.every((route) => route.points.length >= 2));
-  const labels = result.plans[0]!.routes.flatMap((route) => route.label ? [{ x: route.label.anchor.x, y: route.label.anchor.y, w: route.label.rect.w, h: route.label.rect.h }] : []);
-  assert.ok(labels.length > 0);
-  for (let i = 0; i < labels.length; i += 1) for (let j = i + 1; j < labels.length; j += 1) {
-    const a = labels[i]!, b = labels[j]!;
-    assert.equal(a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y, false, 'labels overlap');
+  for (const route of result.routes.values()) {
+    assert.equal(route.label.width, 0);
+    assert.equal(route.label.height, 0);
   }
-  assert.ok(result.plans[0]!.routes.some((route) => route.label?.segmentKind === 'branch'));
 });
 
 test('the same input produces the same plan and routes', () => {

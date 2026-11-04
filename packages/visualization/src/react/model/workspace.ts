@@ -8,6 +8,8 @@ import type { UserGraphOverlay } from './overlay.ts';
 import type { StageInheritanceBase } from './snapshot-inheritance.ts';
 import type { StageSnapshot } from '../../core/schema/types.ts';
 import { legacyLayoutEdits } from './layout-intent.ts';
+import type { LabelAttachment } from './label-layout.ts';
+import { comparableCanvasIntent } from './confirmation.ts';
 
 export interface CanvasViewport { x: number; y: number; zoom: number }
 
@@ -33,6 +35,16 @@ export interface EdgeRouteSnapshot {
   frozenBoundaries?: FrozenBoundarySegment[];
 }
 
+/** A label position authored for one exact displayed edge. */
+export interface EdgeLabelPin {
+  id: string;
+  source: string;
+  target: string;
+  memberIds: string[];
+  memberFingerprints?: Record<string, string>;
+  label: EdgeLabelPlacement;
+}
+
 export interface FrozenBoundarySegment {
   ownerId: string;
   endpoint: 'source' | 'target';
@@ -51,6 +63,10 @@ export interface DisplayRouteSnapshot {
   targetHandle: string;
   points: Point[];
   label: EdgeLabelPlacement;
+  labelAttachment?: LabelAttachment;
+  labelIdentity?: string;
+  labelPolicyKey?: string;
+  labelRouteKey?: string;
   text: string;
   sourceBounds: { x: number; y: number; w: number; h: number };
   targetBounds: { x: number; y: number; w: number; h: number };
@@ -103,6 +119,7 @@ export interface CanvasBaselineContent {
   frozenGroups: FrozenGroupSnapshot[];
   overlay?: UserGraphOverlay;
   displayRoutes?: DisplayRouteSnapshot[];
+  labelPins?: EdgeLabelPin[];
 }
 
 type ViewData = Pick<CanvasNode['data'], 'expanded' | 'contentWidth' | 'contentHeight' | 'fitOffset' | 'reflowOrigin' | 'expansionSizes' | 'groupOrigins' | 'layoutEdits'> & {
@@ -175,6 +192,7 @@ export function captureContent(
   frozenGroups: readonly FrozenGroupSnapshot[] = [],
   overlay?: UserGraphOverlay,
   displayRoutes?: readonly DisplayRouteSnapshot[],
+  labelPins?: readonly EdgeLabelPin[],
 ): CanvasBaselineContent {
   return {
     nodes: captureNodeViews(nodes),
@@ -182,6 +200,7 @@ export function captureContent(
     frozenGroups: structuredClone([...frozenGroups]),
     ...(overlay ? { overlay: structuredClone(overlay) } : {}),
     ...(displayRoutes ? { displayRoutes: structuredClone([...displayRoutes]) } : {}),
+    ...(labelPins?.length ? { labelPins: structuredClone([...labelPins]) } : {}),
   };
 }
 
@@ -262,7 +281,7 @@ export class ViewHistory {
   get canUndo(): boolean { return this.past.length > 0; }
   get canRedo(): boolean { return this.future.length > 0; }
   record(before: CanvasBaselineContent, after: CanvasBaselineContent): boolean {
-    if (JSON.stringify(before) === JSON.stringify(after)) return false;
+    if (JSON.stringify(comparableCanvasIntent(before)) === JSON.stringify(comparableCanvasIntent(after))) return false;
     this.past.push(before);
     if (this.past.length > 100) this.past.shift();
     this.future = [];

@@ -5,7 +5,6 @@ import type { StageSnapshot } from '../../core/schema/types.ts';
 import { CARD_SIZE, worldPosition, type CanvasNode } from './grouping.ts';
 import { MAX_CONTAINER_EXTRA } from './spacing.ts';
 import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, segmentCrossesRect, withReservedRoutes, type DiagramGeometry } from './routing.ts';
-import { placeEdgeLabel } from './labels.ts';
 import { endpointFingerprint, routeSnapshotForEdge, storedRouteAttached, worldRoutePoints, reservedLockedRoutes } from './edge-routes.ts';
 import { hierarchyProjection } from './hierarchy.ts';
 import { unfreezeGroup } from './frozen.ts';
@@ -169,7 +168,7 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
     boundaryCache.set(snapshot, { points: fallback.points, boundaryKey, route, connector });
     return { ok: true, route };
   }
-  if(cached&&cached.boundaryKey===boundaryKey&&cached.route.text===fallback.text&&pathIsClear(cached.connector,connectorGeometry,sourceId,targetId,edgeId))return{ok:true,route:cached.route};
+  if(cached&&cached.boundaryKey===boundaryKey&&pathIsClear(cached.connector,connectorGeometry,sourceId,targetId,edgeId))return{ok:true,route:cached.route.text === fallback.text ? cached.route : {...cached.route,text:fallback.text}};
   const obstacles = [...geometry.obstacles.values()].filter((item) => !ownerIds.has(item.id) && !internal(item.padded)).map((item) => obstacleFromRect(item.id === sourceId || item.id === targetId ? item.endpointBounds ?? item.bounds : item.padded));
   obstacles.push(...ownerRects.map((rect) => obstacleFromRect(rect)));
   obstacles.push(...externalReserved.filter((item) => item.edgeId !== edgeId).map((item) => obstacleFromRect(item.rect)));
@@ -197,7 +196,7 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
   if (!pathIsClear(connector, connectorGeometry, sourceId, targetId, edgeId)) return { ok: false, message: '无法从冻结边界端口绕开节点或锁定路径' };
   const points = [...sourceFragment, ...connector.slice(1, -1), ...[...targetFragment].reverse()]
     .filter((point, index, array) => index === 0 || !samePoint(point, array[index - 1]!));
-  const route={...fallback,feasible:true,points,label:placeEdgeLabel(connector,fallback.text,geometry.blockers,geometry.frames)};
+  const route={...fallback,feasible:true,points,label:{x:0,y:0,width:0,height:0}};
   boundaryCache.set(snapshot,{points:fallback.points,boundaryKey,route,connector});
   return { ok: true, route };
 }
@@ -207,7 +206,7 @@ function captureCrossing(edge: DisplayEdge, sourceIn: boolean, geometry: Diagram
   const root = nodes.find((node) => node.id === group.rootId)!, rect = worldBounds(root, nodes);
   const generated = routeDiagramGeometry(geometry, edge.source, edge.target, edge.id);
   if (!generated.feasible) return undefined;
-  const normal: CachedRoute = { ...generated, text: edge.text, label: placeEdgeLabel(generated.points, edge.text, geometry.blockers, geometry.frames) };
+  const normal: CachedRoute = { ...generated, text: edge.text, label: { x: 0, y: 0, width: 0, height: 0 } };
   const innerId = sourceIn ? edge.source : edge.target;
   const innerRect = geometry.bounds.get(innerId)!;
   const center = { x: innerRect.x + innerRect.w / 2, y: innerRect.y + innerRect.h / 2 };
@@ -285,7 +284,7 @@ export function captureFrozenSubgraph(input: CaptureInput): FrozenCaptureResult 
     if (old && old.endpointFingerprint === endpointFingerprint(member.edge) && storedRouteAttached(old, virtual, geometry)) {
       const points = worldRoutePoints(old, virtual)!;
       const origin=old.space.kind==='owner'?worldPosition(virtual.find(node=>node.id===(old.space as {ownerId:string}).ownerId)!,virtual):{x:0,y:0};
-      route = { points, sourceHandle: old.source.handle!, targetHandle: old.target.handle!, text: edge.text, label: old.label ? {...old.label,x:old.label.x+origin.x,y:old.label.y+origin.y} : placeEdgeLabel(points, edge.text, geometry.blockers, geometry.frames) };
+      route = { points, sourceHandle: old.source.handle!, targetHandle: old.target.handle!, text: edge.text, label: old.label ? {...old.label,x:old.label.x+origin.x,y:old.label.y+origin.y} : { x: 0, y: 0, width: 0, height: 0 } };
     } else if (rendered) {
       const snapshot = routeSnapshotForEdge(edge, rendered, 'pinned', virtual, []);
       if (snapshot && storedRouteAttached(snapshot, virtual, geometry)) route = rendered;
@@ -306,7 +305,7 @@ export function captureFrozenSubgraph(input: CaptureInput): FrozenCaptureResult 
         }
         return { ok: false, conflicts: [{ kind: 'locked-route', entityIds: [edge.id], message: '冻结子图的连接无法避开节点', actions: ['cancel'] }] };
       }
-      route = { ...generated, text: edge.text, label: placeEdgeLabel(generated.points, edge.text, geometry.blockers, geometry.frames) };
+      route = { ...generated, text: edge.text, label: { x: 0, y: 0, width: 0, height: 0 } };
     }
     const snapshot = routeSnapshotForEdge(edge, route, sourceIn && targetIn ||old?.state==='locked' ? 'locked' : 'pinned', nodes, groups)!;
     if (sourceIn !== targetIn) {

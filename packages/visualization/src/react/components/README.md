@@ -1,6 +1,8 @@
-Owner: `../VisualizationCanvas.tsx`, `top-actions.tsx`, `snapshot-menu.tsx`, `snapshot-dialog.tsx`, `ports.tsx`, `nodes.tsx`, `../styles/nodes.css`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`, `../styles/canvas.css`
+Owner: `relation-edge.tsx`, `connection-panel.tsx`, `../styles/canvas.css`, `../VisualizationCanvas.tsx`, `top-actions.tsx`, `snapshot-menu.tsx`, `snapshot-dialog.tsx`, `ports.tsx`, `nodes.tsx`, `../styles/nodes.css`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`, `../styles/canvas.css`
 
 # Canvas controls
+
+Labels consume the final label-layout result. Hidden labels never render fallback capsules on hover or focus. Every rendered path has a full-text title and a keyboard action that opens connection details. Visible labels use shortened text inside measured bounds, retain full text in their accessible name/title, and dim when unrelated to the selection. Connection details expose independent label pinning and reset controls, with status for pinned or hidden labels.
 
 The top strip contains project, snapshot, import, export and theme entries. Project and file-transfer entries expose accessible names and disabled semantics without business handlers. Theme, snapshot open/close and the dialog stage selector are active.
 

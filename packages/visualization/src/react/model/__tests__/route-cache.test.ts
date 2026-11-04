@@ -5,7 +5,7 @@ import { projectGraph } from '../../../core/projection/index.ts';
 import { type CanvasNode } from '../grouping.ts';
 import { DiagramRouteCache, type RouteInput } from '../route-cache.ts';
 import { createDiagramGeometry, pathIsClear } from '../routing.ts';
-import { SpatialIndex, expandBounds, boundsIntersect } from '../spatial-index.ts';
+import { SpatialIndex } from '../spatial-index.ts';
 
 function card(id: string, x: number, y: number, parentId?: string): CanvasNode {
   return { id, type: 'card', position: { x, y }, width: 120, height: 60, data: { title: id }, ...(parentId ? { parentId } : {}) };
@@ -29,7 +29,6 @@ const edges: RouteInput[] = [
 ];
 const nodes = () => [card('a', 0, 0), card('b', 500, 0), card('c', 0, 800), card('d', 500, 800), card('obstacle', 900, 350)];
 const move = (input: readonly CanvasNode[], id: string, x: number, y: number) => input.map((node) => node.id === id ? { ...node, position: { x, y } } : node);
-const labelRect = (label: { x: number; y: number; width: number; height: number }) => ({ x: label.x - label.width / 2, y: label.y - label.height / 2, w: label.width, h: label.height });
 
 test('spatial index replaces entries and queries segments on cell boundaries', () => {
   const index = new SpatialIndex<string>(100);
@@ -83,21 +82,20 @@ test('an edge excludes its own reservation when recalculating', () => {
   assert.deepEqual(result.get('near')!.points, own.points);
 });
 
-test('a clear capsule follows its straight segment across repeated endpoint moves without new placement', () => {
+test('repeated endpoint moves recompute paths without placing labels', () => {
   let input = nodes();
   const projection = project(input, edges), cache = new DiagramRouteCache();
   const before = cache.update(input, projection, edges);
-  const originalLabel = { ...before.get('near')!.label };
+  const originalPath = structuredClone(before.get('near')!.points);
   for (let step = 1; step <= 25; step++) {
     input = move(input, 'a', step * 4, 0);
     const after = cache.update(input, projection, edges);
     assert.equal(cache.lastStats.routedEdges, 1);
     assert.equal(cache.lastStats.placedLabels, 0);
-    assert.equal(after.get('near')!.label.y, originalLabel.y);
-    assert.equal(after.get('near')!.label.x, originalLabel.x + step * 2);
+    assert.equal(after.get('near')!.label.width, 0);
     assert.ok(pathIsClear(after.get('near')!.points, createDiagramGeometry(input, projection), 'a', 'b'));
   }
-  assert.deepEqual(before.get('near')!.label, originalLabel);
+  assert.deepEqual(before.get('near')!.points, originalPath);
 });
 
 test('an unconnected obstacle crossing a cached path invalidates only the obstructed edge', () => {
@@ -120,7 +118,7 @@ test('local obstacle collection expands when a detour reaches an obstacle outsid
   assert.equal(cache.lastStats.routedEdges, 1);
 });
 
-test('covering only a capsule repositions its label without recomputing either path', () => {
+test('moving an obstacle away from both paths leaves routing untouched', () => {
   const input = nodes(), projection = project(input, edges), cache = new DiagramRouteCache();
   const before = cache.update(input, projection, edges), first = before.get('near')!;
   const moved = move(input, 'obstacle', 260, 45);
@@ -128,9 +126,7 @@ test('covering only a capsule repositions its label without recomputing either p
   assert.equal(after.get('near')!.points, first.points);
   assert.equal(after.get('far'), before.get('far'));
   assert.equal(cache.lastStats.routedEdges, 0);
-  assert.equal(cache.lastStats.placedLabels, 1);
-  assert.notDeepEqual(after.get('near')!.label, first.label);
-  // The fixture capsule is 24px tall and the new obstacle starts below the 30px centerline.
+  assert.equal(cache.lastStats.placedLabels, 0);
   assert.ok(pathIsClear(after.get('near')!.points, createDiagramGeometry(moved, projection), 'a', 'b'));
 });
 
@@ -149,15 +145,17 @@ test('moving a parent translates its internal cached path and keeps child local 
   assert.ok(pathIsClear(after.get('near')!.points, createDiagramGeometry(moved, projection), 'a', 'b'));
 });
 
-test('changed text places one label around unchanged labels without mutating previous routes', () => {
+test('changed text keeps paths and handles without invoking routing or label placement', () => {
   const input = [card('a', 0, 0), card('b', 500, 0)];
   const links = [edges[0]!, { ...edges[0]!, id: 'parallel', text: '另一调用' }];
   const projection = project(input, links), cache = new DiagramRouteCache();
   const before = cache.update(input, projection, links), saved = structuredClone(before.get('near'));
   const after = cache.update(input, projection, [{ ...links[0]!, text: '更长的新增调用' }, links[1]!]);
   assert.equal(cache.lastStats.routedEdges, 0);
-  assert.equal(cache.lastStats.placedLabels, 1);
+  assert.equal(cache.lastStats.placedLabels, 0);
   assert.equal(after.get('parallel'), before.get('parallel'));
   assert.deepEqual(before.get('near'), saved);
-  assert.equal(boundsIntersect(labelRect(after.get('near')!.label), expandBounds(labelRect(after.get('parallel')!.label), 7.9)), false);
+  assert.equal(after.get('near')!.points, before.get('near')!.points);
+  assert.equal(after.get('near')!.sourceHandle, before.get('near')!.sourceHandle);
+  assert.equal(after.get('near')!.text, '更长的新增调用');
 });

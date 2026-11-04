@@ -1,5 +1,5 @@
 /** Canvas commands coordinate geometry, per-baseline transactions and source-preserving navigation. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyNodeChanges, useReactFlow, type NodeChange } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { VisualizationCanvasProps } from '../types.ts';
@@ -22,6 +22,8 @@ import type { CanvasWorkspaceView, CanvasViewMode, EdgeRouteState, FrozenGroupSn
 import { useWorkspaceSession, VIEW_MODES, VIEW_LABELS, type ViewTransition } from './use-workspace-session.ts';
 import { useCanvasScene } from './use-canvas-scene.ts';
 import { useDragProfile } from './use-drag-profile.ts';
+import { labelPinForEdge, pinLabelForEdge, upsertLabelPin, removeLabelPinForEdge } from '../model/label-pins.ts';
+import { sceneGeometryKey } from '../model/label-snapshots.ts';
 
 interface TransitionPreview {
   targetId: string;
@@ -69,6 +71,10 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const routesRef = useRef<Map<string, CachedRoute>>(new Map());
   const captureRendered = useRef<() => void>(() => {});
   const dragging = useRef(false);
+  const pendingFinish = useRef(false);
+  const deferredNavigation = useRef<(() => void) | undefined>(undefined);
+  const [finishRevision, setFinishRevision] = useState(0);
+  const requestFinish = useCallback(() => { pendingFinish.current = true; setFinishRevision((value) => value + 1); }, []);
   const fitView = useCallback((options: { padding: number; maxZoom: number }) => flow.fitView(options), [flow.fitView]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     if (preview) return;
@@ -102,9 +108,9 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       recordConstraint.current(performance.now() - started);
     }
     setNodes(next);
-    if (changes.some((change) => change.type === 'dimensions' && change.resizing === false)) finish();
-    if (moved.length && !dragging.current && !changes.some((change) => change.type === 'position' && change.dragging)) { captureRendered.current(); finish(); }
-  }, [baseline, begin, finish, flow.getZoom, links, preview, setNodes]);
+    if (changes.some((change) => change.type === 'dimensions' && change.resizing === false)) requestFinish();
+    if (moved.length && !dragging.current && !changes.some((change) => change.type === 'position' && change.dragging)) requestFinish();
+  }, [baseline, begin, requestFinish, flow.getZoom, links, preview, setNodes]);
 
   const toggleNode = useCallback((id: string) => {
     if (preview) return;
@@ -237,17 +243,19 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     setMessage(state === 'locked' ? '路径已锁定' : '路径已固定');
   }, [displayEdges, preview, selectedEdge, session]);
 
-  const selectView = useCallback((mode: CanvasViewMode) => {
+  const selectView = useCallback((mode: CanvasViewMode): void => {
     if (preview || mode === session.viewMode) return;
+    if (pendingFinish.current || dragging.current || session.transactionPending()) { deferredNavigation.current = () => selectView(mode); if (!dragging.current) requestFinish(); return; }
     captureRendered.current();
     session.saveViewport(flow.getViewport());
     const notice = session.switchView(mode);
     clearTransientState(); setMessage(notice);
-  }, [preview, session, flow.getViewport, clearTransientState]);
+  }, [preview, session, flow.getViewport, clearTransientState, requestFinish]);
 
-  const selectBaseline = useCallback((id: string) => {
+  const selectBaseline = useCallback((id: string): void => {
     if (preview) { setPreview(undefined); setMessage('已取消候选预览'); return; }
     if (id === baselineId) return;
+    if (pendingFinish.current || dragging.current || session.transactionPending()) { deferredNavigation.current = () => selectBaseline(id); if (!dragging.current) requestFinish(); return; }
     captureRendered.current();
     const targetIndex = props.baselines.findIndex((item) => item.id === id);
     const original = props.baselines[targetIndex]!;
@@ -295,13 +303,14 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     if (VIEW_MODES.every((mode) => (results[mode] as NavigationResult & { ok: true }).reused)) session.switchBaseline(id);
     else session.applyStageTransitions(id, results);
     setPreview(undefined); clearTransientState(); setMessage('三个视图已继承，待逐一审查并确认');
-  }, [baselineId, clearTransientState, flow.getViewport, preview, props.baselines, session]);
+  }, [baselineId, clearTransientState, flow.getViewport, preview, props.baselines, session, requestFinish]);
 
-  const confirmStage = useCallback(() => {
+  const confirmStage = useCallback((): void => {
     if (preview) return;
+    if (pendingFinish.current || dragging.current || session.transactionPending()) { deferredNavigation.current = confirmStage; if (!dragging.current) requestFinish(); return; }
     captureRendered.current(); session.confirm();
     setMessage(`已确认 ${VIEW_LABELS[session.viewMode]}`);
-  }, [preview, session]);
+  }, [preview, session, requestFinish]);
   const cancelPreview = useCallback(() => { setPreview(undefined); setMessage('已取消候选预览'); }, []);
   const adoptPreview = useCallback(() => {
     if (!preview?.reset) return;
@@ -341,8 +350,16 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   }, [baseline, commit, flow.fitView, preview, session.viewMode]);
   const closeConnections = useCallback(() => setConnectionEdge(undefined), []);
   const clearMessage = useCallback(() => setMessage(''), []);
-  const undo = useCallback(() => { if (!preview) { captureRendered.current(); session.undo(); setMessage(''); } }, [preview, session.undo]);
-  const redo = useCallback(() => { if (!preview) { captureRendered.current(); session.redo(); setMessage(''); } }, [preview, session.redo]);
+  const undo = useCallback((): void => {
+    if (preview) return;
+    if (pendingFinish.current || dragging.current || session.transactionPending()) { deferredNavigation.current = undo; if (!dragging.current) requestFinish(); return; }
+    captureRendered.current(); session.undo(); setMessage('');
+  }, [preview, session, requestFinish]);
+  const redo = useCallback((): void => {
+    if (preview) return;
+    if (pendingFinish.current || dragging.current || session.transactionPending()) { deferredNavigation.current = redo; if (!dragging.current) requestFinish(); return; }
+    captureRendered.current(); session.redo(); setMessage('');
+  }, [preview, session, requestFinish]);
 
   useEffect(() => { localStorage.setItem('architecture-theme', theme); }, [theme]);
   useEffect(() => {
@@ -369,13 +386,25 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     storedRoutes: preview?.state.edgeRoutes ?? session.edgeRoutes,
     storedDisplayRoutes: preview?.state.displayRoutes ?? session.displayRoutes,
     frozenGroups:preview?.state.frozenGroups??session.frozenGroups,
-    toggleNode, canToggleHierarchy: session.viewMode === 'structure', viewMode: session.viewMode, chooseEdge, renameNode, commitRename: finish,
+    labelPins: preview ? preview.state.labelPins ?? [] : session.labelPins,
+    toggleNode, canToggleHierarchy: session.viewMode === 'structure', viewMode: session.viewMode, chooseEdge, renameNode, commitRename: requestFinish,
   });
-  routesRef.current = scene.routes;
-  captureRendered.current = () => session.setDisplayRoutes(scene.snapshotRoutes(nodesRef.current));
   const selectedDisplayEdge = selectedEdge ? displayEdges.find((edge) => edge.id === selectedEdge) : undefined;
   const selectedCanonicalEdgeId = selectedDisplayEdge && !selectedDisplayEdge.aggregated ? selectedDisplayEdge.members[0]?.canonicalEdgeId : undefined;
   const selectedRouteState = selectedCanonicalEdgeId ? routeStateFor(session.edgeRoutes, selectedCanonicalEdgeId) : undefined;
+  const labelState = selectedDisplayEdge ? {
+    pinned: !!labelPinForEdge(session.labelPins, selectedDisplayEdge),
+    visible: !!scene.labelLayout.labels.get(selectedDisplayEdge.id)?.placement,
+  } : undefined;
+  const setLabelPinned = useCallback((pinned: boolean) => {
+    if (preview || !selectedDisplayEdge) return;
+    const label = scene.labelLayout.labels.get(selectedDisplayEdge.id)?.placement;
+    if (pinned && !label) return;
+    captureRendered.current();
+    session.commitContent((current) => ({ ...current, labelPins: pinned
+      ? upsertLabelPin(current.labelPins ?? [], pinLabelForEdge(selectedDisplayEdge, label!))
+      : removeLabelPinForEdge(current.labelPins ?? [], selectedDisplayEdge) }));
+  }, [preview, selectedDisplayEdge, scene.labelLayout, session.commitContent]);
   const dragProfile = useDragProfile(scene.routeStats);
   recordConstraint.current = dragProfile.recordConstraint;
   const beginDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=true; begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
@@ -388,15 +417,29 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
         ?? validateFrozenConnections(current, fitted.nodes, baseline.stage, session.routesRef.current, session.frozenRef.current)[0]?.message;
       if (issue) setMessage(issue); else setNodes(fitted.nodes);
     }
-    captureRendered.current(); dragging.current = false; finish(); dragProfile.stop(); setAlignment([]);
-  }, [baseline, dragProfile.stop, finish, preview, setNodes]);
+    dragging.current = false; requestFinish(); setAlignment([]);
+  }, [baseline, requestFinish, preview, setNodes]);
+  useLayoutEffect(() => {
+    const frame = scene.frame;
+    routesRef.current = scene.labelledRoutes;
+    const capture = () => {
+      if (preview || frame.baselineId !== baselineId || frame.geometryKey !== sceneGeometryKey(nodesRef.current)) return;
+      session.setDisplayRoutes(frame.snapshots, frame.geometryKey, frame.baselineId, frame.viewMode);
+    };
+    captureRendered.current = capture;
+    if (preview || frame.geometryKey !== sceneGeometryKey(nodesRef.current) || dragging.current) return;
+    if (pendingFinish.current) {
+      pendingFinish.current = false; capture(); finish(); dragProfile.stop();
+      const navigation = deferredNavigation.current; deferredNavigation.current = undefined; navigation?.();
+    } else session.cacheRenderedRoutes(frame.snapshots, frame.geometryKey, frame.baselineId, frame.viewMode);
+  }, [scene.frame.geometryKey, scene.frame.snapshots, scene.frame.viewMode, scene.labelledRoutes, baselineId, preview, finishRevision, finish, session.setDisplayRoutes, session.cacheRenderedRoutes, dragProfile.stop]);
   const saveViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => { if (!preview) session.saveViewport(viewport); }, [preview, session.saveViewport]);
   return {
     ...scene, ...session, saveViewport, undo, redo, baselines: props.baselines, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom,
     viewMode: session.viewMode, selectView, confirmedAt: session.confirmedAt, confirmationStatus: session.confirmationStatus,
     setSelectedEdge, setAlignment, onNodesChange, toggleNode, chooseEdge, selectBaseline, createGroup, dissolveGroup,
     setLayoutMode, freezeLayout, beginDrag, finishDrag, confirmStage, cancelPreview, adoptPreview, preview,
-    freezeSubgraph, unfreezeSelected, setEdgeRouteState, selectedRouteState,
+    freezeSubgraph, unfreezeSelected, setEdgeRouteState, selectedRouteState, labelState, setLabelPinned,
     dragProfile: dragProfile.result,
     zoomIn: () => flow.zoomIn(), zoomOut: () => flow.zoomOut(), fitView,
     connectionEdge, closeConnections, locateConnection, message, clearMessage,

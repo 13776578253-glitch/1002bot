@@ -22,7 +22,7 @@ function normalizeContent(value: unknown): CanvasBaselineContent {
   const normalized = normalizeWorkspaceView({ version: 2, baselineId: 'content', baselines: { content: { ...(record(value) ? value : {}), revision: 'content' } } });
   const item = normalized.baselines.content!;
   return { nodes: item.nodes, edgeRoutes: item.edgeRoutes, frozenGroups: item.frozenGroups,
-    ...(item.overlay ? { overlay: item.overlay } : {}), ...(item.displayRoutes ? { displayRoutes: item.displayRoutes } : {}) };
+    ...(item.overlay ? { overlay: item.overlay } : {}), ...(item.displayRoutes ? { displayRoutes: item.displayRoutes } : {}), ...(item.labelPins?.length ? { labelPins: item.labelPins } : {}) };
 }
 
 function normalizeSnapshot(value: unknown) {

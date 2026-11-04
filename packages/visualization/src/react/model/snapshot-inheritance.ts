@@ -4,6 +4,8 @@ import { endpointFingerprint } from './edge-routes.ts';
 import type { StageConflict } from './stage-types.ts';
 import type { CanvasBaselineContent, CanvasNodeView, DisplayRouteSnapshot, EdgeRouteSnapshot, FrozenGroupSnapshot } from './workspace.ts';
 import { legacyLayoutEdits, type NodeLayoutEdits } from './layout-intent.ts';
+import { labelPinKey, retainLabelPins } from './label-pins.ts';
+import type { EdgeLabelPin } from './workspace.ts';
 
 /** The parent and generated target used when the current target draft branched. */
 export interface StageInheritanceBase {
@@ -29,7 +31,7 @@ export function captureStageInheritance(input: StageInheritanceInput & { targetC
 /** Compare the actual confirmed parent and source, including when the parent keeps its revision. */
 export function needsStageRebase(base: StageInheritanceBase, current: StageInheritanceInput): boolean {
   return base.parentId !== current.parentId || base.parentRevision !== current.parentRevision
-    || !equal(base.parentContent, current.parentContent)
+    || !equal(authoredContent(base.parentContent), authoredContent(current.parentContent))
     || base.targetRevision !== (current.targetStage.graph.revision ?? current.targetStage.id)
     || !equal(base.targetStage, current.targetStage);
 }
@@ -43,6 +45,19 @@ function equal(a: unknown, b: unknown): boolean {
   const left = a as Record<string, unknown>, right = b as Record<string, unknown>;
   const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
   return keys.every((key) => equal(left[key], right[key]));
+}
+
+function routeIntent(route: EdgeRouteSnapshot): Omit<EdgeRouteSnapshot, 'label'> {
+  const { label: _label, ...intent } = route;
+  return intent;
+}
+
+/** Auto-projected paths and label rectangles are caches, not changes to the parent view. */
+function authoredContent(content: CanvasBaselineContent) {
+  const { displayRoutes: _displayRoutes, edgeRoutes, frozenGroups, labelPins, ...rest } = content;
+  return { ...rest, edgeRoutes: edgeRoutes.map(routeIntent), frozenGroups: frozenGroups.map((group) => ({
+    ...group, ...(group.previousRoutes ? { previousRoutes: group.previousRoutes.map(routeIntent) } : {}),
+  })), ...(labelPins?.length ? { labelPins: labelPins.map(({ memberFingerprints: _fingerprints, ...pin }) => pin) } : {}) };
 }
 
 function conflict(entityId: string, message: string): StageConflict {
@@ -118,18 +133,25 @@ function mergeEntity<T>(base: T | undefined, local: T | undefined, incoming: T |
   return choose(base, local, incoming, id, '内容', conflicts);
 }
 
-function mergeAtomicList<T>(base: readonly T[], local: readonly T[], incoming: readonly T[], key: (item: T) => string, conflicts: StageConflict[]): T[] {
-  const a = maps(base, key), b = maps(local, key), c = maps(incoming, key);
-  const order = [...new Set([...local.map(key), ...incoming.map(key), ...base.map(key)])];
-  return order.flatMap((id) => {
-    const merged = mergeEntity(a.get(id), b.get(id), c.get(id), id, conflicts);
-    return merged === undefined ? [] : [structuredClone(merged)];
+function mergeEdgeRoutes(base: readonly EdgeRouteSnapshot[], local: readonly EdgeRouteSnapshot[], incoming: readonly EdgeRouteSnapshot[], conflicts: StageConflict[]): EdgeRouteSnapshot[] {
+  const old = maps(base, (route) => route.canonicalEdgeId), here = maps(local, (route) => route.canonicalEdgeId), there = maps(incoming, (route) => route.canonicalEdgeId);
+  const ids = new Set([...old.keys(), ...here.keys(), ...there.keys()]);
+  return [...ids].flatMap((id) => {
+    const a = old.get(id), b = here.get(id), c = there.get(id);
+    const selected = mergeEntity(a && routeIntent(a), b && routeIntent(b), c && routeIntent(c), id, conflicts);
+    if (!selected) return [];
+    const source = c && equal(routeIntent(c), selected) ? c : b && equal(routeIntent(b), selected) ? b : a!;
+    return [structuredClone(source)];
   });
 }
 
 /** Text and canonical members belong to the current stage, while route geometry is editable. */
 function mergeDisplayRoutes(base: readonly DisplayRouteSnapshot[], local: readonly DisplayRouteSnapshot[], incoming: readonly DisplayRouteSnapshot[], targetStage: StageSnapshot): DisplayRouteSnapshot[] {
-  const geometry = (route: DisplayRouteSnapshot) => { const { text: _text, memberIds: _members, barrierKey: _barriers, ...value } = route; return value; };
+  const geometry = (route: DisplayRouteSnapshot) => { const { text: _text, memberIds: _members, barrierKey: _barriers, label: _label, labelAttachment: _attachment, labelIdentity: _identity, labelPolicyKey: _policy, labelRouteKey: _routeKey, ...value } = route; return value; };
+  const discardLabelCache = (route: DisplayRouteSnapshot): DisplayRouteSnapshot => {
+    const { labelAttachment: _attachment, labelIdentity: _identity, labelPolicyKey: _policy, labelRouteKey: _routeKey, ...path } = route;
+    return { ...structuredClone(path), label: { x: 0, y: 0, width: 0, height: 0 } };
+  };
   const a = maps(base.map(geometry), (route) => route.id), b = maps(local.map(geometry), (route) => route.id), c = maps(incoming.map(geometry), (route) => route.id);
   const currentText = maps(incoming, (route) => route.id), localText = maps(local, (route) => route.id);
   const edgeIds = new Set(targetStage.graph.edges.map((edge) => edge.id));
@@ -137,23 +159,22 @@ function mergeDisplayRoutes(base: readonly DisplayRouteSnapshot[], local: readon
   return order.flatMap((id) => {
     const hidden = localText.get(id);
     const metadata = currentText.get(id) ?? hidden;
-    if (!metadata?.memberIds.some(member => edgeIds.has(member))) return [];
+    if (!metadata?.memberIds.length || !metadata.memberIds.every(member => edgeIds.has(member))) return [];
     if (a.has(id) && hidden && !c.has(id)) {
-      const members = hidden.memberIds.filter((member) => edgeIds.has(member));
-      if (members.length) return [{ ...structuredClone(hidden), memberIds: members }];
+      if (hidden.memberIds.every((member) => edgeIds.has(member))) return [discardLabelCache(hidden)];
     }
-    const useLocal = b.has(id) && !equal(a.get(id), b.get(id));
-    const value = useLocal ? b.get(id) : c.get(id) ?? b.get(id);
-    if (!value) return [];
-    const source = currentText.get(id) ?? localText.get(id)!;
-    const geometrySource = useLocal ? hidden : currentText.get(id) ?? hidden;
-    return [{ ...structuredClone(value), text: source.text, memberIds: [...source.memberIds], ...(geometrySource?.barrierKey ? { barrierKey: geometrySource.barrierKey } : {}) }];
+    const newest = currentText.get(id);
+    const sameMembers = !hidden || !newest || equal([...hidden.memberIds].sort(), [...newest.memberIds].sort());
+    const useLocal = sameMembers && b.has(id) && !equal(a.get(id), b.get(id));
+    const value = useLocal ? hidden : newest ?? hidden;
+    if (!value || !sameMembers && !newest) return [];
+    return [discardLabelCache({ ...value, text: newest?.text ?? value.text })];
   });
 }
 
 /** Legacy worldBounds positions describe capture time; current geometry is owner-relative. */
 function frozenInvariant(group: FrozenGroupSnapshot) {
-  return { ...group, worldBounds: { w: group.worldBounds.w, h: group.worldBounds.h } };
+  return { ...group, ...(group.previousRoutes ? { previousRoutes: group.previousRoutes.map(routeIntent) } : {}), worldBounds: { w: group.worldBounds.w, h: group.worldBounds.h } };
 }
 
 function mergeFrozenGroups(base: readonly FrozenGroupSnapshot[], local: readonly FrozenGroupSnapshot[], incoming: readonly FrozenGroupSnapshot[], conflicts: StageConflict[]): FrozenGroupSnapshot[] {
@@ -163,8 +184,10 @@ function mergeFrozenGroups(base: readonly FrozenGroupSnapshot[], local: readonly
   return order.flatMap((id) => {
     const value = mergeEntity(a.get(id), b.get(id), c.get(id), id, conflicts);
     if (!value) return [];
-    const source = latest.get(id) ?? edited.get(id)!;
-    return [{ ...structuredClone(value), worldBounds: { ...value.worldBounds, x: source.worldBounds.x, y: source.worldBounds.y } }];
+    const newest = latest.get(id), local = edited.get(id);
+    const selected = newest && equal(frozenInvariant(newest), value) ? newest : local!;
+    const source = newest ?? local!;
+    return [{ ...structuredClone(selected), worldBounds: { ...value.worldBounds, x: source.worldBounds.x, y: source.worldBounds.y } }];
   });
 }
 
@@ -263,11 +286,22 @@ function mergeNodes(base: readonly CanvasNodeView[], local: readonly CanvasNodeV
   return result;
 }
 
-export function mergeStageContent(input: { base: CanvasBaselineContent; local: CanvasBaselineContent; incoming: CanvasBaselineContent; targetStage: StageSnapshot }): StageContentMerge {
-  const { base, local, incoming, targetStage } = input;
+export function mergeStageContent(input: { base: CanvasBaselineContent; local: CanvasBaselineContent; incoming: CanvasBaselineContent; targetStage: StageSnapshot; baseStage?: StageSnapshot; localStage?: StageSnapshot; incomingStage?: StageSnapshot }): StageContentMerge {
+  const { base, local, incoming, targetStage, baseStage, localStage, incomingStage } = input;
   const conflicts: StageConflict[] = [];
   const nodes = mergeNodes(base.nodes, local.nodes, incoming.nodes, conflicts);
-  const edgeRoutes = mergeAtomicList(base.edgeRoutes, local.edgeRoutes, incoming.edgeRoutes, (route: EdgeRouteSnapshot) => route.canonicalEdgeId, conflicts);
+  const oldPins = maps(retainLabelPins(base.labelPins ?? [], targetStage, nodes, baseStage), labelPinKey);
+  const localPins = maps(retainLabelPins(local.labelPins ?? [], targetStage, nodes, localStage), labelPinKey);
+  const incomingPins = maps(retainLabelPins(incoming.labelPins ?? [], targetStage, nodes, incomingStage), labelPinKey);
+  const labelPins: EdgeLabelPin[] = [];
+  for (const key of new Set([...oldPins.keys(), ...localPins.keys(), ...incomingPins.keys()])) {
+    const old = oldPins.get(key), here = localPins.get(key), there = incomingPins.get(key);
+    const withoutIdentity = (pin: EdgeLabelPin | undefined) => { if (!pin) return pin; const { memberFingerprints: _fingerprints, ...intent } = pin; return intent; };
+    const selected = equal(withoutIdentity(here), withoutIdentity(old)) ? there : here;
+    if (selected) labelPins.push(structuredClone(selected));
+  }
+  const retainedPins = retainLabelPins(labelPins, targetStage, nodes);
+  const edgeRoutes = mergeEdgeRoutes(base.edgeRoutes, local.edgeRoutes, incoming.edgeRoutes, conflicts);
   const displayRoutes = mergeDisplayRoutes(base.displayRoutes ?? [], local.displayRoutes ?? [], incoming.displayRoutes ?? [], targetStage);
   const frozenGroups = mergeFrozenGroups(base.frozenGroups, local.frozenGroups, incoming.frozenGroups, conflicts);
   const overlay = choose(base.overlay, local.overlay, incoming.overlay, 'overlay', '用户覆盖层', conflicts);
@@ -289,8 +323,8 @@ export function mergeStageContent(input: { base: CanvasBaselineContent; local: C
     if (route.state === 'auto') continue;
     const edge = edges.get(route.canonicalEdgeId);
     const retained = edgeRoutes.find((item) => item.canonicalEdgeId === route.canonicalEdgeId);
-    if (!edge || !retained || !equal(route, retained) || endpointFingerprint(edge) !== route.endpointFingerprint) conflicts.push(conflict(route.canonicalEdgeId, '上游变化影响了固定或锁定路径，请先处理路径冲突'));
+    if (!edge || !retained || !equal(routeIntent(route), routeIntent(retained)) || endpointFingerprint(edge) !== route.endpointFingerprint) conflicts.push(conflict(route.canonicalEdgeId, '上游变化影响了固定或锁定路径，请先处理路径冲突'));
   }
   if (conflicts.length) return { ok: false, conflicts };
-  return { ok: true, content: { nodes, edgeRoutes, frozenGroups, ...(overlay ? { overlay: structuredClone(overlay) } : {}), ...((base.displayRoutes || local.displayRoutes || incoming.displayRoutes) ? { displayRoutes } : {}) } };
+  return { ok: true, content: { nodes, edgeRoutes, frozenGroups, ...(overlay ? { overlay: structuredClone(overlay) } : {}), ...((base.displayRoutes || local.displayRoutes || incoming.displayRoutes) ? { displayRoutes } : {}), ...(retainedPins.length ? { labelPins: retainedPins } : {}) } };
 }

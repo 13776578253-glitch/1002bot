@@ -59,8 +59,9 @@ test('freezing captures internal routes as owner-relative locks and boundary rou
     assert.deepEqual(shifted[index], { x: original[index]!.x + 100, y: original[index]!.y + 50 });
   }
   const movedRoutes = applyStoredRoutes(routes, edges, captured, moved, projection);
-  assert.equal(movedRoutes.get('inside')!.label.x, routes.get('inside')!.label.x + 100);
-  assert.equal(movedRoutes.get('inside')!.label.y, routes.get('inside')!.label.y + 50);
+  assert.equal(inside.label, undefined);
+  assert.deepEqual(movedRoutes.get('inside')!.points, shifted);
+  assert.equal(movedRoutes.get('inside')!.label.width, 0);
   assert.equal(validateStoredRoutes(frozen.nodes, moved, captured, projection), undefined);
   const detached = frozen.nodes.map((node) => node.id === 'first' ? { ...node, position: { ...node.position, x: node.position.x + 25 } } : node);
   assert.match(validateStoredRoutes(frozen.nodes, detached, captured, projection)!, /端点/);

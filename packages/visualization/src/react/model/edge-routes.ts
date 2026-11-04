@@ -48,7 +48,7 @@ export function routeSnapshot(edge: DisplayEdge, route: CachedRoute, state: Edge
     points: origin ? route.points.map((point) => ({ x: point.x - origin.x, y: point.y - origin.y })) : route.points.map((point) => ({ ...point })),
     space: owner ? { kind: 'owner', ownerId: owner.rootId } : { kind: 'world' },
     endpointFingerprint: endpointFingerprint(canonical),
-    ...(route.label ? { label: origin ? { ...route.label, x: route.label.x - origin.x, y: route.label.y - origin.y } : { ...route.label } } : {}),
+    ...(route.label.width > 0 && route.label.height > 0 ? { label: origin ? { ...route.label, x: route.label.x - origin.x, y: route.label.y - origin.y } : { ...route.label } } : {}),
   };
 }
 
@@ -205,8 +205,8 @@ export function retainedCanonicalRoutes(nodes: readonly CanvasNode[], projection
       points = [start, { x: end.x, y: start.y }, end];
     }
     const origin = snapshot.space.kind === 'owner' ? worldPosition(nodes.find(node => node.id === (snapshot.space as { ownerId: string }).ownerId)!, nodes) : { x: 0, y: 0 };
-    const label = snapshot.label ? { ...snapshot.label, x: snapshot.label.x + origin.x, y: snapshot.label.y + origin.y } : retained.get(edge.id)?.label;
-    if (label) result.set(edge.id, { points, sourceHandle: snapshot.source.handle!, targetHandle: snapshot.target.handle!, label, text: edge.text });
+    const label = snapshot.label ? { ...snapshot.label, x: snapshot.label.x + origin.x, y: snapshot.label.y + origin.y } : { x: 0, y: 0, width: 0, height: 0 };
+    result.set(edge.id, { points, sourceHandle: snapshot.source.handle!, targetHandle: snapshot.target.handle!, label, text: edge.text });
   }
   return result;
 }

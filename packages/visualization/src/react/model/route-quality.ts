@@ -178,9 +178,7 @@ export function scoreRoutes(
   const weights = { ...DEFAULT_QUALITY_WEIGHTS, ...options.weights };
   const metrics = measureRoutes(routes);
   let score = metrics.length * weights.length + metrics.bends * weights.bends + metrics.crossings * weights.crossings
-    + metrics.unintendedOverlap * weights.overlap + metrics.portCrowding * weights.port + metrics.channelStability * weights.channel
-    + metrics.labelScore * weights.label + metrics.labelOverlaps * 10
-    + (options.hiddenPenalty ?? weights.hidden) * metrics.labelHidden + metrics.labelOwnerMisses * weights.owner;
+    + metrics.unintendedOverlap * weights.overlap + metrics.portCrowding * weights.port + metrics.channelStability * weights.channel;
   for (const route of routes) {
     const sides = options.preferred?.get(route.edgeId);
     if (!sides) continue;

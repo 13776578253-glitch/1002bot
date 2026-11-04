@@ -72,6 +72,7 @@ function canvasContent(stage: CanvasBaselineView): CanvasBaselineContent {
     nodes: stage.nodes, edgeRoutes: stage.edgeRoutes, frozenGroups: stage.frozenGroups,
     ...(stage.overlay ? { overlay: stage.overlay } : {}),
     ...(stage.displayRoutes ? { displayRoutes: stage.displayRoutes } : {}),
+    ...(stage.labelPins?.length ? { labelPins: stage.labelPins } : {}),
   };
 }
 

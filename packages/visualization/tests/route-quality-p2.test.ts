@@ -77,6 +77,16 @@ test('label ownership penalises labels far from their own route', () => {
   assert.equal(far.labelOwnerMisses, 1);
 });
 
+test('path mode scoring ignores label location and visibility', () => {
+  const path = [{ x: 0, y: 0 }, { x: 200, y: 0 }];
+  const near: QualityRoute = { edgeId: 'a', points: path, label: { x: 100, y: 0, width: 40, height: 20 } };
+  const far: QualityRoute = { edgeId: 'a', points: path, label: { x: 100, y: 200, width: 40, height: 20 } };
+  const hidden: QualityRoute = { edgeId: 'a', points: path, labelRequired: true, labelState: 'space-exhausted' };
+  assert.equal(scoreRoutes([near]).score, scoreRoutes([far]).score);
+  assert.equal(scoreRoutes([near]).score, scoreRoutes([hidden]).score);
+  assert.equal(measureRoutes([far]).labelOwnerMisses, 1);
+});
+
 test('port and channel metrics use global node-scoped identities', () => {
   const metrics = measureRoutes([
     { edgeId: 'a', points: [{ x: 0, y: 0 }, { x: 0, y: 100 }], sourceSlot: { nodeId: 'A', side: 'bottom', role: 'source', index: 0, physicalId: 'bottom:0', handleId: 'bottom:source:0', fraction: 0.2, capacity: 1 }, targetSlot: { nodeId: 'B', side: 'top', role: 'target', index: 0, physicalId: 'top:0', handleId: 'top:target:0', fraction: 0.2, capacity: 1 } },

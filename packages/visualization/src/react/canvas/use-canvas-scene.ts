@@ -14,10 +14,14 @@ import { routingFallback, type RoutingFallbackReason, type RoutingStatus } from 
 import type { DisplayEdge } from '../model/display-edges.ts';
 import { applyStoredRoutes, reservedLockedRoutes, retainedCanonicalRoutes } from '../model/edge-routes.ts';
 import type { EdgeRouteSnapshot } from '../model/workspace.ts';
-import type { CanvasViewMode, DisplayRouteSnapshot, FrozenGroupSnapshot } from '../model/workspace.ts';
-import { captureDisplayRoutes, retainedDisplayRoutes } from '../model/display-route-snapshots.ts';
+import type { DisplayRouteSnapshot, FrozenGroupSnapshot } from '../model/workspace.ts';
+import { retainedDisplayRoutes } from '../model/display-route-snapshots.ts';
 import { clipAlignmentGuides } from '../model/guides.ts';
 import type { AlignmentGuide } from '../model/constraints.ts';
+import { LabelLayoutCache } from '../model/label-layout.ts';
+import { labelPinForEdge } from '../model/label-pins.ts';
+import type { EdgeLabelPin, CanvasViewMode } from '../model/workspace.ts';
+import { captureLabelledRoutes, labelIdentity, labelSeeds, sceneGeometryKey } from '../model/label-snapshots.ts';
 
 interface SceneState {
   nodes: CanvasNode[];
@@ -32,6 +36,7 @@ interface SceneState {
   storedRoutes?: readonly EdgeRouteSnapshot[];
   storedDisplayRoutes?: readonly DisplayRouteSnapshot[];
   frozenGroups?: readonly FrozenGroupSnapshot[];
+  labelPins?: readonly EdgeLabelPin[];
   toggleNode(id: string): void;
   canToggleHierarchy: boolean;
   viewMode: CanvasViewMode;
@@ -40,8 +45,8 @@ interface SceneState {
   commitRename(): void;
 }
 
-export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, canToggleHierarchy, viewMode, chooseEdge, renameNode, commitRename, readOnly = false, engine = 'legacy', storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[] }: SceneState) {
-  const geometryKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}:${node.type}:${node.position.x},${node.position.y},${node.width},${node.height}`).join('|');
+export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, canToggleHierarchy, viewMode, chooseEdge, renameNode, commitRename, readOnly = false, engine = 'legacy', storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[], labelPins=[] }: SceneState) {
+  const geometryKey = sceneGeometryKey(nodes);
   const parentKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}`).join('|');
   const selectedKey = nodes.filter((node) => node.selected).map((node) => node.id).join('|');
   const portPolicy = baseline.stage.presentation?.portPolicy;
@@ -88,6 +93,24 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const selectedRoutes = selectCanvasRoutes(resolved.routes ?? new Map(), groupOutcome, expectedIds);
   const routes = selectedRoutes.routes;
   const routingEngine = selectedRoutes.engine;
+  const labelCaches = useRef(new WeakMap<VisualizationBaseline, LabelLayoutCache>());
+  let labelCache = labelCaches.current.get(baseline);
+  if (!labelCache) { labelCache = new LabelLayoutCache(); labelCaches.current.set(baseline, labelCache); }
+  const labelDraft = useMemo(() => {
+    const draft = labelCache.fork();
+    const layout = draft.update(nodes, projection, displayEdges.map((edge) => {
+    const fixed = labelPinForEdge(labelPins, edge)?.label;
+    return { id: edge.id, text: edge.text, identity: labelIdentity(edge), priority: edge.change.kind === 'added' || edge.change.kind === 'replaced' ? 2 : 1, ...(fixed ? { fixed } : {}) };
+    }), routes, labelSeeds(storedDisplayRoutes, displayEdges));
+    return { draft, layout };
+  }, [labelCache, routes, geometryKey, projection, displayEdges, labelPins, storedDisplayRoutes]);
+  const labelLayout = labelDraft.layout;
+  useLayoutEffect(() => { labelCache.adopt(labelDraft.draft); }, [labelCache, labelDraft]);
+  const snapshotLabels = useMemo(() => new Map([...routes].map(([id, route]) => {
+    const label = labelLayout.labels.get(id)?.placement;
+    return [id, { ...route, label: label ?? { x: 0, y: 0, width: 0, height: 0 } }];
+  })), [routes, labelLayout]);
+  const snapshots = useMemo(() => captureLabelledRoutes(nodes, projection, displayEdges, routes, labelLayout.labels, reserved, portPolicy), [geometryKey, projection, displayEdges, routes, labelLayout.labels, reserved, portPolicy]);
   useLayoutEffect(() => {
     lastRenderedEngine.current = routingEngine;
     lastVisibleRoutes.current = routes;
@@ -127,24 +150,27 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
     return counts;
   }, [parentKey]);
   const leafIds = useMemo(() => leafMembers(nodes, new Set(nodes.filter((node) => node.selected).map((node) => node.id))), [selectedKey, parentKey]);
-  const edgeCache = useRef(new Map<string, { route: unknown; source: DisplayEdge; active: boolean; selected: boolean; callback: unknown; value: Edge<LinkData> }>());
+  const edgeCache = useRef(new Map<string, { route: unknown; label: unknown; source: DisplayEdge; active: boolean; selected: boolean; muted: boolean; callback: unknown; value: Edge<LinkData> }>());
   const connected = new Set<string>();
   const nextEdges = displayEdges.map((edge): Edge<LinkData> => {
     const route = routes.get(edge.id)!;
     const active = edge.id === selectedEdge || edge.members.some((member) => member.canonicalEdgeId === selectedEdge || leafIds.has(member.source.canonicalNodeId) || leafIds.has(member.target.canonicalNodeId));
     const selected = edge.id === selectedEdge || edge.members.some((member) => member.canonicalEdgeId === selectedEdge);
+    const muted = Boolean(selectedEdge || leafIds.size) && !active;
+    const label = labelLayout.labels.get(edge.id)!;
     if (active) { connected.add(edge.source); connected.add(edge.target); }
     const cached = edgeCache.current.get(edge.id);
-    if (cached && cached.route === route && cached.source === edge && cached.active === active && cached.selected === selected && cached.callback === chooseEdge) return cached.value;
+    if (cached && cached.route === route && cached.label === label && cached.source === edge && cached.active === active && cached.selected === selected && cached.muted === muted && cached.callback === chooseEdge) return cached.value;
     const marker = { type: MarkerType.ArrowClosed, color: `var(--change-${edge.change.kind})`, width: 16, height: 16 };
     const value: Edge<LinkData> = {
       id: edge.id, source: edge.source, target: edge.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle,
       type: 'link', label: edge.text, selected, zIndex: 50,
-      data: { active, relation: edge.relation, change: edge.change, points: route.points, label: route.label, labelFallback: route.labelFallback, labelState: route.labelState, onSelect: chooseEdge, ...(edge.aggregated ? { counts: { added: edge.added, replaced: edge.replaced, title: edge.text.split(' · ')[0]! } } : {}) },
+      ariaLabel: `连接：${edge.text}`,
+      data: { active, muted, relation: edge.relation, change: edge.change, points: route.points, label: label.placement ?? { x: 0, y: 0, width: 0, height: 0 }, labelText: label.text, labelState: label.state === 'fixed' ? 'normal' : label.state, onSelect: chooseEdge },
       style: { stroke: `var(--change-${edge.change.kind})`, strokeWidth: active ? 2.3 : 1.5, ...(edge.members[0]?.edge.semantics === 'dependency' ? { strokeDasharray: '3 5' } : edge.relation === 'event' ? { strokeDasharray: '5 5' } : {}) },
       markerEnd: marker, ...(edge.direction === 'bidirectional' ? { markerStart: marker } : {}),
     };
-    edgeCache.current.set(edge.id, { route, source: edge, active, selected, callback: chooseEdge, value });
+    edgeCache.current.set(edge.id, { route, label, source: edge, active, selected, muted, callback: chooseEdge, value });
     return value;
   });
   for (const id of edgeCache.current.keys()) if (!routes.has(id)) edgeCache.current.delete(id);
@@ -177,11 +203,11 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const roots = nodes.filter((node) => selectedRoots.has(node.id) && nodeIsVisible(node, nodes, projection));
   const selectedGroup = selected.length === 1 && selected[0]?.type === 'cluster' ? selected[0] : undefined;
   const guideBlockers = alignment.length ? displayNodes.filter((node) => !node.hidden).map((node) => ({ ...worldPosition(node, nodes), w: node.width!, h: node.type === 'card' ? node.height! : node.type === 'structure' ? structureHeaderHeight(node) : 54 })) : [];
-  if (alignment.length) for (const { label } of routes.values()) guideBlockers.push({ x: label.x - label.width / 2, y: label.y - label.height / 2, w: label.width, h: label.height });
+  if (alignment.length) for (const { placement } of labelLayout.labels.values()) if (placement) guideBlockers.push({ x: placement.x - placement.width / 2, y: placement.y - placement.height / 2, w: placement.width, h: placement.height });
   return {
     displayNodes, edges, routes, routingEngine, routingStatus, blockedRoutes: [...routes].filter(([, route]) => route.feasible === false).map(([id]) => id), visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
     selectionLabel: roots.length > 1 ? `已选 ${roots.length} 项` : roots[0]?.data.title ?? '',
-    selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats,
-    snapshotRoutes: (_current: CanvasNode[]) => captureDisplayRoutes(nodes, projection, displayEdges, routes, reserved, portPolicy),
+    selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats, labelLayout, labelledRoutes: snapshotLabels,
+    frame: { geometryKey, baselineId: baseline.id, viewMode, snapshots },
   };
 }

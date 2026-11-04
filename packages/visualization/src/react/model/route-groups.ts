@@ -1,8 +1,7 @@
 /** Offline star-group routing: shared ports, four modes and repeatable candidates. */
 import type { Projection } from '../../core/projection/index.ts';
-import { obstacleFromRect, rectIntersects, routeOrthogonal, simplifyPoints, type Point, type PortSide, type Rect } from '../../core/layout/geometry.ts';
-import { labelCandidatesForRoute, type LabelCandidate } from './label-candidates.ts';
-import { fallbackLabel } from './labels.ts';
+import { obstacleFromRect, routeOrthogonal, simplifyPoints, type Point, type PortSide, type Rect } from '../../core/layout/geometry.ts';
+import type { LabelCandidate } from './label-candidates.ts';
 import { scoreRoutes } from './route-quality.ts';
 import { validateRoute } from '../../core/layout/legality.ts';
 import {
@@ -325,48 +324,6 @@ function planMode(
   return { planned, failures };
 }
 
-function selectLabels(routes: GroupCandidate[], edges: Map<string, GroupEdgeInput>, geometry: DiagramGeometry, occupied: Rect[]): void {
-  const candidates = new Map<string, LabelCandidate[]>();
-  for (const route of routes) {
-    const edge = edges.get(route.edgeId);
-    const required = edge?.labelRequired ?? Boolean(edge?.text.trim());
-    route.labelRequired = required;
-    const text = edge?.text ?? '';
-    candidates.set(route.edgeId, required ? labelCandidatesForRoute(route.points, text, geometry, route.trunkId ? 1 : 0) : []);
-  }
-  interface State { placements: Map<string, LabelCandidate>; hidden: number; score: number }
-  let beam: State[] = [{ placements: new Map(), hidden: 0, score: 0 }];
-  const order = [...routes].sort((a, b) => (candidates.get(a.edgeId)?.length ?? 0) - (candidates.get(b.edgeId)?.length ?? 0) || a.edgeId.localeCompare(b.edgeId));
-  for (const route of order) {
-    const list = candidates.get(route.edgeId) ?? [];
-    route.labelCandidates = list;
-    const next: State[] = [];
-    for (const state of beam) {
-      for (const candidate of list) {
-        const blocked = [...state.placements.values(), ...occupied.map((rect) => ({ rect }))].some((item) => rectIntersects(item.rect, candidate.rect));
-        if (blocked) continue;
-        const placements = new Map(state.placements);
-        placements.set(route.edgeId, candidate);
-        next.push({ placements, hidden: state.hidden, score: state.score + candidate.score });
-      }
-      next.push({ placements: state.placements, hidden: state.hidden + (route.labelRequired ? 1 : 0), score: state.score + (route.labelRequired ? 40 : 0) });
-    }
-    next.sort((a, b) => a.hidden - b.hidden || a.score - b.score);
-    beam = next.slice(0, 4);
-  }
-  const best = beam[0]!;
-  for (const route of routes) {
-    const candidate = best.placements.get(route.edgeId);
-    if (candidate) {
-      route.label = candidate;
-      route.labelState = candidate.state;
-    } else {
-      delete route.label;
-      route.labelState = 'space-exhausted';
-    }
-  }
-}
-
 export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
   const started = performance.now();
   const rules: SlotRules = { ...DEFAULT_SLOT_RULES, ...input.rules };
@@ -385,7 +342,7 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
   const byId = new Map(input.edges.map((edge) => [edge.id, edge]));
   const routes = new Map<string, CachedRoute>();
   const fixedPorts = new Map<string, SlotGrant[]>();
-  for (const edge of input.edges) if (edge.fixed) routes.set(edge.id, edge.fixed);
+  for (const edge of input.edges) if (edge.fixed) routes.set(edge.id, edge.fixed.text === edge.text ? edge.fixed : { ...edge.fixed, text: edge.text });
   const failures: GroupFailure[] = [];
   let candidates = 0;
 
@@ -479,25 +436,18 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
           modeFailures.push({ edgeId: item.edge.id, reason: budgetEdge.expired ? 'budget' : 'no-candidate' });
           continue;
         }
-        const edgeInput = byId.get(item.edge.id);
         groupRoutes.push({
           edgeId: item.edge.id, points, sourceSlot: item.source.slot, targetSlot: item.target.slot,
           sourceHandle: item.source.slot.handleId, targetHandle: item.target.slot.handleId,
           mode, score: 0, ...(trunk ? { trunkId: trunk, trunkSegment: { from: sourceAnchor, to: start } } : {}),
           ...(item.lane === undefined ? {} : { lane: item.lane }),
-          labelRequired: edgeInput?.labelRequired ?? Boolean(edgeInput?.text.trim()),
-          labelCandidates: [], labelState: 'space-exhausted',
+          labelRequired: false, labelCandidates: [], labelState: 'normal',
         });
       }
-      const fixedLabels: Rect[] = input.edges.flatMap((edge) => edge.fixed ? [{ x: edge.fixed.label.x - edge.fixed.label.width / 2, y: edge.fixed.label.y - edge.fixed.label.height / 2, w: edge.fixed.label.width, h: edge.fixed.label.height }] : []);
-      selectLabels(groupRoutes, byId, geometry, fixedLabels);
       const quality = scoreRoutes(groupRoutes.map((route) => ({
         edgeId: route.edgeId, points: route.points, sourceSlot: route.sourceSlot, targetSlot: route.targetSlot,
         ...(route.trunkId ? { trunkId: route.trunkId } : {}),
         ...(route.trunkSegment ? { trunkSegment: route.trunkSegment } : {}),
-        ...(route.label ? { label: { x: route.label.anchor.x, y: route.label.anchor.y, width: route.label.rect.w, height: route.label.rect.h, score: route.label.score, segmentKind: route.label.segmentKind, distanceToTarget: route.label.distanceToTarget } } : {}),
-        labelRequired: route.labelRequired,
-        labelState: route.labelState,
       })), { preferred });
       const isComplete = groupRoutes.length === planEdgeCount;
       const score = isComplete ? quality.score : Infinity;
@@ -529,11 +479,9 @@ export function solveRouteGroups(input: GroupSolveInput): GroupSolveOutcome {
       routes.set(route.edgeId, {
         sourceHandle: route.sourceHandle, targetHandle: route.targetHandle,
         points: route.points,
-        label: route.label
-          ? { x: route.label.anchor.x, y: route.label.anchor.y, width: route.label.rect.w, height: route.label.rect.h }
-          : { x: midpoint.x, y: midpoint.y, width: 0, height: 0 },
-        ...(route.labelState === 'space-exhausted' && text.trim() ? { labelFallback: fallbackLabel(text, midpoint) } : {}),
-        labelState: route.labelState,
+        ...(route.trunkId ? { trunkId: route.trunkId } : {}),
+        ...(route.trunkSegment ? { trunkSegment: route.trunkSegment } : {}),
+        label: { x: midpoint.x, y: midpoint.y, width: 0, height: 0 },
         text,
       });
     }

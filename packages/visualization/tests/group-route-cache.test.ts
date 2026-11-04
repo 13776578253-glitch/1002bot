@@ -49,6 +49,23 @@ test('group cache returns the same outcome and routes on unchanged input', () =>
   assert.equal(second.outcome?.ok && second.outcome.routes, first.outcome?.ok && first.outcome.routes);
 });
 
+test('text changes update route metadata without changing group paths or solving', () => {
+  const cache = new GroupRouteCache();
+  const first = cache.update(fixture(nodes, edges));
+  assert.equal(first.outcome?.ok, true);
+  if (!first.outcome?.ok) return;
+  const changed = edges.map((edge) => edge.id === 'hubA-a1' ? { ...edge, text: 'A renamed' } : edge);
+  const next = cache.update(fixture(nodes, changed));
+  assert.equal(next.stats.mode, 'hit');
+  assert.equal(next.stats.solvedGroups, 0);
+  assert.equal(next.outcome?.ok, true);
+  if (!next.outcome?.ok) return;
+  assert.equal(next.outcome.routes.get('hubA-a1')!.points, first.outcome.routes.get('hubA-a1')!.points);
+  assert.equal(next.outcome.routes.get('hubA-a1')!.sourceHandle, first.outcome.routes.get('hubA-a1')!.sourceHandle);
+  assert.equal(next.outcome.routes.get('hubA-a1')!.text, 'A renamed');
+  assert.equal(next.outcome.routes.get('hubB-b1'), first.outcome.routes.get('hubB-b1'));
+});
+
 test('moving one star leaf re-solves only its group and keeps the other route objects', () => {
   const cache = new GroupRouteCache();
   const first = cache.update(fixture(nodes, edges));

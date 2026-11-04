@@ -200,6 +200,20 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   const edgeRoutes = checkEdgeRoutes(raw.edgeRoutes);
   const frozenGroups = checkFrozenGroups(raw.frozenGroups, nodes);
   const overlay = checkOverlay(raw.overlay);
+  if (raw.labelPins !== undefined) {
+    if (!Array.isArray(raw.labelPins)) throw new Error('标签固定位置格式不正确');
+    const ids = new Set<string>();
+    for (const pin of raw.labelPins) {
+      if (!isRecord(pin) || !isText(pin.id) || !isText(pin.source) || !isText(pin.target) || !Array.isArray(pin.memberIds) || !pin.memberIds.length || !pin.memberIds.every(isText) || new Set(pin.memberIds).size !== pin.memberIds.length || !isRecord(pin.label)) throw new Error('标签固定位置格式不正确');
+      for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(pin.label[key])) throw new Error('标签固定位置格式不正确');
+      if (Number(pin.label.width) <= 0 || Number(pin.label.height) <= 0) throw new Error('标签固定位置格式不正确');
+      if (pin.memberFingerprints !== undefined && (!isRecord(pin.memberFingerprints) || Object.keys(pin.memberFingerprints).length !== pin.memberIds.length || pin.memberIds.some((id) => !isText((pin.memberFingerprints as UnknownRecord)[String(id)])))) throw new Error('标签固定身份格式不正确');
+      const key = JSON.stringify([pin.id, pin.source, pin.target, [...pin.memberIds].sort()]);
+      if (ids.has(key)) throw new Error('标签固定位置重复');
+      ids.add(key);
+    }
+  }
+  let displayRoutes: CanvasBaselineContent['displayRoutes'];
   if (raw.displayRoutes !== undefined) {
     if (!Array.isArray(raw.displayRoutes)) throw new Error('投影路径快照格式不正确');
     for (const route of raw.displayRoutes) {
@@ -213,8 +227,19 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
       }
       for (const key of ['x', 'y', 'width', 'height']) if (!isFiniteNumber(route.label[key])) throw new Error('投影路径标签格式不正确');
     }
+    displayRoutes = raw.displayRoutes.map((rawRoute) => {
+      const route = structuredClone(rawRoute) as UnknownRecord, anchor = route.labelAttachment;
+      const validPoint = (point: unknown) => isRecord(point) && isFiniteNumber(point.x) && isFiniteNumber(point.y);
+      const valid = isText(route.labelPolicyKey) && isText(route.labelIdentity) && isText(route.labelRouteKey) && isRecord(anchor)
+        && ['horizontal', 'vertical', 'diagonal'].includes(String(anchor.axis)) && ['inline', 'negative', 'positive'].includes(String(anchor.side))
+        && isFiniteNumber(anchor.fraction) && anchor.fraction >= 0 && anchor.fraction <= 1
+        && isFiniteNumber(anchor.pathFraction) && anchor.pathFraction >= 0 && anchor.pathFraction <= 1 && isFiniteNumber(anchor.offset)
+        && ['from', 'to', 'projected', 'pathStart', 'pathEnd'].every((key) => validPoint(anchor[key]));
+      if (!valid) { delete route.labelAttachment; delete route.labelIdentity; delete route.labelPolicyKey; delete route.labelRouteKey; }
+      return route as unknown as NonNullable<CanvasBaselineContent['displayRoutes']>[number];
+    });
   }
-  return { nodes, edgeRoutes, frozenGroups, ...(overlay ? { overlay } : {}), ...(raw.displayRoutes ? { displayRoutes: raw.displayRoutes as NonNullable<CanvasBaselineContent['displayRoutes']> } : {}) };
+  return { nodes, edgeRoutes, frozenGroups, ...(overlay ? { overlay } : {}), ...(displayRoutes ? { displayRoutes } : {}), ...(Array.isArray(raw.labelPins) && raw.labelPins.length ? { labelPins: structuredClone(raw.labelPins) as NonNullable<CanvasBaselineContent['labelPins']> } : {}) };
 }
 
 function checkInheritance(raw: unknown): StageInheritanceBase | undefined {

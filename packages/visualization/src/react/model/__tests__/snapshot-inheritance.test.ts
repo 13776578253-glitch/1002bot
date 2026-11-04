@@ -37,6 +37,26 @@ test('inheritance stores an independent base and detects same-revision parent ed
   assert.equal(needsStageRebase(persisted, { parentId: 'parent-stage', parentRevision: 'r1', parentContent: base.parentContent, targetStage: { ...targetStage, graph: { ...targetStage.graph, revision: 'two' } } }), true);
 });
 
+test('automatic label caches do not trigger rebase or override updated incoming path geometry', () => {
+  const stage = graph(), old = baseContent();
+  const display: DisplayRouteSnapshot = { id: 'link', source: 'child', target: 'other', memberIds: ['link'], sourceHandle: 'out', targetHandle: 'in', points: [{ x: 100, y: 0 }, { x: 700, y: 0 }], label: { x: 400, y: 0, width: 80, height: 24 }, text: 'link', sourceBounds: { x: 100, y: 0, w: 100, h: 50 }, targetBounds: { x: 700, y: 0, w: 100, h: 50 } };
+  old.displayRoutes = [display];
+  old.edgeRoutes = [{ canonicalEdgeId: 'link', state: 'auto', source: { nodeId: 'child' }, target: { nodeId: 'other' }, points: display.points, space: { kind: 'world' }, endpointFingerprint: endpointFingerprint(stage.graph.edges[0]!), label: display.label }];
+  const local = structuredClone(old), incoming = structuredClone(old);
+  local.displayRoutes![0]!.label.x += 100;
+  local.edgeRoutes[0]!.label!.x += 100;
+  const base = captureStageInheritance({ parentId: 'parent-stage', parentRevision: 'r1', parentContent: old, targetStage: stage, targetContent: old });
+  assert.equal(needsStageRebase(base, { parentId: 'parent-stage', parentRevision: 'r1', parentContent: local, targetStage: stage }), false);
+  incoming.displayRoutes![0]!.points[1]!.x = 800;
+  incoming.edgeRoutes[0]!.points[1]!.x = 800;
+  const result = mergeStageContent({ base: old, local, incoming, targetStage: stage });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.content.displayRoutes![0]!.points[1]!.x, 800);
+  assert.equal(result.content.edgeRoutes[0]!.points[1]!.x, 800);
+  assert.equal(result.content.displayRoutes![0]!.label.width, 0);
+});
+
 test('parent movement and a disjoint local edit merge using world coordinates', () => {
   const base = baseContent(), local = structuredClone(base), incoming = structuredClone(base);
   local.nodes.find((node) => node.id === 'child')!.data.layoutMode = 'fixed';
@@ -151,20 +171,24 @@ test('concurrent independent routes merge by canonical identity', () => {
   if (result.ok) { assert.deepEqual(result.content.edgeRoutes, [route]); assert.ok(result.content.nodes.some((item) => item.id === 'new')); }
 });
 
-test('display route source text changes merge with a local geometry edit', () => {
+test('display routes retain matching local geometry while changed aggregate membership uses incoming geometry', () => {
   const base = baseContent(), local = structuredClone(base), incoming = structuredClone(base);
   const route: DisplayRouteSnapshot = { id: 'link', source: 'child', target: 'other', memberIds: ['link'], sourceHandle: 'return-out', targetHandle: 'left-in', points: [{ x: 1, y: 2 }, { x: 30, y: 2 }], label: { x: 15, y: 2, width: 40, height: 18 }, text: '调用', sourceBounds: { x: 0, y: 0, w: 100, h: 50 }, targetBounds: { x: 300, y: 0, w: 100, h: 50 } };
   base.displayRoutes = [structuredClone(route)]; local.displayRoutes = [structuredClone(route)]; incoming.displayRoutes = [structuredClone(route)];
-  local.displayRoutes[0]!.label.x += 10;
+  local.displayRoutes[0]!.points[1]!.x = 40;
   incoming.displayRoutes[0]!.text = '调用 · 新增 1';
+  const sameMembers = mergeStageContent({ base, local, incoming, targetStage: graph() });
+  assert.equal(sameMembers.ok, true);
+  if (sameMembers.ok) { assert.equal(sameMembers.content.displayRoutes![0]!.points[1]!.x, 40); assert.equal(sameMembers.content.displayRoutes![0]!.text, '调用 · 新增 1'); }
   incoming.displayRoutes[0]!.memberIds.push('additional-link');
-  const result = mergeStageContent({ base, local, incoming, targetStage: graph() });
+  const originalStage = graph(), stage = { ...originalStage, graph: { ...originalStage.graph, edges: [...originalStage.graph.edges, { ...originalStage.graph.edges[0]!, id: 'additional-link' }] } };
+  const result = mergeStageContent({ base, local, incoming, targetStage: stage });
   assert.equal(result.ok, true);
-  if (result.ok) { assert.equal(result.content.displayRoutes![0]!.label.x, 25); assert.equal(result.content.displayRoutes![0]!.text, '调用 · 新增 1'); assert.deepEqual(result.content.displayRoutes![0]!.memberIds, ['link', 'additional-link']); }
+  if (result.ok) { assert.equal(result.content.displayRoutes![0]!.points[1]!.x, 30); assert.equal(result.content.displayRoutes![0]!.label.width, 0); assert.equal(result.content.displayRoutes![0]!.text, '调用 · 新增 1'); assert.deepEqual(result.content.displayRoutes![0]!.memberIds, ['link', 'additional-link']); }
   incoming.displayRoutes[0]!.points[1]!.x = 80;
-  const hints = mergeStageContent({ base, local, incoming, targetStage: graph() });
+  const hints = mergeStageContent({ base, local, incoming, targetStage: stage });
   assert.equal(hints.ok, true);
-  if (hints.ok) assert.equal(hints.content.displayRoutes![0]!.label.x, 25);
+  if (hints.ok) assert.equal(hints.content.displayRoutes![0]!.points[1]!.x, 80);
 });
 
 test('a locally edited display route is revalidated when upstream locked obstacles change', () => {
@@ -187,7 +211,7 @@ test('a locally edited display route is revalidated when upstream locked obstacl
   const result = mergeStageContent({ base, local, incoming, targetStage: stage });
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.content.displayRoutes![0]!.barrierKey, local.displayRoutes[0]!.barrierKey);
+  assert.equal(result.content.displayRoutes![0]!.barrierKey, incoming.displayRoutes[0]!.barrierKey);
   assert.equal(retainedDisplayRoutes(nodes, projection, edges, result.content.displayRoutes, newBarrier).size, 0);
   const unedited = mergeStageContent({ base, local: base, incoming, targetStage: stage });
   assert.equal(unedited.ok, true);
@@ -237,7 +261,7 @@ test('temporarily hidden display paths survive a rebase while their canonical ed
   base.displayRoutes = [structuredClone(route)]; local.displayRoutes = [structuredClone(route)]; incoming.displayRoutes = [];
   const hidden = mergeStageContent({ base, local, incoming, targetStage: graph() });
   assert.equal(hidden.ok, true);
-  if (hidden.ok) assert.deepEqual(hidden.content.displayRoutes, [route]);
+  if (hidden.ok) assert.deepEqual(hidden.content.displayRoutes, [{ ...route, label: { x: 0, y: 0, width: 0, height: 0 } }]);
   const stage = graph();
   const deleted = mergeStageContent({ base, local, incoming, targetStage: { ...stage, graph: { ...stage.graph, edges: [] } } });
   assert.equal(deleted.ok, true);

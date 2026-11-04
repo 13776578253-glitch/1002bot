@@ -14,11 +14,13 @@ export interface ConnectionPanelProps {
   message?: string;
   routeState?: EdgeRouteState;
   onRouteState?(state: EdgeRouteState): void;
+  labelState?: { pinned: boolean; visible: boolean };
+  onLabelPinChange?(pinned: boolean): void;
 }
 
 const routeNames: Record<EdgeRouteState, string> = { auto: '自动', pinned: '固定', locked: '锁定' };
 
-export const ConnectionPanel = memo(function ConnectionPanel({ edge, stage, onClose, onLocate, message, routeState, onRouteState }: ConnectionPanelProps) {
+export const ConnectionPanel = memo(function ConnectionPanel({ edge, stage, onClose, onLocate, message, routeState, onRouteState, labelState, onLabelPinChange }: ConnectionPanelProps) {
   const heading = useId();
   const paths = useMemo(() => {
     const nodes = new Map(stage.graph.nodes.map((node) => [node.id, node]));
@@ -35,6 +37,13 @@ export const ConnectionPanel = memo(function ConnectionPanel({ edge, stage, onCl
   return <aside className="connection-panel" aria-labelledby={heading}>
     <div className="connection-panel-header"><h2 id={heading}>原始连接</h2><button className="icon-button" aria-label="关闭连接列表" onClick={onClose}><Icon name="close" /></button></div>
     <div className="connection-panel-summary">{edge.text}</div>
+    {labelState && onLabelPinChange && <div className="label-controls">
+      <span className="label-status">{!labelState.visible ? '标签已隐藏' : labelState.pinned ? '标签位置已固定' : '标签自动放置'}</span>
+      <div className="route-state" role="group" aria-label="标签位置">
+        <button aria-pressed={labelState.pinned} disabled={labelState.pinned || !labelState.visible} onClick={() => onLabelPinChange(true)}>固定标签位置</button>
+        <button disabled={!labelState.pinned} onClick={() => onLabelPinChange(false)}>恢复标签自动位置</button>
+      </div>
+    </div>}
     {onRouteState && !edge.aggregated && <div className="route-state" role="group" aria-label="路径状态">
       {(['auto', 'pinned', 'locked'] as const).map((state) => <button key={state} aria-pressed={(routeState ?? 'auto') === state} title={`路径状态：${routeNames[state]}`} onClick={() => onRouteState(state)}>{routeNames[state]}</button>)}
     </div>}
