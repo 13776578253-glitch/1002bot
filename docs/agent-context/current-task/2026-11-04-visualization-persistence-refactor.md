@@ -30,3 +30,19 @@ Verification:
 - `pnpm --filter @1002bot/visualization typecheck`: passed.
 - Full package suite: 398 passed, 13 failed. The 13 failures are the pre-existing card-size, four-side-growth, grouping, layout-intent and project-data expectations; the new tests and the architecture test passed in the same run.
 - No production files changed in this phase.
+
+## Phase 2 Result
+
+- Moved the existing schema validation and migration code from `local-storage.ts` to `workspace-schema.ts` without changing its logic.
+- `workspace-schema.ts` now owns `normalizeWorkspaceView`, `assertWorkspaceView`, all content readers, and v1/v2 migration. It has no storage imports.
+- `local-storage.ts` is recreated with only `createLocalStorageViewStorage`; the backup order, trigger conditions and exception side effects are unchanged.
+- Updated internal imports in `VisualizationCanvas.tsx`, `project-storage.ts`, persistence tests, label tests, and the model README owner list.
+- The React public entry is unchanged: it still exports `createLocalStorageViewStorage`, and normalization helpers remain internal.
+
+Verification:
+
+- Package typecheck passed.
+- Persistence tests: 16/16 passed.
+- Architecture tests: 5/5 passed.
+- Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
+- No behavior changes and no fallback or compatibility shim was added.

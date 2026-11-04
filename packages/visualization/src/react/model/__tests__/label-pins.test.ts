@@ -7,7 +7,7 @@ import { labelPinForEdge, pinLabelForEdge, removeLabelPin, removeLabelPinForEdge
 import { draftMatchesConfirmed } from '../confirmation.ts';
 import { mergeStageContent } from '../snapshot-inheritance.ts';
 import { canvasWorkspaceToProject, projectWorkspaceToCanvas } from '../project-workspace.ts';
-import { normalizeWorkspaceView } from '../../persistence/local-storage.ts';
+import { normalizeWorkspaceView } from '../../persistence/workspace-schema.ts';
 import { createProjectViewStorage, normalizeProjectWorkspace } from '../../persistence/project-storage.ts';
 import { captureContent, ViewHistory, type CanvasBaselineContent, type CanvasWorkspaceView, type EdgeLabelPin } from '../workspace.ts';
 import { baselineNodes } from '../hierarchy.ts';

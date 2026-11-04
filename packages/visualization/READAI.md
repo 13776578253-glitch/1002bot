@@ -227,3 +227,40 @@ Append all future code-change reports below.
 - Full package suite: 398 passed, 13 failed. The failures are the pre-existing card-size, four-side-growth, grouping, layout-intent and project-data expectations, unchanged by this test-only phase.
 - Recorded gap: overlay element-level validation only checks the top-level shape and is intentionally unchanged in Phase 1.
 - Next phase: move schema code unchanged into `workspace-schema.ts`, preserving `checkNodeViews` error order and `save()` side effects.
+
+## 2026-11-04 — Persistence schema/storage split
+
+**1. Problems Fixed**
+
+- No runtime behavior changed. Separated persisted-workspace schema and migration from the localStorage adapter so each module has one owner.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- `workspace-schema.ts` now owns `normalizeWorkspaceView`, `assertWorkspaceView`, content readers and v1/v2 migration, moved unchanged from `local-storage.ts`.
+- `local-storage.ts` now owns only `createLocalStorageViewStorage`; backup order and failure side effects are unchanged.
+- Internal imports now target `workspace-schema.ts`; the React public entry is unchanged.
+
+**3. Files Modified**
+
+- `src/react/persistence/workspace-schema.ts` (moved from `local-storage.ts`)
+- `src/react/persistence/local-storage.ts` (storage adapter only)
+- `src/react/persistence/project-storage.ts`, `src/react/VisualizationCanvas.tsx` (imports)
+- `src/react/persistence/__tests__/workspace-normalization.test.ts`, `src/react/model/__tests__/label-pins.test.ts`, `src/react/model/__tests__/label-snapshots.test.ts` (imports)
+- `src/react/model/README.md` (owner path)
+- This report.
+
+**4. Complexity Assessment**
+
+- Runtime behavior and data contracts are unchanged. Module ownership is clearer: schema has no storage access, and storage no longer carries validation logic.
+- No new abstraction layer, manager, fallback or compatibility path was added.
+
+**5. Legacy Mechanism Cleanup**
+
+- Removed the schema implementation from the storage adapter. `normalizeWorkspaceView`/`assertWorkspaceView` are no longer imported through `local-storage.ts`.
+- No behavior, field, copy rule or migration branch was removed.
+
+**6. Validation and Remaining Technical Debt**
+
+- Package typecheck passed; persistence tests 16/16; architecture tests 5/5.
+- Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
+- Next phase: optimize reader composition without changing `checkNodeViews` error order, field/copy behavior, migration output or `save()` semantics.

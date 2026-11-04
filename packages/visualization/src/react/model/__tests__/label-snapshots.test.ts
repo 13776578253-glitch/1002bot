@@ -8,7 +8,7 @@ import { LabelLayoutCache } from '../label-layout.ts';
 import { captureLabelledRoutes, labelIdentity, labelSeeds, sceneGeometryKey } from '../label-snapshots.ts';
 import { retainedCanonicalRoutes, routeSnapshotForEdge } from '../edge-routes.ts';
 import { captureContent, ViewHistory } from '../workspace.ts';
-import { normalizeWorkspaceView } from '../../persistence/local-storage.ts';
+import { normalizeWorkspaceView } from '../../persistence/workspace-schema.ts';
 
 function fixture() {
   const stage: StageSnapshot = { id: 'one', label: 'one', title: 'one', order: 0, track: 'main', graph: {

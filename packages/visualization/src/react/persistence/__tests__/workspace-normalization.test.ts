@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertWorkspaceView, normalizeWorkspaceView } from '../local-storage.ts';
+import { assertWorkspaceView, normalizeWorkspaceView } from '../workspace-schema.ts';
 
 type LooseView = {
   version: 2;

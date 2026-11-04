@@ -16,7 +16,7 @@ import { normalizeMarqueeSelection, type CanvasNode } from './model/grouping.ts'
 import { useCanvasController } from './canvas/use-canvas-controller.ts';
 import { baselineNodes, VIEW_MODES } from './canvas/use-workspace-session.ts';
 import { baselineForView } from './model/view-projection.ts';
-import { normalizeWorkspaceView } from './persistence/local-storage.ts';
+import { normalizeWorkspaceView } from './persistence/workspace-schema.ts';
 import { restoreNodeViews } from './model/workspace.ts';
 import { restoreFrozenGroups } from './model/frozen.ts';
 import { rebaseSavedView } from './model/stage-navigation.ts';

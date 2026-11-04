@@ -4,7 +4,7 @@ import {
   canvasWorkspaceToProject, projectSnapshot, projectWorkspaceToCanvas,
   type ProjectStageWorkspace, type ProjectViewWorkspace, type ProjectWorkspace, type ProjectWorkspaceCheckpoint,
 } from '../model/project-workspace.ts';
-import { normalizeWorkspaceView } from './local-storage.ts';
+import { normalizeWorkspaceView } from './workspace-schema.ts';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -73,7 +73,7 @@ function normalizeProjectView(id: string, raw: unknown): ProjectViewWorkspace {
     };
 }
 
-/** Validate externally supplied project data without altering the stored value. */
+/** 校验外部项目数据，不修改已存储的值。 */
 export function normalizeProjectWorkspace(value: unknown, projectId: string): ProjectWorkspace {
   if (!record(value) || value.version !== 1 || !text(value.projectId) || !text(value.activeStageId) || !record(value.stages)) throw new Error('项目工作空间格式不正确');
   if (value.projectId !== projectId) throw new Error('工作空间所属项目不匹配');
@@ -111,7 +111,7 @@ export function createProjectViewStorage(storage: Pick<Storage, 'getItem' | 'set
       normalizeWorkspaceView(view);
       const previous = read(key);
       const workspace = canvasWorkspaceToProject(view, projectId, previous);
-      // Validate the complete output before replacing the prior record.
+      // 在替换旧记录前校验完整输出。
       normalizeProjectWorkspace(workspace, projectId);
       const original = storage.getItem(key);
       const uniformCardsBackup = `${key}:before-uniform-cards-v1`;
