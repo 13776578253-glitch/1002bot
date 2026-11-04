@@ -6,12 +6,17 @@ import { createLocalStorageViewStorage } from '../local-storage.ts';
 class RecordingStorage {
   readonly values = new Map<string, string>();
   readonly writes: Array<{ key: string; value: string }> = [];
+  readonly events: Array<{ kind: 'read' | 'write'; key: string }> = [];
   failKey?: string;
-  getItem(key: string): string | null { return this.values.get(key) ?? null; }
+  getItem(key: string): string | null {
+    this.events.push({ kind: 'read', key });
+    return this.values.get(key) ?? null;
+  }
   setItem(key: string, value: string): void {
     if (key === this.failKey) throw new Error('quota');
     this.writes.push({ key, value });
     this.values.set(key, value);
+    this.events.push({ kind: 'write', key });
   }
 }
 
@@ -31,6 +36,22 @@ test('save writes the uniform backup, then the three-view backup, then the recor
   assert.equal(storage.values.get('workspace:before-uniform-cards-v1'), original);
   assert.equal(storage.values.get('workspace:before-three-views-v1'), original);
   assert.equal(storage.values.get('workspace'), JSON.stringify(threeView()));
+});
+
+test('save reads and writes backups in the established order', async () => {
+  const storage = new RecordingStorage();
+  storage.values.set('workspace', JSON.stringify(view()));
+
+  await createLocalStorageViewStorage(storage).save('workspace', threeView());
+
+  assert.deepEqual(storage.events, [
+    { kind: 'read', key: 'workspace' },
+    { kind: 'read', key: 'workspace:before-uniform-cards-v1' },
+    { kind: 'write', key: 'workspace:before-uniform-cards-v1' },
+    { kind: 'read', key: 'workspace:before-three-views-v1' },
+    { kind: 'write', key: 'workspace:before-three-views-v1' },
+    { kind: 'write', key: 'workspace' },
+  ]);
 });
 
 test('three-view backup is written only when the previous record has no views', async () => {

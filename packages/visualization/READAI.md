@@ -301,3 +301,40 @@ Append all future code-change reports below.
 - Package typecheck passed; persistence tests 16/16; architecture tests 5/5.
 - Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
 - Next phase: storage narrowing and comments without changing backup order or failure side effects.
+
+## 2026-11-04 — Persistence storage finalization
+
+**1. Problems Fixed**
+
+- No runtime behavior changed. Named the two one-time backup suffixes and documented the adapter's load/save contracts.
+- Added a test that locks the exact read/write sequence of the two backups.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- `local-storage.ts` now uses named backup suffixes and a clearer local variable for the three-view backup.
+- Chinese comments state the load failure contract and the fixed backup order.
+- No validation, migration, backup trigger or exception behavior changed.
+
+**3. Files Modified**
+
+- `src/react/persistence/local-storage.ts`
+- `src/react/persistence/__tests__/local-storage.test.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-persistence-refactor.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- The storage adapter remains about 38 lines and owns only read/write plus one-time backups.
+- The added test increases coverage without adding runtime complexity.
+- No new layer, manager, fallback or compatibility path.
+
+**5. Legacy Mechanism Cleanup**
+
+- None removed in this phase. The schema/storage split and reader consolidation were completed in earlier phases.
+
+**6. Validation and Remaining Technical Debt**
+
+- Package typecheck passed; persistence tests 17/17; architecture tests 5/5.
+- Full package suite: 399 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
+- Remaining: overlay element-level validation is still a recorded gap and was intentionally unchanged.
+- Refactor summary: storage adapter 364 → about 38 lines; schema now owns validation/migration; public API unchanged; no fallback or compatibility patch added.

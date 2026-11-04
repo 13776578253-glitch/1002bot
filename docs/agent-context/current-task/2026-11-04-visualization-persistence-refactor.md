@@ -71,3 +71,45 @@ Verification:
 - Persistence tests: 16/16 passed.
 - Architecture tests: 5/5 passed.
 - Full package suite: 398 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
+
+## Phase 4 Result
+
+- Finalized the storage adapter:
+  - named the two backup suffixes instead of repeating literals;
+  - renamed the local three-view backup variable;
+  - documented the load failure contract and the save backup order in Chinese;
+  - added a test that locks the exact read/write sequence for the two one-time backups.
+- Backup trigger conditions, read/write order and exception side effects are unchanged.
+- `local-storage.ts` remains a storage-only adapter of about 38 lines; validation stays in `workspace-schema.ts`.
+
+## Overall Result
+
+Added:
+
+- `src/react/persistence/workspace-schema.ts`: schema validation and v1/v2 migration with no storage access.
+- Persistence unit tests: 17 cases covering error precedence, field/reference behavior, migration, display-route attachment stripping, backup order and side effects.
+- Architecture test: persistence normalization stays internal to the React entry.
+- Shared schema helpers: `optionalText`, `checkRectFields`, `checkBounds`, `checkBaseline`; named error and backup constants.
+
+Removed:
+
+- Schema validation, migration and view consistency logic from `local-storage.ts`.
+
+Replaced:
+
+- Persistence normalization imports now target `workspace-schema.ts`; the storage adapter no longer exports schema internals.
+
+Complexity and behavior:
+
+- `local-storage.ts`: 364 lines before, about 38 after.
+- `workspace-schema.ts`: about 371 lines after moving and consolidating readers.
+- Total production lines increased by about 45 because shared helpers and invariant comments were added; repeated literals and repeated rect/bounds checks decreased.
+- No new layer, manager, fallback or compatibility path. The React public API is unchanged.
+- Behavior is unchanged: 399 tests pass and the same 13 pre-existing failures remain.
+
+Verification final:
+
+- Package typecheck passed.
+- Persistence tests: 17/17 passed.
+- Architecture tests: 5/5 passed.
+- Full package suite: 399 passed, 13 failed; failure set matches the pre-existing baseline.
