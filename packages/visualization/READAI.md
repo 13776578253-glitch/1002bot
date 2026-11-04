@@ -192,3 +192,38 @@ Append all future code-change reports below.
 - Remaining: legacy pins without `memberFingerprints` can still match by display identity; strict migration/hiding is pending.
 - Remaining: remove dormant route-side label fields and the legacy `placeEdgeLabel` helper once all compatibility tests are migrated.
 - Commits: `942dba3` Compact Overview; `64268db` final unified label layout.
+
+## 2026-11-04 — Persistence validation baseline
+
+**1. Problems Fixed**
+
+- No production behavior changed. Added characterization tests for persisted workspace normalization and localStorage backup order/side effects.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- None in production.
+- Test-only: `workspace-normalization.test.ts` and `local-storage.test.ts`; the package test glob now includes persistence unit tests; an architecture test asserts normalization remains internal to the React entry.
+
+**3. Files Modified**
+
+- `src/react/persistence/__tests__/workspace-normalization.test.ts` (new)
+- `src/react/persistence/__tests__/local-storage.test.ts` (new)
+- `package.json` (test glob)
+- `tests/architecture/boundaries.test.ts` (export boundary)
+- `docs/agent-context/current-task/2026-11-04-visualization-persistence-refactor.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- No runtime complexity change. Tests lock error precedence, field/reference behavior, migration results and backup side effects; no new abstraction.
+
+**5. Legacy Mechanism Cleanup**
+
+- None. The schema/local-storage split has not started.
+
+**6. Validation and Remaining Technical Debt**
+
+- New persistence tests: 16/16 passed; package typecheck passed.
+- Full package suite: 398 passed, 13 failed. The failures are the pre-existing card-size, four-side-growth, grouping, layout-intent and project-data expectations, unchanged by this test-only phase.
+- Recorded gap: overlay element-level validation only checks the top-level shape and is intentionally unchanged in Phase 1.
+- Next phase: move schema code unchanged into `workspace-schema.ts`, preserving `checkNodeViews` error order and `save()` side effects.

@@ -35,6 +35,12 @@ test('playground imports library internals only from the routing lab', async () 
   ]);
 });
 
+test('persistence normalization stays internal to the react entry', async () => {
+  const entry = await readFile(join(root, 'src/react/index.ts'), 'utf8');
+  assert.match(entry, /export \{ createLocalStorageViewStorage \} from '\.\/persistence\/local-storage\.ts';/);
+  assert.doesNotMatch(entry, /normalizeWorkspaceView|assertWorkspaceView/);
+});
+
 test('the playground has one HTML entry and composes the public canvas', async () => {
   const html = (await files(join(root, 'playground'))).filter((item) => item.endsWith('.html') && !item.includes(join('playground', 'dist')));
   assert.deepEqual(html.map((item) => relative(join(root, 'playground'), item)), ['index.html']);
