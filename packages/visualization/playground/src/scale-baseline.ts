@@ -1,5 +1,4 @@
-import type { VisualizationBaseline } from '../../src/core/schema/baseline.ts';
-import type { CanonicalEdge, CanonicalNode, StageSnapshot } from '../../src/core/schema/types.ts';
+import type { CanonicalEdge, CanonicalNode, StageSnapshot, VisualizationBaseline } from '../../src/index.ts';
 
 const HUBS = 5;
 const HUB_GAP = 2600;

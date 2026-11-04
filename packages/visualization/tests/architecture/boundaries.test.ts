@@ -19,6 +19,22 @@ test('library dependencies stay inside the generic source boundary', async () =>
   }
 });
 
+test('playground imports library internals only from the routing lab', async () => {
+  const publicEntries = new Set(['../../src/index.ts', '../../src/react/index.ts', '../../src/adapters/project/index.ts']);
+  const internal = new Set<string>();
+  for (const file of (await files(join(root, 'playground/src'))).filter((item) => /\.tsx?$/.test(item))) {
+    const text = await readFile(file, 'utf8');
+    for (const [, specifier] of text.matchAll(/from\s+'(\.\.\/\.\.\/src\/[^']+)'/g)) {
+      if (!specifier || publicEntries.has(specifier)) continue;
+      internal.add(`${relative(root, file).replaceAll('\\', '/')} -> ${specifier}`);
+    }
+  }
+  assert.deepEqual([...internal].sort(), [
+    'playground/src/routing-lab.tsx -> ../../src/react/components/ports.tsx',
+    'playground/src/routing-lab.tsx -> ../../src/react/components/relation-edge.tsx',
+  ]);
+});
+
 test('the playground has one HTML entry and composes the public canvas', async () => {
   const html = (await files(join(root, 'playground'))).filter((item) => item.endsWith('.html') && !item.includes(join('playground', 'dist')));
   assert.deepEqual(html.map((item) => relative(join(root, 'playground'), item)), ['index.html']);
