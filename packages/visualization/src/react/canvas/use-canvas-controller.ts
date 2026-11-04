@@ -108,7 +108,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
 
   const toggleNode = useCallback((id: string) => {
     if (preview) return;
-    if (session.viewMode !== 'structure') { setMessage('在 Structure View 中调整展开层级'); return; }
+    if (session.viewMode !== 'structure') return;
     const current = nodesRef.current;
     const frozenNode = current.find((node) => node.id === id);
     if (frozenNode?.data.frozen) {
@@ -369,7 +369,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     storedRoutes: preview?.state.edgeRoutes ?? session.edgeRoutes,
     storedDisplayRoutes: preview?.state.displayRoutes ?? session.displayRoutes,
     frozenGroups:preview?.state.frozenGroups??session.frozenGroups,
-    toggleNode, chooseEdge, renameNode, commitRename: finish,
+    toggleNode, canToggleHierarchy: session.viewMode === 'structure', viewMode: session.viewMode, chooseEdge, renameNode, commitRename: finish,
   });
   routesRef.current = scene.routes;
   captureRendered.current = () => session.setDisplayRoutes(scene.snapshotRoutes(nodesRef.current));

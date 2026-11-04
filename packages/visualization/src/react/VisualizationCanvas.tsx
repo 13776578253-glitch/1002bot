@@ -33,9 +33,9 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
   const canvas = useCanvasController(props, restored);
   const { displayNodes, edges, visibleGuides, selectedGroup, roots, selectionLabel, setNodes, baseline, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom, setSelectedEdge, onNodesChange, toggleNode, chooseEdge, selectBaseline, createGroup, zoomIn, zoomOut, fitView } = canvas;
   const onDoubleClick = useCallback((event: MouseEvent, node: CanvasNode) => {
-    if (canvas.preview) return;
+    if (canvas.preview || canvas.viewMode !== 'structure') return;
     if (node.data.expandable && !(event.target as Element).closest('.nodrag') && (node.type === 'card' || (event.target as Element).closest('.structure-header'))) toggleNode(node.id);
-  }, [canvas.preview, toggleNode]);
+  }, [canvas.preview, canvas.viewMode, toggleNode]);
   const clearEdge = useCallback(() => setSelectedEdge(undefined), [setSelectedEdge]);
   const onEdgeClick = useCallback((_event: MouseEvent, edge: Edge<LinkData>) => chooseEdge(edge.id), [chooseEdge]);
   const onSelectionEnd = useCallback(() => { if (!canvas.preview) setNodes((current) => normalizeMarqueeSelection(current)); }, [canvas.preview, setNodes]);

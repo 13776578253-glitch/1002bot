@@ -34,7 +34,7 @@ export type CanvasNode = Node<{
 
 export const RESPONSIBILITY_CARD_SIZE = { width: 210, height: 80, gap: 8 };
 export const RESPONSIBILITY_NODE_WIDTH = RESPONSIBILITY_CARD_SIZE.width * 2 + RESPONSIBILITY_CARD_SIZE.gap + 34;
-export const CARD_SIZE = { width: RESPONSIBILITY_NODE_WIDTH, height: 96 };
+export const CARD_SIZE = { width: 240, height: 80 };
 export const DETAIL_CARD_SIZE = { width: RESPONSIBILITY_NODE_WIDTH, height: 280 };
 export const COMPACT_DETAIL_CARD_SIZE = { width: RESPONSIBILITY_NODE_WIDTH, height: 192 };
 export const detailCardSize = (count: number) => count <= 2 ? COMPACT_DETAIL_CARD_SIZE : DETAIL_CARD_SIZE;

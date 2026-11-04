@@ -16,7 +16,7 @@ Routing handles stay transparent during hover and selection. Their mounted geome
 
 Edges with no feasible obstacle-free route are omitted and reported by the canvas notice. The edge renderer consumes the selected geometry; port policy and cost comparison belong to the route model.
 
-Responsibility cards use the same expand/collapse control as containers, with no synthetic child count. Structure headers include their own responsibility blocks; actual children remain separately selectable nodes.
+In Structure View, responsibility cards use the same expand/collapse control as containers, with no synthetic child count. Overview and Full omit hierarchy controls and ignore hierarchy double-clicks. Structure headers include their own responsibility blocks; actual children remain separately selectable nodes.
 
 One or two responsibilities use a 1x2 layout inside a 462x192 detail frame. Three or more use four reserved slots per page: a fixed 2x2 grid inside a 462x280 detail frame. All information cards are 210x80. Titles use 12px text and descriptions use 11.5px. Pagination changes only local component state; node dimensions and route inputs remain identical. An explicit colon separates a title from its description; other text stays intact. Expanded responsibility-only nodes carry a terminal badge. This content is an authored last resort for excessive recursive depth when internal connections are unnecessary; real components and their relationships retain graph nodes and edges.
 

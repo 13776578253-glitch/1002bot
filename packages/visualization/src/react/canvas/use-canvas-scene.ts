@@ -14,7 +14,7 @@ import { routingFallback, type RoutingFallbackReason, type RoutingStatus } from 
 import type { DisplayEdge } from '../model/display-edges.ts';
 import { applyStoredRoutes, reservedLockedRoutes, retainedCanonicalRoutes } from '../model/edge-routes.ts';
 import type { EdgeRouteSnapshot } from '../model/workspace.ts';
-import type { DisplayRouteSnapshot, FrozenGroupSnapshot } from '../model/workspace.ts';
+import type { CanvasViewMode, DisplayRouteSnapshot, FrozenGroupSnapshot } from '../model/workspace.ts';
 import { captureDisplayRoutes, retainedDisplayRoutes } from '../model/display-route-snapshots.ts';
 import { clipAlignmentGuides } from '../model/guides.ts';
 import type { AlignmentGuide } from '../model/constraints.ts';
@@ -33,12 +33,14 @@ interface SceneState {
   storedDisplayRoutes?: readonly DisplayRouteSnapshot[];
   frozenGroups?: readonly FrozenGroupSnapshot[];
   toggleNode(id: string): void;
+  canToggleHierarchy: boolean;
+  viewMode: CanvasViewMode;
   chooseEdge(id: string): void;
   renameNode(id: string, title: string): void;
   commitRename(): void;
 }
 
-export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, chooseEdge, renameNode, commitRename, readOnly = false, engine = 'legacy', storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[] }: SceneState) {
+export function useCanvasScene({ nodes, baseline, projection, displayEdges, selectedEdge, alignment, toggleNode, canToggleHierarchy, viewMode, chooseEdge, renameNode, commitRename, readOnly = false, engine = 'legacy', storedRoutes = [], storedDisplayRoutes = [], frozenGroups=[] }: SceneState) {
   const geometryKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}:${node.type}:${node.position.x},${node.position.y},${node.width},${node.height}`).join('|');
   const parentKey = nodes.map((node) => `${node.id}:${node.parentId ?? ''}`).join('|');
   const selectedKey = nodes.filter((node) => node.selected).map((node) => node.id).join('|');
@@ -150,7 +152,7 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   if (nextEdges.length !== previousEdges.current.length || nextEdges.some((edge, index) => edge !== previousEdges.current[index])) previousEdges.current = nextEdges;
   const edges = previousEdges.current;
 
-  const handlers = useMemo(() => new Map(nodes.map((node) => [node.id, { onToggle: () => toggleNode(node.id), onRename: (title: string) => renameNode(node.id, title), onRenameCommit: commitRename }])), [parentKey, toggleNode, renameNode, commitRename]);
+  const handlers = useMemo(() => new Map(nodes.map((node) => [node.id, { ...(canToggleHierarchy ? { onToggle: () => toggleNode(node.id) } : {}), onRename: (title: string) => renameNode(node.id, title), onRenameCommit: commitRename }])), [parentKey, toggleNode, canToggleHierarchy, renameNode, commitRename]);
   const nodeCache = useRef(new Map<string, { input: CanvasNode; visible: boolean; neighbor: boolean; handlers: unknown; count: number; value: CanvasNode }>());
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const nextDisplayNodes = nodes.map((node): CanvasNode => {

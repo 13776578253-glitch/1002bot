@@ -36,7 +36,7 @@ function Responsibilities({ details, title }: { details: readonly string[] | und
 export const Card = memo(function Card({ data, selected, width, height }: NodeProps<CanvasNode>) {
   return <div className={`flow-card ${selected ? 'is-selected' : ''} ${data.planned ? 'is-planned' : ''}`} data-change={data.change?.kind} data-layout-mode={data.layoutMode ?? 'free'} data-frozen={data.frozen ? 'true' : undefined}>
     <Ports width={width ?? 0} height={height ?? 0} />
-    <div className="card-title"><span className="card-name">{data.title}</span><LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} />{data.expanded && !data.childCount && !!data.details?.length && <span className="terminal-badge">末端</span>}{data.planned && <span className="planned-badge">规划</span>}{data.expandable && <button className="structure-toggle nodrag nopan" aria-label={`${data.expanded ? '收起' : '展开'}${data.title}`} aria-expanded={!!data.expanded} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}>{!!data.childCount && <span>{data.childCount}</span>}<Icon name={data.expanded ? 'collapse' : 'expand'} /></button>}</div>
+    <div className="card-title"><span className="card-name">{data.title}</span><LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} />{data.expanded && !data.childCount && !!data.details?.length && <span className="terminal-badge">末端</span>}{data.planned && <span className="planned-badge">规划</span>}{data.expandable && data.onToggle && <button className="structure-toggle nodrag nopan" aria-label={`${data.expanded ? '收起' : '展开'}${data.title}`} aria-expanded={!!data.expanded} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}>{!!data.childCount && <span>{data.childCount}</span>}<Icon name={data.expanded ? 'collapse' : 'expand'} /></button>}</div>
     <div className="card-summary" title={data.summary}>{data.summary}</div>
     {data.expanded && <Responsibilities details={data.details} title={data.title} />}
   </div>;
@@ -47,7 +47,7 @@ export const Structure = memo(function Structure({ data, selected, width, height
     <Ports width={width ?? 0} height={height ?? 0} />
     <div className="structure-header" style={{ height: structureHeaderHeight({ data }) }}>
       <div className="structure-heading"><div className="card-title">{data.title}<LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} /></div><div className="card-summary">{data.summary}</div><Responsibilities details={data.details} title={data.title} /></div>
-      <button className="structure-toggle nodrag nopan" aria-label={`收起${data.title}`} aria-expanded={true} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}><span>{data.childCount}</span><Icon name="collapse" /></button>
+      {data.onToggle && <button className="structure-toggle nodrag nopan" aria-label={`收起${data.title}`} aria-expanded={true} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}><span>{data.childCount}</span><Icon name="collapse" /></button>}
     </div>
   </div>;
 });
