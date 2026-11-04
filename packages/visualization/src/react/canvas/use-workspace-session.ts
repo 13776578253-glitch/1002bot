@@ -1,16 +1,17 @@
 /** Independent stage/view transactions and persisted snapshots; canonical graphs stay shared. */
 import { useCallback, useMemo, useRef, useState, type SetStateAction } from 'react';
+import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { VisualizationCanvasProps } from '../types.ts';
 import type { CanvasNode } from '../model/grouping.ts';
 import { baselineNodes } from '../model/hierarchy.ts';
 import { baselineForView } from '../model/view-projection.ts';
 import { restoreFrozenGroups } from '../model/frozen.ts';
-import { confirmationIsCurrent } from '../model/confirmation.ts';
+import { confirmationIsCurrent, draftMatchesConfirmed } from '../model/confirmation.ts';
 import { normalizeCardLayout } from '../model/normalize-card-layout.ts';
 import { hierarchyProjection } from '../model/hierarchy.ts';
 import { validateStoredRoutes } from '../model/edge-routes.ts';
 import type { UserGraphOverlay } from '../model/overlay.ts';
-import { captureContent, restoreNodeViews, ViewHistory, type CanvasBaselineContent, type CanvasBaselineView, type CanvasViewMode, type CanvasViewport, type CanvasWorkspaceView, type EdgeRouteSnapshot, type FrozenGroupSnapshot, type DisplayRouteSnapshot, type EdgeLabelPin } from '../model/workspace.ts';
+import { captureContent, captureNodeViews, restoreNodeViews, ViewHistory, type CanvasBaselineContent, type CanvasBaselineView, type CanvasViewMode, type CanvasViewport, type CanvasWorkspaceView, type EdgeRouteSnapshot, type FrozenGroupSnapshot, type DisplayRouteSnapshot, type EdgeLabelPin } from '../model/workspace.ts';
 import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
 import type { StageTransitionSuccess } from '../model/stage-transition.ts';
 import { saveWorkspace } from '../persistence/storage-session.ts';
@@ -38,17 +39,55 @@ function replaceContent(view: CanvasBaselineView, content: CanvasBaselineContent
   return { ...metadata, ...content };
 }
 
+interface RestoredViewsMigration {
+  views: Record<CanvasViewMode, Record<string, CanvasBaselineView>>;
+  issues: Map<string, string>;
+}
+
+/** 在存储恢复边界一次性迁移旧卡版；当前规格视图不重写，确认快照保持不变。 */
+export function migrateRestoredViews(
+  restored: CanvasWorkspaceView | undefined,
+  definitions: Record<CanvasViewMode, Map<string, VisualizationBaseline>>,
+): RestoredViewsMigration {
+  const source = restored?.views ?? { structure: restored?.baselines ?? {} };
+  const views = structuredClone(source) as Record<CanvasViewMode, Record<string, CanvasBaselineView>>;
+  for (const mode of VIEW_MODES) views[mode] ??= {};
+  const issues = new Map<string, string>();
+  for (const mode of VIEW_MODES) {
+    for (const [id, view] of Object.entries(views[mode])) {
+      const baseline = definitions[mode].get(id);
+      if (!baseline) continue;
+      const restoredNodes = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), view.nodes), view.frozenGroups);
+      if (restoredNodes.conflicts.length) continue;
+      const normalized = normalizeCardLayout(restoredNodes.nodes, view.nodes, baseline.stage);
+      if (normalized.conflict) { issues.set(`${mode}:${id}`, normalized.conflict.message); continue; }
+      const normalizedById = new Map(normalized.nodes.map((node) => [node.id, node]));
+      const changed = view.nodes.some((saved) => {
+        const node = normalizedById.get(saved.id);
+        return !!node && (node.type !== saved.type || node.width !== saved.width || node.height !== saved.height
+          || node.position.x !== saved.position.x || node.position.y !== saved.position.y);
+      });
+      if (!changed) continue;
+      const original = restoreNodeViews(baseline, baselineNodes(baseline), view.nodes, false);
+      const routeIssue = validateStoredRoutes(original, normalized.nodes, view.edgeRoutes, hierarchyProjection(normalized.nodes, baseline.stage));
+      if (routeIssue) { issues.set(`${mode}:${id}`, routeIssue); continue; }
+      const captured = captureNodeViews(normalized.nodes);
+      const byId = new Map(captured.map((node) => [node.id, node]));
+      view.nodes = view.nodes.map((saved) => byId.get(saved.id) ?? saved);
+      if (view.confirmed && !draftMatchesConfirmed(view)) view.requiresConfirmation = true;
+    }
+  }
+  return { views, issues };
+}
+
 export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: CanvasWorkspaceView) {
   const { baselines, persistence } = props;
   const initialMode = restored?.viewMode ?? 'structure';
   const definitions = useMemo(() => Object.fromEntries(VIEW_MODES.map((mode) => [mode, new Map(baselines.map((item) => [item.id, baselineForView(item, mode)]))])) as Record<CanvasViewMode, Map<string, typeof baselines[number]>>, [baselines]);
   const getBaseline = useCallback((id: string, mode: CanvasViewMode) => definitions[mode].get(id)!, [definitions]);
-  const [initialViews] = useState(() => {
-    const views = structuredClone(restored?.views ?? { structure: restored?.baselines ?? {} });
-    for (const mode of VIEW_MODES) views[mode] ??= {};
-    return views as Record<CanvasViewMode, Record<string, CanvasBaselineView>>;
-  });
-  const views = useRef(initialViews);
+  const [initialState] = useState(() => migrateRestoredViews(restored, definitions));
+  const views = useRef(initialState.views);
+  const migrationIssues = initialState.issues;
   const [initialId] = useState(() => {
     const requested = restored && baselines.some((item) => item.id === restored.baselineId) ? restored.baselineId : props.initialBaselineId ?? baselines[baselines.length - 1]!.id;
     return VIEW_MODES.every((mode) => views.current[mode][requested]) ? requested : baselines[0]!.id;
@@ -66,13 +105,12 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     const frozen = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes), saved.frozenGroups);
     if (frozen.conflicts.length) throw new Error(frozen.conflicts.map((item) => item.message).join('；'));
     const original = restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes, false);
-    const normalized = normalizeCardLayout(frozen.nodes, saved.nodes, baseline.stage);
-    const issue = normalized.conflict?.message ?? validateStoredRoutes(original, normalized.nodes, saved.edgeRoutes, hierarchyProjection(normalized.nodes, baseline.stage));
+    const issue = migrationIssues.get(`${mode}:${id}`) ?? validateStoredRoutes(original, frozen.nodes, saved.edgeRoutes, hierarchyProjection(frozen.nodes, baseline.stage));
     normalizationMessage.current = issue ? `卡片规格调整冲突：${issue}` : '';
-    const working = issue ? original : normalized.nodes;
+    const working = issue ? original : frozen.nodes;
     return { nodes: working, edgeRoutes: structuredClone(saved.edgeRoutes), frozenGroups: structuredClone(frozen.groups),
       ...(saved.overlay ? { overlay: structuredClone(saved.overlay) } : {}), displayRoutes: structuredClone(saved.displayRoutes ?? []), labelPins: structuredClone(saved.labelPins ?? []) };
-  }, [getBaseline]);
+  }, [getBaseline, migrationIssues]);
   const [initialContent] = useState(() => makeContent(initialId, initialMode));
   const [nodes, publishNodes] = useState(initialContent.nodes), nodesRef = useRef(nodes);
   const [edgeRoutes, publishRoutes] = useState(initialContent.edgeRoutes), routesRef = useRef(edgeRoutes);

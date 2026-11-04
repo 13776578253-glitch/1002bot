@@ -338,3 +338,41 @@ Append all future code-change reports below.
 - Full package suite: 399 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
 - Remaining: overlay element-level validation is still a recorded gap and was intentionally unchanged.
 - Refactor summary: storage adapter 364 → about 38 lines; schema now owns validation/migration; public API unchanged; no fallback or compatibility patch added.
+
+## 2026-11-04 — Card layout migration boundary
+
+**1. Problems Fixed**
+
+- Legacy card-size normalization ran inside `makeContent`, so view switching, stage switching and undo/redo could re-run the relaxation/conflict path.
+- No runtime behavior changes to routing, labeling, snapshot merge or the current-spec layout.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- Added `migrateRestoredViews`; it runs once from the workspace-session initial state and migrates stored views with a matching baseline.
+- `makeContent` now restores nodes/frozen groups and validates routes only; it no longer calls `normalizeCardLayout`.
+- Migration compares normalized frames with saved frames, skips current-spec views, updates only existing node IDs, leaves confirmed snapshots literal and does not create Undo entries.
+- Frozen/locked cards remain unchanged.
+
+**3. Files Modified**
+
+- `src/react/canvas/use-workspace-session.ts`
+- `tests/integration/card-layout-migration.test.ts` (new)
+- `docs/agent-context/current-task/2026-11-04-visualization-card-migration.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Removed one runtime normalization call from every `makeContent` read; the migration now has one recovery-boundary entry point.
+- Added four focused tests plus the frozen-card case; no new state layer or framework.
+- Diff in the production file: 50 insertions, 12 deletions.
+
+**5. Legacy Mechanism Cleanup**
+
+- Removed the runtime card-size migration responsibility from `makeContent`.
+- Preserved `normalizeCardLayout` as the single existing implementation, now used at recovery.
+
+**6. Validation and Remaining Technical Debt**
+
+- Baseline: 412 tests, 399 passed, 13 failed; final: 417 tests, 404 passed, 13 failed; failure set identical, typecheck passed.
+- Browser acceptance covered old/current workspace load, persistence, reload, M2 stage switch, expand/collapse, drag, undo/redo and frozen state.
+- Remaining risk: migration executes for every restored view at mount; confirmed legacy snapshots may require re-confirmation after draft geometry changes. No routing/labeling behavior touched.
