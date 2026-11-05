@@ -176,7 +176,29 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
   }
   const sourceViews = input.targetSaved ? input.targetSaved.nodes : input.sourceContent.nodes;
   const mapped = mapReplacementViews(target, sourceViews);
-  const restoredBase = restoreNodeViews(target, baselineNodes(target), mapped.views);
+  const targetNodes = baselineNodes(target);
+  const targetById = new Map(targetNodes.map((node) => [node.id, node]));
+  const sourceBaseline = new Map(baselineNodes(input.source).map((node) => [node.id, node]));
+  const sourceExpansionChanged = mapped.views.some((view) => {
+    const baseline = sourceBaseline.get(view.id);
+    return !!baseline && (!!baseline.data.expanded !== !!view.data.expanded || baseline.type !== view.type);
+  });
+  const sourceAuto = (view: CanvasNodeView): boolean => {
+    if (view.data.layoutEdits?.position) return false;
+    const baseline = sourceBaseline.get(view.id);
+    if (!baseline || baseline.parentId !== view.parentId) return false;
+    return sourceExpansionChanged
+      || Math.abs(baseline.position.x - view.position.x) < 0.001 && Math.abs(baseline.position.y - view.position.y) < 0.001;
+  };
+  const restoredBase = restoreNodeViews(target, targetNodes, mapped.views).map((node) => {
+    if (input.targetSaved || node.data.frozen || (node.data.layoutMode !== undefined && node.data.layoutMode !== 'free')) return node;
+    const source = mapped.views.find((view) => view.id === node.id);
+    const targetNode = targetById.get(node.id);
+    const position = target.positions?.[node.id];
+    if (!source || !targetNode || !position || targetNode.parentId !== source.parentId) return node;
+    if (source.data.frozen || (source.data.layoutMode !== undefined && source.data.layoutMode !== 'free') || !sourceAuto(source)) return node;
+    return { ...node, position: { ...position } };
+  });
   const baseRoutes = inheritRoutes(input.targetSaved ?? input.sourceContent, target);
   const reconciled = restoreFrozenGroups(restoredBase, structuredClone(origin.frozenGroups));
   const baseFrozen = reconciled.groups;

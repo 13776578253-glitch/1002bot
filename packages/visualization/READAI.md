@@ -414,3 +414,42 @@ Append all future code-change reports below.
 - Full package suite: 418 tests, 405 passed, 13 failed; failure set identical to baseline; typecheck passed.
 - Edge acceptance: M1 -> M2 -> M1 and reload preserve `agent` at `480x390`; no error; expand/collapse, drag/undo and freeze entry remain error-free.
 - Remaining: the `full` view has an existing `input-channel` no-space conflict on first entry to M2; full view is outside this round's roundtrip assertion.
+
+## 2026-11-04 — Stage layout inheritance priority
+
+**1. Problems Fixed**
+
+- Full view first entry failed because target `positions` were used for additions but inherited source-auto nodes kept old positions. Runtime grew while provider stayed at y=360, producing `Runtime / Provider` and no-space.
+- Applying target positions to every inherited node caused Structure round-trip drift; applying none caused Full no-space.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- `stage-transition.ts` now applies target `positions` only to free source-auto nodes with the same parent. `layoutEdits.position`, frozen, locked/fixed and parent changes stay protected.
+- Source automatic reflow is recognized when source content has an expansion/type change; fixed/locked nodes do not inherit target positions.
+- `placement.ts` passes target `preferredPositions` to authored candidates and uses `preserveFrames=true` only in `placeAuthoredAdditions`.
+
+**3. Files Modified**
+
+- `src/react/model/stage-transition.ts`
+- `src/react/model/placement.ts`
+- `tests/integration/stage-roundtrip.test.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-layout-inheritance.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Production diff: 19 insertions, 1 deletion in stage transition; 2 changed lines in placement; test additions cover Full, source user position and automatic expansion reflow.
+- No new state, persistence field, fallback or manager.
+- Target positions remain local to target candidates/drafts; source content is unchanged.
+
+**5. Legacy Mechanism Cleanup**
+
+- No mechanism deleted. The existing `layoutEdits`, `layoutMode`, `target.positions`, `nodeChanges`, target draft and collision validator are reused.
+
+**6. Validation and Remaining Technical Debt**
+
+- Full first entry: runtime `1052x900`, additions at target positions, no no-space.
+- Structure and Full M1 -> M2 -> M1 preserve frames; source user, fixed/locked and frozen positions remain protected.
+- Full package suite: 421 tests, 408 passed, 13 failed; failure set identical to baseline; typecheck passed.
+- Edge browser: Structure and Full round trips and reload pass.
+- Remaining: source positions deviating from baseline without a position edit or expansion/type marker are conservatively protected; a future automatic reflow producer would need explicit provenance.

@@ -5,6 +5,7 @@ import { adaptProject, resolveSourceStages, type ArchitectureProject, type Proje
 import { baselineNodes } from '../../src/react/model/hierarchy.ts';
 import { prepareStageNavigation } from '../../src/react/model/stage-navigation.ts';
 import { baselineForView } from '../../src/react/model/view-projection.ts';
+import { solveHierarchyExpansion } from '../../src/react/model/placement.ts';
 import { captureContent, type CanvasBaselineContent } from '../../src/react/model/workspace.ts';
 
 function runtimeBaselines() {
@@ -29,7 +30,7 @@ function frames(content: CanvasBaselineContent) {
 
 test('returning to the previous stage preserves frames when no source or user edit occurred', () => {
   const [m1, m2] = runtimeBaselines();
-  for (const mode of ['overview', 'structure'] as const) {
+  for (const mode of ['overview', 'structure', 'full'] as const) {
     const m1View = baselineForView(m1!, mode);
     const m2View = baselineForView(m2!, mode);
     const original = captureContent(baselineNodes(m1View));
@@ -39,4 +40,36 @@ test('returning to the previous stage preserves frames when no source or user ed
     assert.ok(backward.ok, `${mode}: ${backward.ok ? '' : JSON.stringify(backward.conflicts)}`);
     assert.deepEqual(frames(backward.content), frames(original), mode);
   }
+});
+
+test('Full entry keeps the target manual frame and places every addition', () => {
+  const [m1, m2] = runtimeBaselines();
+  const source = captureContent(baselineNodes(baselineForView(m1!, 'full')));
+  const result = prepareStageNavigation({ parent: baselineForView(m1!, 'full'), target: baselineForView(m2!, 'full'), parentContent: source });
+  assert.ok(result.ok, result.ok ? '' : JSON.stringify(result.conflicts));
+  const nodes = new Map(result.content.nodes.map((node) => [node.id, node]));
+  assert.deepEqual({ width: nodes.get('runtime')!.width, height: nodes.get('runtime')!.height }, { width: 1052, height: 900 });
+  assert.deepEqual(nodes.get('input-channel')!.position, { x: 24, y: 296 });
+  assert.deepEqual(nodes.get('input-run')!.position, { x: 566, y: 296 });
+  assert.deepEqual(nodes.get('provider')!.position, { x: 590, y: 980 });
+});
+
+test('a source user position survives target manual placement', () => {
+  const [m1, m2] = runtimeBaselines();
+  const nodes = baselineNodes(baselineForView(m1!, 'full')).map((node) => node.id === 'event-caller'
+    ? { ...node, position: { x: 100, y: 50 }, data: { ...node.data, layoutEdits: { version: 1 as const, position: { x: 100, y: 50, origin: 'user' as const } } } }
+    : node);
+  const result = prepareStageNavigation({ parent: baselineForView(m1!, 'full'), target: baselineForView(m2!, 'full'), parentContent: captureContent(nodes) });
+  assert.ok(result.ok, result.ok ? '' : JSON.stringify(result.conflicts));
+  assert.deepEqual(result.content.nodes.find((node) => node.id === 'event-caller')!.position, { x: 100, y: 50 });
+});
+
+test('automatic source reflow from an expansion change can inherit target positions', () => {
+  const [m1, m2] = runtimeBaselines();
+  const sourceView = baselineForView(m1!, 'structure');
+  const collapsed = solveHierarchyExpansion(baselineNodes(sourceView), 'agent', sourceView.stage);
+  const result = prepareStageNavigation({ parent: sourceView, target: baselineForView(m2!, 'structure'), parentContent: captureContent(collapsed) });
+  assert.ok(result.ok, result.ok ? '' : JSON.stringify(result.conflicts));
+  assert.deepEqual(result.content.nodes.find((node) => node.id === 'provider')!.position, { x: 560, y: 980 });
+  assert.deepEqual(result.content.nodes.find((node) => node.id === 'world')!.position, { x: 0, y: 1590 });
 });
