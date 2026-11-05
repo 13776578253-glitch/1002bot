@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from 'react';
 import { ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react';
-import { Link, type LinkData } from '../../src/react/components/relation-edge.tsx';
-import { Ports } from '../../src/react/components/ports.tsx';
+import { Link, type LinkData } from '../../src/react/components/primitives/relation-edge.tsx';
+import { Ports } from '../../src/react/components/primitives/ports.tsx';
 
 const NODE_COUNT = 36;
 const nodes: Node<{ title: string }>[] = Array.from({ length: NODE_COUNT }, (_, index) => ({

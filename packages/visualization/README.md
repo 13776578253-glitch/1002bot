@@ -49,7 +49,7 @@ pnpm check:snapshots
 | `src/react/model/edge-routes.ts` | Canonical Edge 路径持久化、owner 坐标与可见展示边应用 |
 | `src/react/model/route-cache.ts` | 按端点、障碍和保留路径变化失效的精确路径与标签缓存 |
 | `src/react/model/display-edges.ts` | 折叠展示边聚合及原始连接成员 |
-| `src/react/components` | 节点、关系和控制组件 |
+| `src/react/components` | 节点、关系、控制、面板与快照组件；按 primitives / controls / panels / snapshot 分组 |
 | `src/react/styles` | 画布作用域内的主题、节点、连线和控制样式 |
 | `src/adapters/progress-reports` | 将可序列化的报告目录与阶段增量转换为完整基线；无 IO 或 UI 依赖 |
 | `src/adapters/project` | Source 增量、View 语义与人工几何的纯适配 |

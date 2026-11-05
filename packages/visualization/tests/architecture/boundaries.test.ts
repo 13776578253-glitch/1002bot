@@ -30,8 +30,8 @@ test('playground imports library internals only from the routing lab', async () 
     }
   }
   assert.deepEqual([...internal].sort(), [
-    'playground/src/routing-lab.tsx -> ../../src/react/components/ports.tsx',
-    'playground/src/routing-lab.tsx -> ../../src/react/components/relation-edge.tsx',
+    'playground/src/routing-lab.tsx -> ../../src/react/components/primitives/ports.tsx',
+    'playground/src/routing-lab.tsx -> ../../src/react/components/primitives/relation-edge.tsx',
   ]);
 });
 

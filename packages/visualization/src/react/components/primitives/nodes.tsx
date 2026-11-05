@@ -1,18 +1,21 @@
-/** Memoized node renderers subscribe only to their own supplied view data. */
+/** Node renderers own card, structure and cluster presentation; geometry and interaction state come from the workspace model. */
 import type { NodeProps } from '@xyflow/react';
 import { memo, useState, type CSSProperties } from 'react';
-import { RESPONSIBILITY_CARD_SIZE, structureHeaderHeight, type CanvasNode } from '../model/grouping.ts';
-import { ChangeBadge } from './change-badge.tsx';
-import { Icon } from './icon.tsx';
+import { RESPONSIBILITY_CARD_SIZE, structureHeaderHeight, type CanvasNode } from '../../model/grouping.ts';
+import { ChangeBadge } from '../change-badge.tsx';
+import { Icon } from '../icon.tsx';
 import { Ports } from './ports.tsx';
 
+/** 布局约束角标；free 不显示，fixed 与 locked 使用不同图标。 */
 function LayoutMark({ mode }: { mode: CanvasNode['data']['layoutMode'] }) {
   return mode && mode !== 'free' ? <span className="layout-mark" title={mode === 'fixed' ? '固定' : '锁定'} aria-label={mode === 'fixed' ? '固定' : '锁定'}><Icon name={mode === 'fixed' ? 'pin' : 'lock'} /></span> : null;
 }
 
+/** 职责分页区；两项以内用 1×2，更多用每页四个的 2×2 网格。 */
 function Responsibilities({ details, title }: { details: readonly string[] | undefined; title: string }) {
   const [page, setPage] = useState(0);
   if (!details?.length) return null;
+  // 职责数量变化后把页码夹到最后一页，避免空页。
   const pages = Math.ceil(details.length / 4), current = Math.min(page, pages - 1);
   const items = details.slice(current * 4, current * 4 + 4);
   const compact = details.length <= 2;
@@ -20,6 +23,7 @@ function Responsibilities({ details, title }: { details: readonly string[] | und
     <ul className="card-responsibilities" aria-label={`${title}内部职责`}>{Array.from({ length: compact ? 2 : 4 }, (_, index) => {
     const detail = items[index];
     if (detail === undefined) return <li key={index} className="responsibility-placeholder" aria-hidden="true" />;
+    // 首个中英文冒号拆分标题与描述；冒号前的标题原样保留。
     const separator = detail.search(/[：:]/);
     return <li key={index} title={detail}>{separator > 0
       ? <><span className="responsibility-title">{detail.slice(0, separator)}</span><span className="responsibility-summary">{detail.slice(separator + 1).trim()}</span></>
@@ -33,7 +37,9 @@ function Responsibilities({ details, title }: { details: readonly string[] | und
   </div>;
 }
 
+/** 卡片节点；职责在卡内分页，不创建子实体。 */
 export const Card = memo(function Card({ data, selected, width, height }: NodeProps<CanvasNode>) {
+  // 只有展开、无真实子节点且仍有职责的卡片显示“末端”。
   return <div className={`flow-card ${selected ? 'is-selected' : ''} ${data.planned ? 'is-planned' : ''}`} data-change={data.change?.kind} data-layout-mode={data.layoutMode ?? 'free'} data-frozen={data.frozen ? 'true' : undefined}>
     <Ports width={width ?? 0} height={height ?? 0} />
     <div className="card-title"><span className="card-name">{data.title}</span><LayoutMark mode={data.layoutMode} /><ChangeBadge change={data.change} />{data.expanded && !data.childCount && !!data.details?.length && <span className="terminal-badge">末端</span>}{data.planned && <span className="planned-badge">规划</span>}{data.expandable && data.onToggle && <button className="structure-toggle nodrag nopan" aria-label={`${data.expanded ? '收起' : '展开'}${data.title}`} aria-expanded={!!data.expanded} onClick={(event) => { event.stopPropagation(); data.onToggle?.(); }}>{!!data.childCount && <span>{data.childCount}</span>}<Icon name={data.expanded ? 'collapse' : 'expand'} /></button>}</div>
@@ -42,7 +48,9 @@ export const Card = memo(function Card({ data, selected, width, height }: NodePr
   </div>;
 });
 
+/** 结构容器；标题区包含职责，真实子节点仍由画布单独渲染。 */
 export const Structure = memo(function Structure({ data, selected, width, height }: NodeProps<CanvasNode>) {
+  // 标题区高度包含职责分页，子节点从标题下方开始。
   return <div className={`structure-frame ${selected ? 'is-selected' : ''}`} data-change={data.change?.kind} data-layout-mode={data.layoutMode ?? 'free'} data-frozen={data.frozen ? 'true' : undefined}>
     <Ports width={width ?? 0} height={height ?? 0} />
     <div className="structure-header" style={{ height: structureHeaderHeight({ data }) }}>
@@ -52,7 +60,9 @@ export const Structure = memo(function Structure({ data, selected, width, height
   </div>;
 });
 
+/** 聚合分组；标题输入在失焦时提交，locked 时只读。 */
 export const Cluster = memo(function Cluster({ data, selected, width, height }: NodeProps<CanvasNode>) {
+  // 失焦提交去空格标题；空标题回退为“聚合分组”。
   return <div className={`cluster ${selected ? 'is-selected' : ''}`} data-layout-mode={data.layoutMode ?? 'free'} data-frozen={data.frozen ? 'true' : undefined}>
     <Ports width={width ?? 0} height={height ?? 0} />
     <div className="cluster-drag-handle">

@@ -1,7 +1,8 @@
-/** Presentational snapshot detail; tab and note state stay local to this dialog. */
+/** Snapshot dialog owns local tab/note state, focus containment and stage selection; it writes no workspace record. */
 import { useEffect, useId, useRef, useState } from 'react';
-import { Icon } from './icon.tsx';
+import { Icon } from '../icon.tsx';
 
+/** 快照详情输入；阶段选择走画布导航，对话框本身不写工作区。 */
 export interface SnapshotDialogProps {
   workspaceTitle: string;
   stageLabel: string;
@@ -15,8 +16,10 @@ export interface SnapshotDialogProps {
   onClose(): void;
 }
 
+/** 三个标签页保持挂载，非活动页只隐藏。 */
 const tabs = ['详情', '活动记录', '备注'] as const;
 
+/** 快照详情弹窗；焦点限制在弹窗内，Escape 或背景点击关闭，标签与备注状态只存在本地。 */
 export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, description, viewLabel, confirmedAt, confirmedCurrent, onSelectStage, onClose }: SnapshotDialogProps) {
   const id = useId();
   const dialog = useRef<HTMLDivElement>(null);
@@ -25,6 +28,7 @@ export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, de
   const [tab, setTab] = useState(0);
   const [note, setNote] = useState('');
   useEffect(() => {
+    // 打开时聚焦关闭按钮；Tab 在首尾控件之间循环，Escape 关闭。
     closeButton.current!.focus();
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
@@ -37,6 +41,7 @@ export function SnapshotDialog({ workspaceTitle, stageLabel, stageId, stages, de
     window.addEventListener('keydown', keydown, true);
     return () => window.removeEventListener('keydown', keydown, true);
   }, [onClose]);
+  // 非活动标签页只隐藏不卸载；阶段选择交给画布导航。
   return <div className="snapshot-layer" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="snapshot-dialog" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} ref={dialog}>
       <button className="icon-button snapshot-close" aria-label="关闭快照" title="关闭" ref={closeButton} onClick={onClose}><Icon name="close" /></button>

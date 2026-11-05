@@ -1,6 +1,7 @@
-/** Canvas toolbar controls: zoom, fit view, marquee mode and background grid. */
-import { Icon } from './icon.tsx';
+/** Canvas controls own zoom, fit, marquee, grid, freeze, confirm and history actions; all state stays in the controller. */
+import { Icon } from '../icon.tsx';
 
+/** 控制栏输入；所有动作与可用状态都由控制器提供。 */
 export interface CanvasControlsProps {
   zoom: number;
   boxMode: boolean;
@@ -18,7 +19,7 @@ export interface CanvasControlsProps {
   canRedo: boolean;
 }
 
-/** 底部浮动控制栏；提供缩放级别显示、视口自适应、框选切换与网格底纹开关。 */
+/** 底部控制栏；缩放、自适应、框选、网格、固定、确认与撤销/重做都只通过回调交给控制器。 */
 export function CanvasControls({ zoom, boxMode, grid, onZoomOut, onZoomIn, onFit, onToggleBox, onToggleGrid, onFreeze, onConfirm, onUndo, onRedo, canUndo, canRedo }: CanvasControlsProps) {
   return <div className="canvas-controls" role="toolbar" aria-label="画布操作">
     <button className="icon-button" aria-label="缩小" onClick={onZoomOut}><Icon name="minus" /></button>

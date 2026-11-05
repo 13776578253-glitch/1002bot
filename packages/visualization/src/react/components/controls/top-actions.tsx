@@ -1,10 +1,12 @@
-/** Project actions and independent stage-view selection. */
-import { Icon } from './icon.tsx';
-import { SnapshotMenu } from './snapshot-menu.tsx';
-import type { CanvasViewMode } from '../model/workspace.ts';
+/** Top actions own stage/view selection, theme switch and snapshot entry; project, import and export remain disabled placeholders. */
+import { Icon } from '../icon.tsx';
+import { SnapshotMenu } from '../snapshot/snapshot-menu.tsx';
+import type { CanvasViewMode } from '../../model/workspace.ts';
 
 const modes = ['overview', 'structure', 'full'] as const;
+/** 视图模式显示名；内部 mode 标识与展示文案解耦。 */
 const names = { overview: 'Overview View', structure: 'Structure View', full: 'Full View' };
+/** 顶部阶段/视图与项目入口；禁用项只保留可访问语义，不绑定业务处理。 */
 export function TopActions({ workspaceTitle, stageLabel, stageId, stages, description, theme, onThemeChange, onSelectStage, viewMode, onSelectView, confirmationStatus, confirmedAt }: {
   workspaceTitle: string;
   stageLabel: string;
@@ -19,12 +21,14 @@ export function TopActions({ workspaceTitle, stageLabel, stageId, stages, descri
   onSelectStage(id: string): void;
   onSelectView(mode: CanvasViewMode): void;
 }) {
+  // 快照入口只携带当前视图的确认状态；其他视图状态由选择器展示。
   const currentConfirmation = confirmationStatus.find((item) => item.mode === viewMode);
   return <>
     <div className="view-selector" role="group" aria-label="阶段视图">
       <span className="view-stage-label">{stageLabel}</span>
       {modes.map((mode) => {
         const status = confirmationStatus.find((item) => item.mode === mode)!;
+        // current 表示来源修订仍匹配；confirmed 但非 current 需要重新确认。
         return <button key={mode} aria-pressed={mode === viewMode} onClick={() => onSelectView(mode)} title={`${names[mode]} · ${status.current ? '已确认' : status.confirmed ? '需重新确认' : '草稿'}`}>
           {names[mode]}<span className={`view-confirmation ${status.current ? 'is-confirmed' : ''}`} aria-label={status.current ? '已确认' : '待确认'} />
         </button>;

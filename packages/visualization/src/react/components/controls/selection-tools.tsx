@@ -1,6 +1,6 @@
-/** Selection toolbar for grouping multiple selected nodes and dissolving clusters. */
-import { Icon } from './icon.tsx';
-import type { LayoutMode } from '../model/grouping.ts';
+/** Selection tools own layout-mode, grouping and freeze actions for the current selection. */
+import { Icon } from '../icon.tsx';
+import type { LayoutMode } from '../../model/grouping.ts';
 
 export interface SelectionToolsProps {
   label: string;
@@ -15,8 +15,9 @@ export interface SelectionToolsProps {
   onMode(mode: LayoutMode): void;
 }
 
-/** 选中操作浮条；显示已选计数，并提供一键聚合分组与分组解散操作。 */
+/** 选中操作浮条；布局约束、聚合/解散与冻结/解冻只作用于当前选择。 */
 export function SelectionTools({ label, canGroup, onGroup, onUngroup, canFreeze, canUnfreeze, onFreeze, onUnfreeze, modes, onMode }: SelectionToolsProps) {
+  // 混合约束不点亮任何模式；只有选择内模式一致时才显示按下态。
   return label && <div className="selection-tools" role="toolbar" aria-label="节点操作"><span>{label}</span>
     <div className="layout-modes" role="group" aria-label="布局约束">{([
       ['free', '自由', 'move'], ['fixed', '固定', 'pin'], ['locked', '锁定', 'lock'],

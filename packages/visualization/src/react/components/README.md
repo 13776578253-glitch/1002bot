@@ -1,6 +1,14 @@
-Owner: `relation-edge.tsx`, `connection-panel.tsx`, `../styles/canvas.css`, `../VisualizationCanvas.tsx`, `top-actions.tsx`, `snapshot-menu.tsx`, `snapshot-dialog.tsx`, `ports.tsx`, `nodes.tsx`, `../styles/nodes.css`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`, `../styles/canvas.css`
+Owner: `primitives/relation-edge.tsx`, `primitives/nodes.tsx`, `primitives/ports.tsx`, `controls/top-actions.tsx`, `controls/canvas-controls.tsx`, `controls/selection-tools.tsx`, `panels/connection-panel.tsx`, `panels/transition-panel.tsx`, `snapshot/snapshot-menu.tsx`, `snapshot/snapshot-dialog.tsx`, `change-badge.tsx`, `icon.tsx`, `../VisualizationCanvas.tsx`, `../styles/canvas.css`, `../styles/nodes.css`, `../styles/controls.css`, `../styles/snapshot-dialog.css`, `../styles/tokens.css`
 
 # Canvas controls
+
+## Directory layout
+
+- `primitives/`: nodes, relations and ports; owns rendered geometry.
+- `controls/`: toolbars and action entries; emits canvas commands.
+- `panels/`: connection and transition detail UI.
+- `snapshot/`: snapshot entry and detail dialog, kept as one feature domain.
+- Root: `change-badge.tsx` and `icon.tsx`; extract a shared directory only when more cross-domain primitives appear.
 
 Labels consume the final label-layout result. Hidden labels never render fallback capsules on hover or focus. Every rendered path has a full-text title and a keyboard action that opens connection details. Visible labels use shortened text inside measured bounds, retain full text in their accessible name/title, and dim when unrelated to the selection. Connection details expose independent label pinning and reset controls, with status for pinned or hidden labels.
 

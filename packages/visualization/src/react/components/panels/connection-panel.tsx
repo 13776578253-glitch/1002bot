@@ -1,11 +1,12 @@
-/** Original relation inspection and canonical endpoint navigation for a selected display edge. */
+/** Connection panel owns relation inspection, route/label controls and endpoint navigation for one display edge. */
 import { memo, useId, useMemo } from 'react';
-import type { StageSnapshot } from '../../core/schema/types.ts';
-import { relationNames, type DisplayEdge } from '../model/display-edges.ts';
-import type { EdgeRouteState } from '../model/workspace.ts';
-import { ChangeBadge } from './change-badge.tsx';
-import { Icon } from './icon.tsx';
+import type { StageSnapshot } from '../../../core/schema/types.ts';
+import { relationNames, type DisplayEdge } from '../../model/display-edges.ts';
+import type { EdgeRouteState } from '../../model/workspace.ts';
+import { ChangeBadge } from '../change-badge.tsx';
+import { Icon } from '../icon.tsx';
 
+/** 单条展示边详情；路径状态与标签位置独立，聚合边不提供路径状态。 */
 export interface ConnectionPanelProps {
   edge: DisplayEdge;
   stage: StageSnapshot;
@@ -20,8 +21,10 @@ export interface ConnectionPanelProps {
 
 const routeNames: Record<EdgeRouteState, string> = { auto: '自动', pinned: '固定', locked: '锁定' };
 
+/** 连接详情面板；成员端点按根到自身的路径显示，定位动作交给画布。 */
 export const ConnectionPanel = memo(function ConnectionPanel({ edge, stage, onClose, onLocate, message, routeState, onRouteState, labelState, onLabelPinChange }: ConnectionPanelProps) {
   const heading = useId();
+  // 预计算每个规范节点的根到自身标签路径，成员端点直接查表。
   const paths = useMemo(() => {
     const nodes = new Map(stage.graph.nodes.map((node) => [node.id, node]));
     return new Map(stage.graph.nodes.map((node) => {
