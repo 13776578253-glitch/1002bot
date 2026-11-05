@@ -92,6 +92,25 @@ test('a user-sized collapsed card retains its dimensions after expand and collap
   const world = collapsed.find((item) => item.id === 'world')!;
   assert.deepEqual({ width: world.width, height: world.height }, { width: 360, height: 106 });
   assert.deepEqual(world.data.layoutEdits!.sizes!.collapsed, { width: 360, height: 106, origin: 'user' });
+
+  const expandedAgain = toggleHierarchy(collapsed, 'world', baseline!.stage);
+  const collapsedAgain = toggleHierarchy(expandedAgain, 'world', baseline!.stage);
+  assert.deepEqual(collapsedAgain.find((item) => item.id === 'world')!.width, 360);
+  assert.deepEqual(collapsedAgain.find((item) => item.id === 'world')!.height, 106);
+
+  const largerCollapsed = collapsedAgain.map((item) => item.id === 'world' ? { ...item, width: 400, height: 120 } : item);
+  const resizedCollapsed = recordSizeEdits(collapsedAgain, largerCollapsed, ['world']);
+  const history = new ViewHistory();
+  const previous = captureContent(collapsedAgain);
+  const next = captureContent(resizedCollapsed);
+  assert.equal(history.record(previous, next), true);
+  assert.deepEqual(history.undo(next), previous);
+  assert.deepEqual(history.redo(previous), next);
+
+  const expandedResized = toggleHierarchy(resizedCollapsed, 'world', baseline!.stage);
+  const collapsedResized = toggleHierarchy(expandedResized, 'world', baseline!.stage);
+  assert.deepEqual(collapsedResized.find((item) => item.id === 'world')!.width, 400);
+  assert.deepEqual(collapsedResized.find((item) => item.id === 'world')!.height, 120);
 });
 
 test('resize requests leave frozen and locked nodes unchanged', () => {
