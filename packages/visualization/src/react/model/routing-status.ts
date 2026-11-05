@@ -1,3 +1,4 @@
+/** Group-routing fallback reasons and user-facing notices; drag and preview fallbacks stay silent. */
 import type { GroupFailure } from './route-groups.ts';
 import type { GroupRouteCacheStats } from './group-route-cache.ts';
 

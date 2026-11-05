@@ -39,7 +39,7 @@ export function removeLabelPinForEdge(pins: readonly EdgeLabelPin[], edge: Displ
   return pins.filter((pin) => labelPinKey(pin) !== key);
 }
 
-/** Retain exact member sets; changed or removed canonical endpoints require a new pin. */
+/** 成员集合必须精确匹配；规范端点变化或移除后需要重新固定。 */
 export function retainLabelPins(pins: readonly EdgeLabelPin[], stage: StageSnapshot, nodes: readonly CanvasNodeView[], sourceStage?: StageSnapshot): EdgeLabelPin[] {
   const edges = new Map(stage.graph.edges.map((edge) => [edge.id, edge]));
   const oldEdges = sourceStage ? new Map(sourceStage.graph.edges.map((edge) => [edge.id, edge])) : undefined;

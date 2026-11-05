@@ -1,4 +1,4 @@
-/** Canvas commands coordinate geometry, per-baseline transactions and source-preserving navigation. */
+/** Canvas controller owns intent validation, commit order and deferred navigation; preview frames stay read-only. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyNodeChanges, useReactFlow, type NodeChange } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
@@ -25,6 +25,7 @@ import { useDragProfile } from './use-drag-profile.ts';
 import { labelPinForEdge, pinLabelForEdge, upsertLabelPin, removeLabelPinForEdge } from '../model/label-pins.ts';
 import { sceneGeometryKey } from '../model/label-snapshots.ts';
 
+/** 阶段切换的只读候选；失败时保留冲突和可重试的重继承结果。 */
 interface TransitionPreview {
   targetId: string;
   baseline: VisualizationBaseline;
@@ -51,9 +52,11 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const [message, setMessage] = useState(session.initializationMessage);
   const [zoom, setZoom] = useState(Math.round((session.initialViewport?.zoom ?? 1) * 100));
   const [alignment, setAlignment] = useState<AlignmentGuide[]>([]);
+  // ?routing=group 是显式实验开关，默认 Legacy。
   const [engine] = useState<'legacy' | 'group'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('routing') === 'group' ? 'group' : 'legacy');
   const flow = useReactFlow<CanvasNode>();
   const previewViewport = useRef<{ x: number; y: number; zoom: number } | undefined>(undefined);
+  // 先捕获已渲染快照，再依次校验人工几何、存储路径和冻结连接；任一冲突都保留当前状态。
   const commit = useCallback((transform: (current: CanvasNode[]) => CanvasNode[]) => {
     captureRendered.current();
     return session.commit((current) => {
@@ -71,11 +74,15 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   const routesRef = useRef<Map<string, CachedRoute>>(new Map());
   const captureRendered = useRef<() => void>(() => {});
   const dragging = useRef(false);
+  // 导航请求在拖动或事务未结束时暂存，等提交帧 finish 后执行。
   const pendingFinish = useRef(false);
   const deferredNavigation = useRef<(() => void) | undefined>(undefined);
   const [finishRevision, setFinishRevision] = useState(0);
+  // finishRevision 只负责触发提交帧的 layout effect；真正的待提交标记是 pendingFinish。
   const requestFinish = useCallback(() => { pendingFinish.current = true; setFinishRevision((value) => value + 1); }, []);
   const fitView = useCallback((options: { padding: number; maxZoom: number }) => flow.fitView(options), [flow.fitView]);
+  // 拖动/缩放先开启事务；尺寸或位置结束后只请求提交帧，导航在 finish 后执行。
+  // dragging 标志区分真实拖动与自动坐标补偿，只有前者写入人工位置意图。
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     if (preview) return;
     const current = nodesRef.current;
@@ -84,6 +91,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const editedPositions = changes.flatMap((change) => change.type === 'position' && change.position && (typeof change.dragging === 'boolean' || dragging.current) ? [change.id] : []);
     const resized = changes.flatMap((change) => change.type === 'dimensions' && change.resizing === true ? [change.id] : []);
     if (resized.length) { begin(); next = recordSizeEdits(current, next, resized); }
+    // 纯尺寸变化立即贴合；带位移的变化在拖动结束统一贴合。
     if (resized.length && !moved.length) {
       const fitted = fitAuthoredLayout(current, next, resized, baseline.stage);
       const issue = fitted.conflict?.message ?? validateStoredRoutes(current, fitted.nodes, session.routesRef.current, projectionRef.current)
@@ -112,6 +120,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     if (moved.length && !dragging.current && !changes.some((change) => change.type === 'position' && change.dragging)) requestFinish();
   }, [baseline, begin, requestFinish, flow.getZoom, links, preview, setNodes]);
 
+  // 只有 Structure 视图允许改展开层级；冻结框只做只读展开。
   const toggleNode = useCallback((id: string) => {
     if (preview) return;
     if (session.viewMode !== 'structure') return;
@@ -176,6 +185,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     setSelectedEdge(undefined); setConnectionEdge(undefined); setAlignment([]); setBoxMode(false);
   }, []);
 
+  // 冻结前先捕获当前渲染；冻结组路径和外部边界在同一内容事务中写入。
   const freezeSubgraph = useCallback(() => {
     if (preview) return;
     captureRendered.current();
@@ -217,6 +227,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     clearTransientState();
   }, [clearTransientState, preview, session]);
 
+  // 聚合边和冻结子图内部/边界路径不能直接改状态；auto 只删除保存的路径偏好。
   const setEdgeRouteState = useCallback((state: EdgeRouteState) => {
     if (preview || !selectedEdge) return;
     captureRendered.current();
@@ -243,6 +254,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     setMessage(state === 'locked' ? '路径已锁定' : '路径已固定');
   }, [displayEdges, preview, selectedEdge, session]);
 
+  // 视图/阶段切换、确认和撤销都等待未完成事务与拖动结束；延迟动作只保留一个。
   const selectView = useCallback((mode: CanvasViewMode): void => {
     if (preview || mode === session.viewMode) return;
     if (pendingFinish.current || dragging.current || session.transactionPending()) { deferredNavigation.current = () => selectView(mode); if (!dragging.current) requestFinish(); return; }
@@ -252,6 +264,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     clearTransientState(); setMessage(notice);
   }, [preview, session, flow.getViewport, clearTransientState, requestFinish]);
 
+  // 阶段切换要求父阶段三视图都已确认且来源未过期；任一视图失败时只生成只读预览。
   const selectBaseline = useCallback((id: string): void => {
     if (preview) { setPreview(undefined); setMessage('已取消候选预览'); return; }
     if (id === baselineId) return;
@@ -259,6 +272,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     captureRendered.current();
     const targetIndex = props.baselines.findIndex((item) => item.id === id);
     const original = props.baselines[targetIndex]!;
+    // 未声明 previousStageId 时，按基线数组前一项推导父阶段。
     const parentId = original.previousStageId ?? props.baselines[targetIndex - 1]?.id;
     if (!parentId) {
       session.saveViewport(flow.getViewport()); session.switchBaseline(id);
@@ -305,6 +319,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     setPreview(undefined); clearTransientState(); setMessage('三个视图已继承，待逐一审查并确认');
   }, [baselineId, clearTransientState, flow.getViewport, preview, props.baselines, session, requestFinish]);
 
+  // 确认也等提交帧，避免把未完成的布局写入确认快照。
   const confirmStage = useCallback((): void => {
     if (preview) return;
     if (pendingFinish.current || dragging.current || session.transactionPending()) { deferredNavigation.current = confirmStage; if (!dragging.current) requestFinish(); return; }
@@ -326,6 +341,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     if (viewport) void flow.setViewport(viewport);
     else requestAnimationFrame(() => void flow.fitView({ padding: 0.22, maxZoom: 1.15 }));
   }, [baselineId, session.viewMode, preview]);
+  // 定位只展开目标所需祖先，校验路径后提交，并聚焦两端节点。
   const locateConnection = useCallback((id: string) => {
     if (preview) return;
     if (session.viewMode === 'overview') { setMessage('在 Structure View 或 Full View 中定位内部节点'); return; }
@@ -390,12 +406,14 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     toggleNode, canToggleHierarchy: session.viewMode === 'structure', viewMode: session.viewMode, chooseEdge, renameNode, commitRename: requestFinish,
   });
   const selectedDisplayEdge = selectedEdge ? displayEdges.find((edge) => edge.id === selectedEdge) : undefined;
+  // 聚合展示边不拥有独立路径状态。
   const selectedCanonicalEdgeId = selectedDisplayEdge && !selectedDisplayEdge.aggregated ? selectedDisplayEdge.members[0]?.canonicalEdgeId : undefined;
   const selectedRouteState = selectedCanonicalEdgeId ? routeStateFor(session.edgeRoutes, selectedCanonicalEdgeId) : undefined;
   const labelState = selectedDisplayEdge ? {
     pinned: !!labelPinForEdge(session.labelPins, selectedDisplayEdge),
     visible: !!scene.labelLayout.labels.get(selectedDisplayEdge.id)?.placement,
   } : undefined;
+  // 标签固定是独立工作区内容，和路径锁定分开提交。
   const setLabelPinned = useCallback((pinned: boolean) => {
     if (preview || !selectedDisplayEdge) return;
     const label = scene.labelLayout.labels.get(selectedDisplayEdge.id)?.placement;
@@ -407,7 +425,9 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   }, [preview, selectedDisplayEdge, scene.labelLayout, session.commitContent]);
   const dragProfile = useDragProfile(scene.routeStats);
   recordConstraint.current = dragProfile.recordConstraint;
+  // 拖动期间只走增量缓存；释放后由提交帧统一快照和导航。
   const beginDrag = useCallback(() => { if (!preview) { captureRendered.current(); dragging.current=true; begin(); dragProfile.start(); } }, [begin, dragProfile.start, preview]);
+  // 拖动结束先贴合人工容器，再请求提交帧；路径/冻结冲突时保留原布局。
   const finishDrag = useCallback(() => {
     if (preview) return;
     if (baseline.layout?.kind === 'manual') {
@@ -419,6 +439,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     }
     dragging.current = false; requestFinish(); setAlignment([]);
   }, [baseline, requestFinish, preview, setNodes]);
+  // 只有在 scene frame 与当前节点几何一致时才捕获快照；待完成事务在这里 finish 并执行延迟导航。
   useLayoutEffect(() => {
     const frame = scene.frame;
     routesRef.current = scene.labelledRoutes;

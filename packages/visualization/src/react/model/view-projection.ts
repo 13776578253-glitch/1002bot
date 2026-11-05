@@ -7,7 +7,7 @@ import type { CanvasViewMode } from './workspace.ts';
 type Frame = NonNullable<VisualizationBaseline['layout']>['nodes'][string];
 type Size = { width: number; height: number };
 
-/** Seed a new view before it has a saved draft. Existing views own their geometry. */
+/** 在保存草稿前播种新视图；已有视图拥有自己的几何。 */
 export function baselineForView(baseline: VisualizationBaseline, mode: CanvasViewMode): VisualizationBaseline {
   const graph = baseline.stage.graph;
   const children = new Map<string, CanonicalNode[]>();

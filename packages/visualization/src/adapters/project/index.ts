@@ -1,4 +1,4 @@
-/** Convert authored project facts and views to independent canvas baselines. */
+/** Converts authored project facts and views into independent canvas baselines; stages accumulate by explicit previousId, with no IO or UI dependencies. */
 import type { ArchitectureProject, ProjectComponent, ProjectContract, ProjectRelation, ProjectSourceStage, ProjectViewDefinition } from '../../core/project/types.ts';
 import type { ChangeMark, VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { CanonicalEdge, CanonicalGraph, CanonicalNode, StageSnapshot } from '../../core/schema/types.ts';
@@ -8,6 +8,7 @@ import { assertValidGraph } from '../../core/graph/validate.ts';
 export type * from '../../core/project/types.ts';
 export { resolveSourceStages } from '../../core/project/resolve.ts';
 
+/** 单个阶段累积后的源事实；视图装配与后继阶段共用。 */
 interface Facts {
   components: Map<string, ProjectComponent>;
   relations: Map<string, ProjectRelation>;
@@ -24,6 +25,7 @@ function references(values: readonly string[], description: string): void {
   }
 }
 
+/** 只校验传入列表内唯一；不跨列表比较。 */
 function uniqueIds<T extends { id: string }>(values: readonly T[], description: string): void {
   const ids = new Set<string>();
   for (const value of values) {
@@ -33,6 +35,7 @@ function uniqueIds<T extends { id: string }>(values: readonly T[], description: 
   }
 }
 
+/** 先删除再 upsert；同一 ID 不得同时出现在删除和更新列表。 */
 function applyDelta<T extends { id: string }>(base: ReadonlyMap<string, T>, updates: readonly T[], removed: readonly string[], description: string): Map<string, T> {
   uniqueIds(updates, description);
   const next = new Map(base);
@@ -51,6 +54,7 @@ function applyDelta<T extends { id: string }>(base: ReadonlyMap<string, T>, upda
   return next;
 }
 
+/** 在前驱事实之上应用本阶段增量，并校验字段和引用完整性。 */
 function stageFacts(stage: ProjectSourceStage, parent: Facts | undefined): Facts {
   const components = applyDelta(parent?.components ?? new Map(), stage.upsert.components, stage.remove.componentIds, 'component');
   const relations = applyDelta(parent?.relations ?? new Map(), stage.upsert.relations, stage.remove.relationIds, 'relation');
@@ -84,6 +88,7 @@ function mark(ids: readonly string[], inherited: (id: string) => boolean, initia
     : inherited(id) ? { kind: 'inherited', label: '沿用' } : { kind: 'added', label: '新增' }]));
 }
 
+/** 装配单个阶段/视图基线；视图几何、关系可见性与替换标记在这里一次性确定。 */
 function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, index: number, view: ProjectViewDefinition, facts: Facts, parent: Facts | undefined): VisualizationBaseline {
   text(view.id, 'view id');
   text(view.rootId, `view ${view.id} root id`);
@@ -110,6 +115,7 @@ function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, i
       ...((node.details ?? component.details) ? { details: [...(node.details ?? component.details)!] } : {}),
     };
   })];
+  // 视图关系在这里一次性校验 refines 链、可见性互斥和来源事实。
   for (const relation of view.relations) {
     if (!relation.sourceRelationIds.length) throw new Error(`view relation ${relation.id} requires source relation IDs`);
     for (const id of relation.sourceRelationIds) if (!facts.relations.has(id)) throw new Error(`view relation ${relation.id} references unknown source relation "${id}"`);
@@ -151,7 +157,9 @@ function makeBaseline(project: ArchitectureProject, stage: ProjectSourceStage, i
     ...(node.expandedSize ? { expandedSize: { ...node.expandedSize } } : {}),
     ...(node.initiallyExpanded === undefined ? {} : { initiallyExpanded: node.initiallyExpanded }),
   }])) };
+  // 节点是否沿用按 componentId 判断，不按视图节点 ID。
   const nodeChanges = mark(view.nodes.map((node) => node.id), (id) => parent?.components.has(nodeViews.get(id)!.componentId) ?? false, !parent);
+  // 替换标记在上一视图中查找 componentId 等于当前 previousId 的节点，供增量布局继承坐标。
   const previousView = project.views.find((item) => item.stageId === stage.previousId);
   for (const node of view.nodes) {
     const component = facts.components.get(node.componentId)!;
@@ -184,6 +192,7 @@ export function adaptProject(project: ArchitectureProject): VisualizationBaselin
     views.set(view.stageId, view);
   }
   const facts = new Map<string, Facts>(), visiting = new Set<string>();
+  // 前驱事实按需递归解析；缓存复用结果，visiting 集合负责发现环。
   const resolve = (stage: ProjectSourceStage): Facts => {
     const existing = facts.get(stage.id);
     if (existing) return existing;

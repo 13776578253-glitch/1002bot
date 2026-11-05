@@ -140,7 +140,7 @@ export function worldPosition(node: CanvasNode, nodes: readonly CanvasNode[]): {
   return { x: origin.x + node.position.x, y: origin.y + node.position.y };
 }
 
-/** Automatic edits preserve protected world anchors; manual ancestor moves carry their descendants. */
+/** 自动编辑保留受保护的世界锚点；人工父级移动会携带后代。 */
 export function layoutProtectionConflict(before: readonly CanvasNode[], after: readonly CanvasNode[], movedRoots: ReadonlySet<string> = new Set()): boolean {
   const protectedNodes = before.filter(isLayoutProtected);
   if (!protectedNodes.length) return false;

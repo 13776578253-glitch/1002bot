@@ -16,9 +16,8 @@ interface State {
 }
 
 /**
- * Select one non-overlapping candidate for each route. Fixed labels are inserted
- * first. If no candidate fits, a required label becomes hidden; optional labels
- * simply have no placement. The beam is bounded so this stays a local UI pass.
+ * 为每条边选择一个互不重叠的候选。固定标签先插入；无候选可用时，必需标签隐藏，
+ * 可选标签直接没有位置。束搜索有上限，保持在局部 UI 处理范围内。
  */
 export function coordinateLabels(routes: readonly CoordinatedLabelRoute[], fixed: readonly Rect[] = [], beamWidth = 24): Map<string, LabelCandidate | undefined> {
   const ordered = [...routes].sort((a, b) =>

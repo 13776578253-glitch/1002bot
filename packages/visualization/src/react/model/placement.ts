@@ -60,7 +60,7 @@ function routeBlocked(rect: Rect, routes: readonly EdgeRouteSnapshot[], reserved
   });
 }
 
-/** Grow a frame around settled children, compensating child coordinates when its origin shifts. */
+/** 围绕已安置子节点扩展框；原点移动时补偿子节点坐标。 */
 function fitFrame(input: readonly CanvasNode[], id: string, pending: ReadonlySet<string>, opening: boolean, bias: Point = { x: 0, y: 0 }): CanvasNode[] | undefined {
   const parent = byId(input, id);
   const inset = { x: 24, top: parent.type === 'cluster' ? 60 : 72, bottom: 24 };
@@ -94,7 +94,7 @@ function fitFrame(input: readonly CanvasNode[], id: string, pending: ReadonlySet
   return next;
 }
 
-/** Only newly created overlaps are rejected; existing source geometry is preserved. */
+/** 只拒绝新产生的重叠；已有源几何保持不变。 */
 function collisionFree(before: readonly CanvasNode[], after: readonly CanvasNode[], stage: StageSnapshot, pending: ReadonlySet<string>): boolean {
   const previous = new Map(before.map((node) => [node.id, node]));
   const oldProjection = hierarchyProjection(before, stage), nextProjection = hierarchyProjection(after, stage);
@@ -362,7 +362,7 @@ function localExpansionCandidate(input: readonly CanvasNode[], id: string, stage
   return nodes;
 }
 
-/** User expansion proposes local free-node adjustments, then uses the shared frame solver. */
+/** 用户展开先提出局部自由节点调整，再走共享框求解。 */
 export function solveHierarchyExpansion(input: readonly CanvasNode[], id: string, stage: StageSnapshot): CanvasNode[] {
   const original = input.find((node) => node.id === id)!;
   const verify = (candidate: CanvasNode[]) => {

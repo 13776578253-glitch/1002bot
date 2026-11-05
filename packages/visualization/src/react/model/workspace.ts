@@ -21,7 +21,7 @@ export interface EdgeRouteEndpointView {
   handle?: string;
 }
 
-/** A route retained by canonical edge identity; display aggregation never owns its own frozen path. */
+/** 按规范边身份保留的路径；展示聚合从不拥有独立冻结路径。 */
 export interface EdgeRouteSnapshot {
   policyKey?: string;
   canonicalEdgeId: string;
@@ -35,7 +35,7 @@ export interface EdgeRouteSnapshot {
   frozenBoundaries?: FrozenBoundarySegment[];
 }
 
-/** A label position authored for one exact displayed edge. */
+/** 为一条精确展示边编写标签位置。 */
 export interface EdgeLabelPin {
   id: string;
   source: string;
@@ -52,7 +52,7 @@ export interface FrozenBoundarySegment {
   side: FrozenBoundarySide;
 }
 
-/** Projection paths are view geometry; their member identities remain canonical. */
+/** 投影路径是视图几何；成员身份仍是规范身份。 */
 export interface DisplayRouteSnapshot {
   policyKey?: string;
   id: string;
@@ -82,7 +82,7 @@ export interface FrozenBoundaryPort {
   handle?: string;
 }
 
-/** Single-layer frozen ledger; members never overlap another frozen group. */
+/** 单层冻结账本；成员不得与其他冻结组重叠。 */
 export interface FrozenGroupSnapshot {
   id: string;
   rootId: string;
@@ -274,7 +274,7 @@ export function restoreNodeViews(baseline: VisualizationBaseline, fresh: readonl
   return ordered;
 }
 
-/** One entry per committed gesture; selection and viewport never enter this history. */
+/** 每个已提交手势一条记录；选择和视口不进入历史。 */
 export class ViewHistory {
   private past: CanvasBaselineContent[] = [];
   private future: CanvasBaselineContent[] = [];

@@ -37,7 +37,7 @@ export function retainedDisplayRoutes(nodes: readonly CanvasNode[], projection: 
     const route = stored.get(edge.id);
     if (!route || route.policyKey !== routePolicyKey(policy) || route.source !== edge.source || route.target !== edge.target) continue;
     if (!sameBounds(route.sourceBounds, geometry.bounds.get(edge.source)!) || !sameBounds(route.targetBounds, geometry.bounds.get(edge.target)!)) continue;
-    // Shared frozen fragments may coincide; external locked segments remain hard obstacles.
+    // 共享的冻结片段可以重合；外部的锁定线段仍是硬障碍。
     const protectedParts = route.barrierKey === barrierKey ? geometry.reserved.filter(part => part.edgeId === edge.id) : [];
     const obstacles = protectedParts.length ? geometry.reserved.filter(part => !protectedParts.some(own =>
       part.rect.x >= own.rect.x && part.rect.y >= own.rect.y

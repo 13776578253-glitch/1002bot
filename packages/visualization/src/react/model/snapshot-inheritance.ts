@@ -7,7 +7,7 @@ import { legacyLayoutEdits, type NodeLayoutEdits } from './layout-intent.ts';
 import { labelPinKey, retainLabelPins } from './label-pins.ts';
 import type { EdgeLabelPin } from './workspace.ts';
 
-/** The parent and generated target used when the current target draft branched. */
+/** 当前目标草稿分叉时使用的父内容和生成目标。 */
 export interface StageInheritanceBase {
   parentId: string;
   parentRevision: string;
@@ -28,7 +28,7 @@ export function captureStageInheritance(input: StageInheritanceInput & { targetC
   return structuredClone({ ...input, targetRevision: input.targetStage.graph.revision ?? input.targetStage.id });
 }
 
-/** Compare the actual confirmed parent and source, including when the parent keeps its revision. */
+/** 比较实际确认的父内容和来源，包括父级保持修订号的情况。 */
 export function needsStageRebase(base: StageInheritanceBase, current: StageInheritanceInput): boolean {
   return base.parentId !== current.parentId || base.parentRevision !== current.parentRevision
     || !equal(authoredContent(base.parentContent), authoredContent(current.parentContent))
@@ -52,7 +52,7 @@ function routeIntent(route: EdgeRouteSnapshot): Omit<EdgeRouteSnapshot, 'label'>
   return intent;
 }
 
-/** Auto-projected paths and label rectangles are caches, not changes to the parent view. */
+/** 自动投影路径和标签矩形是缓存，不构成对父视图的修改。 */
 function authoredContent(content: CanvasBaselineContent) {
   const { displayRoutes: _displayRoutes, edgeRoutes, frozenGroups, labelPins, ...rest } = content;
   return { ...rest, edgeRoutes: edgeRoutes.map(routeIntent), frozenGroups: frozenGroups.map((group) => ({
@@ -145,7 +145,7 @@ function mergeEdgeRoutes(base: readonly EdgeRouteSnapshot[], local: readonly Edg
   });
 }
 
-/** Text and canonical members belong to the current stage, while route geometry is editable. */
+/** 文本和规范成员属于当前阶段，路径几何可编辑。 */
 function mergeDisplayRoutes(base: readonly DisplayRouteSnapshot[], local: readonly DisplayRouteSnapshot[], incoming: readonly DisplayRouteSnapshot[], targetStage: StageSnapshot): DisplayRouteSnapshot[] {
   const geometry = (route: DisplayRouteSnapshot) => { const { text: _text, memberIds: _members, barrierKey: _barriers, label: _label, labelAttachment: _attachment, labelIdentity: _identity, labelPolicyKey: _policy, labelRouteKey: _routeKey, ...value } = route; return value; };
   const discardLabelCache = (route: DisplayRouteSnapshot): DisplayRouteSnapshot => {
@@ -172,7 +172,7 @@ function mergeDisplayRoutes(base: readonly DisplayRouteSnapshot[], local: readon
   });
 }
 
-/** Legacy worldBounds positions describe capture time; current geometry is owner-relative. */
+/** 旧 worldBounds 位置描述捕获时坐标；当前几何是 owner 相对坐标。 */
 function frozenInvariant(group: FrozenGroupSnapshot) {
   return { ...group, ...(group.previousRoutes ? { previousRoutes: group.previousRoutes.map(routeIntent) } : {}), worldBounds: { w: group.worldBounds.w, h: group.worldBounds.h } };
 }

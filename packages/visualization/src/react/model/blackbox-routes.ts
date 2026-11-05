@@ -32,7 +32,7 @@ const samePoint = (a: Point, b: Point) => Math.abs(a.x - b.x) < EPSILON && Math.
 const hasPoint = (rect: Rect, point: Point) => point.x >= rect.x - EPSILON && point.x <= rect.x + rect.w + EPSILON && point.y >= rect.y - EPSILON && point.y <= rect.y + rect.h + EPSILON;
 const worldBounds = (node: CanvasNode, nodes: readonly CanvasNode[]): Rect => ({ ...worldPosition(node, nodes), w: size(node).width, h: size(node).height });
 
-/** Materialize expanded frames without translating any existing node. */
+/** 生成展开框，但不平移任何已有节点。 */
 function materializeFrames(input: CaptureInput): { nodes: CanvasNode[]; virtual: CanvasNode[]; frames: Record<string, {width: number; height: number}> } | StageConflict {
   const groupIds = new Set([input.group.rootId, ...input.group.memberIds]);
   const nodes = input.nodes.map((node) => ({ ...node, position: { ...node.position }, data: { ...node.data } }));
@@ -89,7 +89,7 @@ function materializeFrames(input: CaptureInput): { nodes: CanvasNode[]; virtual:
   return { nodes, virtual, frames };
 }
 
-/** Extract the actual first exit, including the exact port on the frame. */
+/** 提取实际的第一个出口，包括边框上的精确端口。 */
 export function frozenBoundary(points: readonly Point[], rect: Rect, ownerId: string, endpoint: 'source' | 'target'): FrozenBoundarySegment | undefined {
   const ordered = endpoint === 'source' ? points : [...points].reverse();
   if (!ordered.length || !hasPoint(rect, ordered[0]!)) return undefined;
@@ -119,7 +119,7 @@ const vector = (side: FrozenBoundarySide) => ({ x: side === 'right' ? 1 : side =
 const handles: Record<string, FrozenBoundarySide> = { out: 'bottom', 'top-out': 'top', 'return-out': 'right', 'left-out': 'left', in: 'top', 'bottom-in': 'bottom', return: 'right', 'left-in': 'left' };
 const boundaryCache=new WeakMap<EdgeRouteSnapshot,{points:Point[];boundaryKey:string;route:CachedRoute;connector:Point[]}>();
 
-/** Connect rigid internal segments through free space; an invalid result is a conflict. */
+/** 在自由空间中连接刚性内部段；无效结果即为冲突。 */
 export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSnapshot, nodes: readonly CanvasNode[], geometry: DiagramGeometry, sourceId: string, targetId: string, fallback: CachedRoute, groups: readonly FrozenGroupSnapshot[], preserveConnector = false): { ok: true; route: CachedRoute } | { ok: false; message: string } {
   const source = snapshot.frozenBoundaries?.find((part) => part.endpoint === 'source');
   const target = snapshot.frozenBoundaries?.find((part) => part.endpoint === 'target');
@@ -201,7 +201,7 @@ export function resolveFrozenBoundaryRoute(edgeId: string, snapshot: EdgeRouteSn
   return { ok: true, route };
 }
 
-/** Find a valid internal path to a real frame boundary before routing the free exterior. */
+/** 在布线外部自由段之前，先找到通往真实边框的有效内部路径。 */
 function captureCrossing(edge: DisplayEdge, sourceIn: boolean, geometry: DiagramGeometry, projectionNodes: readonly CanvasNode[], projection: ReturnType<typeof projectGraph>, nodes: readonly CanvasNode[], group: FrozenGroupSnapshot, groups: readonly FrozenGroupSnapshot[], existing: EdgeRouteSnapshot | undefined): { route: CachedRoute; segment: FrozenBoundarySegment } | undefined {
   const root = nodes.find((node) => node.id === group.rootId)!, rect = worldBounds(root, nodes);
   const generated = routeDiagramGeometry(geometry, edge.source, edge.target, edge.id);
@@ -241,7 +241,7 @@ function captureCrossing(edge: DisplayEdge, sourceIn: boolean, geometry: Diagram
   return undefined;
 }
 
-/** Capture every canonical incident edge; folded display edges never stand in for a member. */
+/** 捕获所有规范关联边；折叠展示边不能替代成员。 */
 export function captureFrozenSubgraph(input: CaptureInput): FrozenCaptureResult {
   const prepared = materializeFrames(input);
   if ('kind' in prepared) return { ok: false, conflicts: [prepared] };
@@ -332,7 +332,7 @@ export function releaseFrozenSubgraph(nodes:readonly CanvasNode[],routes:readonl
   return{nodes:unfreezeGroup(nodes,group),edgeRoutes:[...retained,...previous.values()],frozenGroups:groups.filter(item=>item.id!==group.id)};
 }
 
-/** Only boundary connections touched by endpoint motion or new obstacles need preflight routing. */
+/** 只有端点移动或新障碍触及的边界连接才需要预检布线。 */
 export function validateFrozenConnections(before:readonly CanvasNode[],after:readonly CanvasNode[],stage:StageSnapshot,stored:readonly EdgeRouteSnapshot[],groups:readonly FrozenGroupSnapshot[],rendered?:ReadonlyMap<string,CachedRoute>): StageConflict[] {
   if(!stored.some(route=>route.frozenBoundaries?.length))return [];
   const closedMoved = groups.filter(group => {

@@ -1,4 +1,4 @@
-/** Independent stage/view transactions and persisted snapshots; canonical graphs stay shared. */
+/** Workspace session owns per-stage/view drafts, history, confirmations and persistence; Canonical graphs stay shared. */
 import { useCallback, useMemo, useRef, useState, type SetStateAction } from 'react';
 import type { VisualizationCanvasProps } from '../types.ts';
 import type { CanvasNode } from '../model/grouping.ts';
@@ -16,6 +16,7 @@ import type { StageTransitionSuccess } from '../model/stage-transition.ts';
 import { saveWorkspace } from '../persistence/storage-session.ts';
 import { sceneGeometryKey } from '../model/label-snapshots.ts';
 
+/** 单个阶段/视图会话的内容字段；revision、确认和继承元数据留在 CanvasBaselineView。 */
 export interface CanvasSessionState {
   nodes: CanvasNode[];
   edgeRoutes: EdgeRouteSnapshot[];
@@ -29,10 +30,12 @@ export const VIEW_LABELS: Record<CanvasViewMode, string> = { overview: 'Overview
 export type ViewTransition = StageTransitionSuccess & { inheritance?: StageInheritanceBase };
 export { baselineNodes };
 
+/** 只读取视图内容；revision、确认和继承等元数据仍由视图保留。 */
 function contentOf(view: CanvasBaselineView): CanvasBaselineContent {
   return { nodes: view.nodes, edgeRoutes: view.edgeRoutes, frozenGroups: view.frozenGroups,
     ...(view.overlay ? { overlay: view.overlay } : {}), ...(view.displayRoutes ? { displayRoutes: view.displayRoutes } : {}), ...(view.labelPins?.length ? { labelPins: view.labelPins } : {}) };
 }
+/** 替换内容时保留 revision、确认、继承和来源阶段等视图元数据。 */
 function replaceContent(view: CanvasBaselineView, content: CanvasBaselineContent): CanvasBaselineView {
   const { overlay: _overlay, displayRoutes: _display, labelPins: _pins, ...metadata } = view;
   return { ...metadata, ...content };
@@ -41,13 +44,16 @@ function replaceContent(view: CanvasBaselineView, content: CanvasBaselineContent
 export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: CanvasWorkspaceView) {
   const { baselines, persistence } = props;
   const initialMode = restored?.viewMode ?? 'structure';
+  // 三个视图各自派生展示基线；Canonical Graph 仍由 baselines 共享。
   const definitions = useMemo(() => Object.fromEntries(VIEW_MODES.map((mode) => [mode, new Map(baselines.map((item) => [item.id, baselineForView(item, mode)]))])) as Record<CanvasViewMode, Map<string, typeof baselines[number]>>, [baselines]);
   const getBaseline = useCallback((id: string, mode: CanvasViewMode) => definitions[mode].get(id)!, [definitions]);
+  // 恢复的工作区按视图深拷贝；缺失的视图补空对象，首次进入时再播种。
   const [initialViews] = useState(() => {
     const views = structuredClone(restored?.views ?? { structure: restored?.baselines ?? {} });
     for (const mode of VIEW_MODES) views[mode] ??= {};
     return views as Record<CanvasViewMode, Record<string, CanvasBaselineView>>;
   });
+  // views 是同步可读的权威草稿；React state 只负责触发渲染。
   const views = useRef(initialViews);
   const [initialId] = useState(() => {
     const requested = restored && baselines.some((item) => item.id === restored.baselineId) ? restored.baselineId : props.initialBaselineId ?? baselines[baselines.length - 1]!.id;
@@ -55,12 +61,14 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   });
   const [viewMode, publishMode] = useState<CanvasViewMode>(initialMode), modeRef = useRef(viewMode);
   const [baselineId, publishId] = useState(initialId), idRef = useRef(baselineId);
+  // 首次进入某视图时从基线生成草稿；sourceStage 保留来源快照供后续继承比较。
   const seed = useCallback((id: string, mode: CanvasViewMode): CanvasBaselineView => {
     const baseline = getBaseline(id, mode);
     return { revision: baseline.stage.graph.revision ?? baseline.stage.id, ...captureContent(baselineNodes(baseline)), sourceStage: structuredClone(baseline.stage) };
   }, [getBaseline]);
   for (const mode of VIEW_MODES) views.current[mode][initialId] ??= seed(initialId, mode);
   const normalizationMessage = useRef('');
+  // 读取视图时先恢复节点与冻结组，再做卡片规格归一化和存储路径校验；冲突时保留原几何。
   const makeContent = useCallback((id: string, mode: CanvasViewMode): CanvasSessionState => {
     const baseline = getBaseline(id, mode), saved = views.current[mode][id]!;
     const frozen = restoreFrozenGroups(restoreNodeViews(baseline, baselineNodes(baseline), saved.nodes), saved.frozenGroups);
@@ -81,7 +89,9 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const [displayRoutes, publishDisplay] = useState(initialContent.displayRoutes ?? []), displayRoutesRef = useRef(displayRoutes);
   const displayGeometry = useRef(sceneGeometryKey(initialContent.nodes));
   const [labelPins, publishLabelPins] = useState(initialContent.labelPins ?? []), labelPinsRef = useRef(labelPins);
+  // 撤销/重做按阶段与视图隔离，刷新后不保留。
   const histories = useRef(new Map<string, ViewHistory>());
+  // 历史只存内容对象；确认、继承和来源元数据通过 WeakMap 关联，不参与几何比较。
   const metadata = useRef(new WeakMap<CanvasBaselineContent, CanvasBaselineView>());
   const pending = useRef<CanvasBaselineContent | undefined>(undefined);
   const [, refresh] = useState(0);
@@ -93,6 +103,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     return stack;
   };
   const setNodes = useCallback((action: SetStateAction<CanvasNode[]>) => { const next = typeof action === 'function' ? action(nodesRef.current) : action; nodesRef.current = next; publishNodes(next); }, []);
+  // 路径、冻结组或标签固定变化会使已渲染的显示路径失效。
   const setRoutes = useCallback((next: EdgeRouteSnapshot[]) => { if (next !== routesRef.current) displayGeometry.current = ''; routesRef.current = next; publishRoutes(next); }, []);
   const setFrozenGroups = useCallback((next: FrozenGroupSnapshot[]) => { if (next !== frozenRef.current) displayGeometry.current = ''; frozenRef.current = next; publishFrozen(next); }, []);
   const setOverlay = useCallback((next: UserGraphOverlay | undefined) => { overlayRef.current = next; publishOverlay(next); }, []);
@@ -103,6 +114,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     displayRoutesRef.current = next; publishDisplay(next); return true;
   }, []);
   const setLabelPins = useCallback((next: EdgeLabelPin[]) => { if (next !== labelPinsRef.current) displayGeometry.current = ''; labelPinsRef.current = next; publishLabelPins(next); }, []);
+  // 当前帧的显示路径只有在几何匹配时才写入快照；过期缓存不进入历史或保存。
   const captureCurrent = useCallback(() => {
     const content = captureContent(nodesRef.current, routesRef.current, frozenRef.current, overlayRef.current, displayGeometry.current === sceneGeometryKey(nodesRef.current) ? displayRoutesRef.current : [], labelPinsRef.current);
     metadata.current.set(content, structuredClone(views.current[modeRef.current][idRef.current]!));
@@ -112,6 +124,8 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     const mode = modeRef.current, id = idRef.current;
     views.current[mode][id] = replaceContent(views.current[mode][id]!, captureCurrent());
   }, [captureCurrent]);
+  // baselines 是活动视图的兼容别名，views 才是全部视图的权威。
+  // 保存时深拷贝工作区；异步写入失败只更新提示，不改当前状态。
   const save = useCallback((capture = true) => {
     if (capture) storeCurrent();
     if (!persistence) return;
@@ -122,6 +136,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const publishContent = useCallback((state: CanvasSessionState) => {
     setNodes(state.nodes); setRoutes(state.edgeRoutes); setFrozenGroups(state.frozenGroups); setOverlay(state.overlay); setLabelPins(state.labelPins ?? []); setDisplayRoutes(state.displayRoutes ?? []);
   }, [setNodes, setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, setLabelPins]);
+  // 只缓存与当前阶段、视图和节点几何一致的渲染帧；未完成事务或过期帧直接丢弃。
   const cacheRenderedRoutes = useCallback((routes: DisplayRouteSnapshot[], geometry: string, stageId: string, mode: CanvasViewMode) => {
     const changed = setDisplayRoutes(routes, geometry, stageId, mode);
     if (pending.current || stageId !== idRef.current || mode !== modeRef.current || geometry !== sceneGeometryKey(nodesRef.current)) return;
@@ -130,6 +145,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     views.current[modeRef.current][idRef.current] = replaceContent(saved, captureCurrent());
     save(false);
   }, [setDisplayRoutes, captureCurrent, save]);
+  // 一次手势或命令用 pending 捕获 before 内容；finish 只提交一次历史并保存。
   const begin = useCallback(() => { pending.current ??= captureCurrent(); }, [captureCurrent]);
   const finish = useCallback(() => {
     const before = pending.current; pending.current = undefined;
@@ -145,6 +161,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     if (changed) { refresh((value) => value + 1); save(); }
     return changed;
   }, [captureCurrent, save, setNodes]);
+  // 路径、冻结组或标签固定改变时清空显示路径缓存，避免复用旧约束下的几何。
   const commitContent = useCallback((transform: (current: CanvasSessionState) => CanvasSessionState | undefined) => {
     const before = captureCurrent();
     const current: CanvasSessionState = { nodes: nodesRef.current, edgeRoutes: routesRef.current, frozenGroups: frozenRef.current, ...(overlayRef.current ? { overlay: overlayRef.current } : {}), displayRoutes: displayRoutesRef.current, labelPins: labelPinsRef.current };
@@ -156,6 +173,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     if (changed) { refresh((value) => value + 1); save(); }
     return changed;
   }, [captureCurrent, publishContent, save]);
+  // 撤销/重做恢复内容，同时恢复确认、继承和来源阶段等元数据；元数据不进入几何历史。
   const travel = useCallback((direction: 'undo' | 'redo') => {
     const stack = history();
     if (direction === 'undo' ? !stack.canUndo : !stack.canRedo) return;
@@ -181,6 +199,8 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     publishContent(makeContent(idRef.current, mode)); save(false);
     return normalizationMessage.current;
   }, [makeContent, publishContent, save]);
+  // 三个视图在同一轮写入；提交前由导航逻辑保证结果完整，失败只保留预览。
+  // reused 表示直接恢复已有视图且继承基准仍有效；确认要求沿用原记录。
   const applyStageTransitions = useCallback((targetId: string, results: Record<CanvasViewMode, ViewTransition>) => {
     storeCurrent(); pending.current = undefined;
     for (const mode of VIEW_MODES) {
@@ -198,6 +218,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     idRef.current = targetId; publishId(targetId);
     publishContent(makeContent(targetId, modeRef.current)); refresh((value) => value + 1); save();
   }, [storeCurrent, getBaseline, makeContent, publishContent, save]);
+  // 确认写入当前内容副本与来源修订；后续阶段以该副本为父基础。
   const confirm = useCallback((renderedRoutes?: DisplayRouteSnapshot[]) => {
     if (renderedRoutes) setDisplayRoutes(renderedRoutes);
     storeCurrent();
@@ -205,23 +226,27 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
     views.current[mode][id] = { ...views.current[mode][id]!, ...content, requiresConfirmation: false, confirmed: structuredClone(content), confirmedAt: new Date().toISOString(), confirmationId: crypto.randomUUID(), revision: baseline.stage.graph.revision ?? baseline.stage.id, confirmedRevision: baseline.stage.graph.revision ?? baseline.stage.id, sourceStage: structuredClone(baseline.stage) };
     refresh((value) => value + 1); save();
   }, [captureCurrent, getBaseline, setDisplayRoutes, storeCurrent, save]);
+  // 读取当前视图前先写入最新内容，保证导航与预览使用同一版本。
   const getSavedContent = useCallback((id: string, mode = modeRef.current) => {
     if (id === idRef.current && mode === modeRef.current) storeCurrent();
     const saved = views.current[mode][id];
     return saved ? { content: contentOf(saved), revision: saved.revision, inheritance: saved.inheritance, sourceStage: saved.sourceStage } : undefined;
   }, [storeCurrent]);
   const getConfirmedContent = useCallback((id: string, mode = modeRef.current) => views.current[mode][id]?.confirmed, []);
+  // 只有确认时的来源修订仍匹配当前基线，确认版本才可用于后续继承。
   const getConfirmedRevision = useCallback((id: string, mode = modeRef.current) => {
     const saved = views.current[mode][id], baseline = getBaseline(id, mode);
     if (!saved) return undefined;
     const revision = baseline.stage.graph.revision ?? baseline.stage.id;
     return confirmationIsCurrent(saved, revision) ? saved.confirmedRevision ?? saved.revision : undefined;
   }, [getBaseline]);
+  // 视口属于视图草稿；有未完成事务时只更新内存，等事务结束再保存。
   const saveViewport = useCallback((viewport: CanvasViewport) => { views.current[modeRef.current][idRef.current]!.viewport = viewport; if (!pending.current) save(false); }, [save]);
   return {
     nodes, nodesRef, setNodes, edgeRoutes, routesRef, frozenGroups, frozenRef, overlay, overlayRef, labelPins, labelPinsRef, setLabelPins,
     setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, cacheRenderedRoutes, displayRoutes, displayRoutesRef, commitContent,
     baselineId, baseline: getBaseline(baselineId, viewMode), viewMode, switchView, getBaseline,
+    // 旧阶段缺少三视图时只提示迁移，不自动改写历史。
     initializationMessage: normalizationMessage.current || (restored?.baselineId && restored.baselineId !== initialId ? '旧阶段尚未建立三个视图，先确认首阶段的三个视图；原有阶段草稿和快照已保留' : !restored && props.initialBaselineId && props.initialBaselineId !== initialId ? '目标阶段尚未建立三个视图，请先确认首阶段的三个视图' : ''),
     initialViewport: views.current[initialMode][initialId]?.viewport,
     getViewport: (id: string, mode = modeRef.current) => views.current[mode][id]?.viewport, saveViewport,

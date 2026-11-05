@@ -156,10 +156,8 @@ function protectedConflicts(before: readonly CanvasNode[], after: readonly Canva
 }
 
 /**
- * Build the target stage layout from the confirmed source layout.
- *
- * The function never mutates its inputs. A failure still returns the candidate
- * layout so the caller can render a read-only preview without committing it.
+ * 从已确认的来源布局构建目标阶段布局。
+ * 不修改输入；失败时仍返回候选布局，调用方可以只读预览而不提交。
  */
 export function planStageTransition(input: StageTransitionInput): StageTransitionResult {
   const started = performance.now();

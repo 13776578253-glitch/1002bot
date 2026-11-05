@@ -1,4 +1,4 @@
-/** Gesture-local timing used by browser acceptance; measurements never enter saved views. */
+/** Drag profile records gesture-local timing for browser acceptance; measurements never enter saved views. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RouteCacheStats } from '../model/route-cache.ts';
 
@@ -7,6 +7,7 @@ export function useDragProfile(stats: RouteCacheStats) {
   const currentStats = useRef(stats); currentStats.current = stats;
   const [result, setResult] = useState({ frames: 0, frameP95: 0, geometryP95: 0, constraintP95: 0, routeUpdates: 0, maxRouted: 0, totalEdges: 0 });
   const active = useRef<{ frame?: number; previousTime?: number; previousStats: RouteCacheStats; frames: number[]; geometry: number[]; constraints: number[]; routed: number[] } | undefined>(undefined);
+  // 只在路由统计对象变化时采样，普通渲染帧不重复计数。
   const sample = () => {
     const gesture = active.current;
     if (gesture && gesture.previousStats !== currentStats.current) {
@@ -28,6 +29,7 @@ export function useDragProfile(stats: RouteCacheStats) {
     };
     active.current.frame = requestAnimationFrame(tick);
   }, []);
+  // stop 是唯一发布结果的入口；结束前补采最后一帧。
   const stop = useCallback(() => {
     const gesture = active.current;
     if (!gesture) return;
@@ -37,6 +39,7 @@ export function useDragProfile(stats: RouteCacheStats) {
     setResult({ frames: gesture.frames.length, frameP95: percentile(gesture.frames), geometryP95: percentile(gesture.geometry), constraintP95: percentile(gesture.constraints), routeUpdates: gesture.routed.length, maxRouted: Math.max(0, ...gesture.routed), totalEdges: currentStats.current.totalEdges });
   }, []);
   useEffect(() => () => { if (active.current?.frame !== undefined) cancelAnimationFrame(active.current.frame); }, []);
+  // 约束耗时由控制器显式记录，与路由统计分开。
   const recordConstraint = useCallback((duration: number) => { active.current?.constraints.push(duration); }, []);
   return { result, start, stop, recordConstraint };
 }

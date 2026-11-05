@@ -1,4 +1,4 @@
-/** Validates and migrates persisted canvas workspaces; pure, with no storage access. */
+/** Workspace schema owns persisted-view validation and v1/v2 migration; it performs no storage access. */
 import type {
   CanvasBaselineContent,
   CanvasNodeView,
@@ -21,6 +21,7 @@ const LAYOUT_MODES = new Set(['free', 'fixed', 'locked']);
 const ROUTE_STATES = new Set(['auto', 'pinned', 'locked']);
 const FROZEN_SIDES = new Set<FrozenBoundarySide>(['top', 'right', 'bottom', 'left']);
 const VIEW_MODES = new Set<CanvasViewMode>(['overview', 'structure', 'full']);
+/** 错误文案是调用方与测试依赖的稳定合同，保持不变。 */
 const NODE_ERROR = '节点视图格式不正确';
 const ROUTE_ERROR = '路径视图格式不正确';
 const FROZEN_ERROR = '冻结组视图格式不正确';
@@ -69,6 +70,7 @@ function checkViewport(raw: unknown): CanvasViewport | undefined {
   return { x: raw.x, y: raw.y, zoom: raw.zoom };
 }
 
+/** 两遍校验节点：先查重复 ID，再查形状与父链；错误优先级保持不变。 */
 function checkNodeViews(raw: unknown): CanvasNodeView[] {
   if (!Array.isArray(raw)) throw new Error('阶段视图格式不正确');
   // 两遍扫描保持原有错误优先级：重复 ID 先于节点形状错误。
@@ -123,6 +125,7 @@ function checkNodeViews(raw: unknown): CanvasNodeView[] {
   return [...nodes.values()];
 }
 
+/** 校验持久化路径；标签与冻结分段是可选字段，非法时直接失败。 */
 function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new Error(ROUTE_ERROR);
@@ -131,6 +134,7 @@ function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
     if (!isRecord(item) || !isText(item.canonicalEdgeId) || !ROUTE_STATES.has(typeof item.state === 'string' ? item.state : '') || !isRecord(item.source) || !isRecord(item.target) || !Array.isArray(item.points) || !isRecord(item.space) || !isText(item.endpointFingerprint)) {
       throw new Error(ROUTE_ERROR);
     }
+    // 同一 canonicalEdgeId 只能出现一次。
     if (ids.has(item.canonicalEdgeId)) throw new Error('路径视图包含重复关系');
     if (item.policyKey !== undefined && !isText(item.policyKey)) throw new Error('路径策略版本格式不正确');
     ids.add(item.canonicalEdgeId);
@@ -158,11 +162,13 @@ function checkEdgeRoutes(raw: unknown): EdgeRouteSnapshot[] {
   });
 }
 
+/** 校验冻结组；成员不得重叠，且必须引用当前阶段节点。 */
 function checkFrozenGroups(raw: unknown, nodes: readonly CanvasNodeView[]): FrozenGroupSnapshot[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new Error(FROZEN_ERROR);
   const nodeIds = new Set(nodes.map((node) => node.id));
   const groups: FrozenGroupSnapshot[] = [];
+  // 成员集合全局唯一，根节点也算成员。
   const used = new Set<string>();
   for (const item of raw) {
     if (!isRecord(item) || !isText(item.id) || !isText(item.rootId) || !Array.isArray(item.memberIds) || !isRecord(item.worldBounds) || !Array.isArray(item.boundaryPorts) || !isText(item.createdAt)) {
@@ -197,6 +203,7 @@ function checkFrozenGroups(raw: unknown, nodes: readonly CanvasNodeView[]): Froz
   return groups;
 }
 
+/** 校验阶段切换记录；placements 的模式限定在已知集合。 */
 function checkTransition(raw: unknown): StageTransitionRecord | undefined {
   if (raw === undefined) return undefined;
   if (!isRecord(raw) || !isText(raw.toStageId) || !isText(raw.sourceRevision) || !isText(raw.targetRevision) || !isText(raw.startedAt) || !isFiniteNumber(raw.durationMs) || !Array.isArray(raw.placements) || !Array.isArray(raw.expanded)) {
@@ -210,6 +217,7 @@ function checkTransition(raw: unknown): StageTransitionRecord | undefined {
   return raw as unknown as StageTransitionRecord;
 }
 
+/** 覆盖层只校验顶层数组形状；元素级校验仍是已记录缺口。 */
 function checkOverlay(raw: unknown): UserGraphOverlay | undefined {
   if (raw === undefined) return undefined;
   if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.addedNodes) || !Array.isArray(raw.addedEdges) || !Array.isArray(raw.hiddenSourceNodeIds) || !Array.isArray(raw.hiddenSourceEdgeIds) || !Array.isArray(raw.edgeOverrides)) {
@@ -218,6 +226,7 @@ function checkOverlay(raw: unknown): UserGraphOverlay | undefined {
   return raw as unknown as UserGraphOverlay;
 }
 
+/** 汇总内容校验；节点、路径、冻结组、覆盖层、标签固定和投影路径依次读取。 */
 function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   const nodes = checkNodeViews(raw.nodes);
   const edgeRoutes = checkEdgeRoutes(raw.edgeRoutes);
@@ -264,6 +273,7 @@ function checkContent(raw: UnknownRecord): CanvasBaselineContent {
   return { nodes, edgeRoutes, frozenGroups, ...(overlay ? { overlay } : {}), ...(displayRoutes ? { displayRoutes } : {}), ...(Array.isArray(raw.labelPins) && raw.labelPins.length ? { labelPins: structuredClone(raw.labelPins) as NonNullable<CanvasBaselineContent['labelPins']> } : {}) };
 }
 
+/** 继承基准同时校验父/目标内容与目标图结构。 */
 function checkInheritance(raw: unknown): StageInheritanceBase | undefined {
   if (raw === undefined) return undefined;
   if (!isRecord(raw) || !isText(raw.parentId) || !isText(raw.parentRevision) || !isText(raw.targetRevision) || !isRecord(raw.parentContent) || !isRecord(raw.targetContent) || !isRecord(raw.targetStage) || !isRecord(raw.targetStage.graph) || !Array.isArray(raw.targetStage.graph.nodes) || !Array.isArray(raw.targetStage.graph.edges)) throw new Error('阶段继承基准格式不正确');
@@ -297,6 +307,7 @@ function normalizeV1(view: UnknownRecord): CanvasWorkspaceView {
   return { version: 2, baselineId: view.baselineId as string, baselines };
 }
 
+/** v2 校验内容与确认元数据；确认字段必须成组出现。 */
 function normalizeV2(view: UnknownRecord): CanvasWorkspaceView {
   const rawBaselines = view.baselines;
   if (!isRecord(rawBaselines)) throw new Error('工作视图格式不正确');
@@ -346,6 +357,7 @@ export function normalizeWorkspaceView(value: unknown): CanvasWorkspaceView {
   const active = value.version === 1 ? normalizeV1(value) : value.version === 2 ? normalizeV2(value) : undefined;
   if (!active) throw new Error('工作视图格式不正确');
   if (value.viewMode !== undefined && !VIEW_MODES.has(value.viewMode as CanvasViewMode)) throw new Error('工作视图类型不正确');
+  // 旧记录缺少 views 时只补 Structure 视图；不补造确认。
   if (value.views === undefined) {
     if (value.viewMode !== undefined && value.viewMode !== 'structure') throw new Error('工作视图类型缺少对应内容');
     return { ...active, viewMode: 'structure', views: { structure: structuredClone(active.baselines) } };
@@ -361,11 +373,13 @@ export function normalizeWorkspaceView(value: unknown): CanvasWorkspaceView {
     if (Object.keys(active.baselines).length) throw new Error('当前工作视图缺少对应内容');
     views[viewMode] = {};
   }
+  // 排序后比较，忽略对象键顺序。
   const ordered = (item: unknown): unknown => Array.isArray(item) ? item.map(ordered) : isRecord(item) ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, ordered(item[key])])) : item;
   if (JSON.stringify(ordered(active.baselines)) !== JSON.stringify(ordered(views[viewMode]))) throw new Error('当前工作视图与视图集合不一致');
   return { ...active, viewMode, views };
 }
 
+/** 断言入口；失败沿用 normalizeWorkspaceView 的错误文案。 */
 export function assertWorkspaceView(value: unknown): asserts value is CanvasWorkspaceView {
   normalizeWorkspaceView(value);
 }

@@ -26,7 +26,7 @@ export function contentPosition(node: Frame, nodes: readonly Frame[]): { x: numb
   return { x: node.position.x + (parent?.data.fitOffset?.x ?? 0) - (node.data.fitOffset?.x ?? 0), y: node.position.y + (parent?.data.fitOffset?.y ?? 0) - (node.data.fitOffset?.y ?? 0) };
 }
 
-/** Legacy preferences retain unknown edits without claiming their geometry was manually authored. */
+/** 旧记录保留未知编辑，但不声称其几何是人工编写的。 */
 export function legacyLayoutEdits(node: Frame, nodes: readonly Frame[]): NodeLayoutEdits {
   const size = { width: node.width!, height: node.height!, origin: 'legacy' as const };
   return { version: 1, position: { ...contentPosition(node, nodes), ...(node.parentId ? { parentId: node.parentId } : {}), origin: 'legacy' }, sizes: { [node.data.expanded || node.type === 'cluster' ? 'expanded' : 'collapsed']: size } };

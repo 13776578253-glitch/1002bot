@@ -28,7 +28,7 @@ function visibleEndpoints(edge: ProjectedEdge): [string, string] {
   return edge.direction === 'bidirectional' && source > target ? [target, source] : [source, target];
 }
 
-/** Only buckets containing folded endpoints aggregate; expanded parallel edges retain their identities. */
+/** 只有包含折叠端点的桶才聚合；已展开的平行关系保留各自身份。 */
 export function aggregateProjectedEdges(projection: Projection, changes: Readonly<Record<string, ChangeMark>>): DisplayEdge[] {
   const buckets = new Map<string, ProjectedEdge[]>();
   for (const edge of [...projection.edges].sort((a, b) => a.edge.order - b.edge.order || a.canonicalEdgeId.localeCompare(b.canonicalEdgeId))) {

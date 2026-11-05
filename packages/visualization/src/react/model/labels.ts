@@ -46,12 +46,12 @@ export function measureLabel(text: string): { width: number; height: number } {
   return { width: Math.max(44, Array.from(text).reduce((sum, character) => sum + (/[^\u0000-\u007f]/.test(character) ? 12 : 7), 0) + 16), height: 24 };
 }
 
-/** A space-exhausted label stays hidden until its edge is hovered. */
+/** 空间耗尽的标签保持隐藏，直到其边被悬停。 */
 export function labelIsVisible(state: 'normal' | 'adjusted' | 'space-exhausted' | undefined, hovered = false): boolean {
   return state !== 'space-exhausted' || hovered;
 }
 
-/** Keep a placeable box for a hidden label so hover can reveal its text. */
+/** 为隐藏标签保留可放置框，以便悬停时显示文字。 */
 export function fallbackLabel(text: string, point: Point): EdgeLabelPlacement {
   return { x: point.x, y: point.y, ...measureLabel(text) };
 }

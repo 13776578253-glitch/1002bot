@@ -19,7 +19,7 @@ import { captureStageInheritance, mergeStageContent, needsStageRebase, type Stag
 
 export type NavigationResult = StageTransitionResult & { inheritance?: StageInheritanceBase; reused?: boolean; resetCandidate?: Extract<StageTransitionResult, {ok:true}> };
 
-/** A changed source creates a new draft while preserving the prior confirmation. */
+/** 来源变化会创建新草稿，同时保留之前的确认。 */
 export function rebaseSavedView(target: VisualizationBaseline, saved: CanvasBaselineView): CanvasBaselineView {
   const merged = prepareSourceRevision(target, saved);
   if (!merged.ok) throw new Error(merged.conflicts.map((item) => item.message).join('；'));

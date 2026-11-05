@@ -7,7 +7,7 @@ import { containerGrowthCeiling, fitMovedContainers } from './spacing.ts';
 import type { StageConflict } from './stage-types.ts';
 import type { CanvasNodeView } from './workspace.ts';
 
-/** Preserve saved frames and unrelated positions while accommodating changed card sizes. */
+/** 保留已保存的框和无关节点位置，只适配变化的卡片尺寸。 */
 export function normalizeCardLayout(input: readonly CanvasNode[], previous: readonly CanvasNodeView[], stage: StageSnapshot, repairExisting = false): { nodes: CanvasNode[]; conflict?: StageConflict } {
   const old = new Map(previous.map((node) => [node.id, node]));
   const resized = input.filter((node) => {

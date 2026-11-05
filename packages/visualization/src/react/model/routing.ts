@@ -25,7 +25,7 @@ export interface ReservedRoute {
   obstacle?: { nodeId: string; bounds: Rect };
 }
 
-/** Geometry is shared by all invalidated edges in one interaction update. */
+/** 同一次交互更新中，所有失效边共享同一份几何。 */
 export interface DiagramGeometry {
   bounds: Map<string, Rect>;
   blockers: Rect[];
@@ -75,7 +75,7 @@ export function createDiagramGeometry(nodes: readonly CanvasNode[], projection: 
   return { bounds, blockers, frames, obstacles, obstacleIndex, reserved: reservedParts, reservedIndex };
 }
 
-/** Rebuilds the reserved spatial index when a caller narrows or drops protected paths. */
+/** 调用方缩小或移除受保护路径时，重建保留空间索引。 */
 export function withReservedRoutes(geometry: DiagramGeometry, reserved: readonly { edgeId: string; rect: Rect }[]): DiagramGeometry {
   const reservedIndex = new SpatialIndex<{ edgeId: string; rect: Rect }>();
   reserved.forEach((entry, index) => reservedIndex.set(String(index), entry.rect, entry));

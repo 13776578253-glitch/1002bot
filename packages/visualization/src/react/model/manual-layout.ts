@@ -33,7 +33,7 @@ export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: Stag
   return undefined;
 }
 
-/** Four-way fitting compensates child coordinates and never pushes sibling components. */
+/** 四向贴合补偿子节点坐标，并且不推动兄弟组件。 */
 export function fitAuthoredLayout(before: readonly CanvasNode[], proposed: readonly CanvasNode[], changedIds: readonly string[], stage: StageSnapshot, movedRoots: ReadonlySet<string> = new Set(), ignored: ReadonlySet<string> = new Set(), preserveFrames = false): { nodes: CanvasNode[]; conflict?: StageConflict } {
   const fitted = fitMovedContainers(proposed, changedIds, { moveNeighbours: false, ignored, preserveFrozen: true, preserveFrames, anchorFrame: true });
   for (const old of before) {
@@ -57,7 +57,7 @@ export function fitAuthoredLayout(before: readonly CanvasNode[], proposed: reado
   return { nodes: fitted };
 }
 
-/** Rebuild fitted frames after edit intents and expansion have been merged; frozen geometry remains literal. */
+/** 在编辑意图与展开状态合并后重建贴合框；冻结几何保持字面值。 */
 export function deriveAuthoredLayout(input: readonly CanvasNode[], stage: StageSnapshot): { nodes: CanvasNode[]; conflict?: StageConflict } {
   const proposed = input.map((node) => {
     if (node.data.frozen) return node;

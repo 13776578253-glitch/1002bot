@@ -8,7 +8,7 @@ import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { CanonicalNode, StageSnapshot } from '../../core/schema/types.ts';
 import { indexGraph } from '../../core/graph/index.ts';
 
-/** Initial canvas nodes for a baseline, carrying its change marks. */
+/** 基线的初始画布节点，携带变更标记。 */
 export function baselineNodes(baseline: VisualizationBaseline): CanvasNode[] {
   const positions = baseline.layout ? Object.fromEntries(Object.entries(baseline.layout.nodes).map(([id, frame]) => [id, frame.position])) : baseline.positions;
   return createHierarchyNodes(baseline.stage, positions).map((node) => {
@@ -82,7 +82,7 @@ export function nodeIsVisible(node: CanvasNode, nodes: readonly CanvasNode[], pr
   });
 }
 
-/** Toggle through the shared incremental geometry solver. */
+/** 通过共享的增量几何求解器切换展开状态。 */
 export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage: StageSnapshot, onConflict?: (conflict: StageConflict) => void): CanvasNode[] {
   const authored = input.find((node) => node.id === id)?.data.authored;
   if (authored) {

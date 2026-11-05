@@ -46,7 +46,7 @@ function pathOnly(route: CachedRoute, text: string): CachedRoute {
   const { labelState: _state, labelFallback: _fallback, ...path } = route;
   return { ...path, text, label: { x: 0, y: 0, width: 0, height: 0 } };
 }
-/** Each update preserves untouched route objects; selection and viewport have no geometric dependencies. */
+/** 每次更新保留未触碰的路径对象；选择和视口没有几何依赖。 */
 export class DiagramRouteCache {
   private geometry: DiagramGeometry | undefined;
   private reservedKey = '';

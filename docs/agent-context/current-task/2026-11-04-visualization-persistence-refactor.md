@@ -113,3 +113,35 @@ Verification final:
 - Persistence tests: 17/17 passed.
 - Architecture tests: 5/5 passed.
 - Full package suite: 399 passed, 13 failed; failure set matches the pre-existing baseline.
+
+## Persistence comments
+
+### Intent
+
+Apply `docs/agent-context/AGENTS-en.md` §3 comment roles to the four persistence implementation files:
+
+- one English module header per file, naming ownership and boundary;
+- Chinese `/** */` contracts on exported storage functions and complex helpers;
+- Chinese `//` notes for backup order, write ordering, error precedence and migration rules that the code cannot show.
+
+No code, schema or public API changes.
+
+### Verification Plan
+
+- `pnpm --filter @1002bot/visualization typecheck`
+- Persistence unit tests
+- `git diff --check` and a line-by-line comment-only diff review.
+
+## Result
+
+- All four persistence files now start with one English module header naming ownership and boundary.
+- Added Chinese `/** */` contracts on storage factories, project normalization helpers, schema checks and backup constants.
+- Added Chinese `//` notes for backup order, final-write behavior, duplicate IDs, frozen-member uniqueness, confirmation/checkpoint consistency, write-queue failure handling, migration defaults and order-insensitive comparison.
+- No code, schema, error text or public API changes.
+
+## Verification
+
+- `pnpm --filter @1002bot/visualization typecheck`: passed.
+- Persistence unit tests: 17/17 passed.
+- `git diff --check`: passed.
+- Line review confirmed this pass only changed comments.

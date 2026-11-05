@@ -9,7 +9,7 @@ export interface ProjectOverrides {
 
 export type ProjectContainerStates = Record<string, { expanded: boolean }>;
 
-/** The content owns the values; these indexes are derived for convenient inspection. */
+/** 内容拥有值；这些索引只为方便检查而派生。 */
 export interface ProjectWorkspaceSnapshot {
   content: CanvasBaselineContent;
   overrides: ProjectOverrides;
@@ -111,7 +111,7 @@ function canvasView(stage: ProjectViewWorkspace): CanvasBaselineView {
     };
 }
 
-/** Preserve each view's unvisited stages and independent checkpoint history. */
+/** 保留每个视图未访问的阶段和独立检查点历史。 */
 export function canvasWorkspaceToProject(view: CanvasWorkspaceView, projectId: string, previous?: ProjectWorkspace): ProjectWorkspace {
   if (previous && previous.projectId !== projectId) throw new Error('工作空间所属项目不匹配');
   const activeView = view.viewMode ?? 'structure';

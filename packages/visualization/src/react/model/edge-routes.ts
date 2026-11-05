@@ -52,7 +52,7 @@ export function routeSnapshot(edge: DisplayEdge, route: CachedRoute, state: Edge
   };
 }
 
-/** Retain routes for a newly frozen group: internal edges lock, boundary edges pin. */
+/** 为新冻结组保留路径：内部边锁定，边界边固定。 */
 export function captureRoutesForGroup(edges: readonly DisplayEdge[], routes: ReadonlyMap<string, CachedRoute>, group: FrozenGroupSnapshot, nodes: readonly CanvasNode[], groups: readonly FrozenGroupSnapshot[]): EdgeRouteSnapshot[] {
   const inside = new Set([group.rootId, ...group.memberIds]);
   const captured = new Map<string, EdgeRouteSnapshot>();
@@ -88,7 +88,7 @@ export function routeStateFor(routes: readonly EdgeRouteSnapshot[], canonicalEdg
   return routes.find((route) => route.canonicalEdgeId === canonicalEdgeId)?.state;
 }
 
-/** Locked routes remain hard obstacles; pinned routes are intentionally soft. */
+/** 锁定路径始终是硬障碍；固定路径是有意保留的软约束。 */
 export function reservedLockedRoutes(routes: readonly EdgeRouteSnapshot[], nodes: readonly CanvasNode[], groups: readonly FrozenGroupSnapshot[] = []): ReservedRoute[] {
   const closed = new Map(groups.flatMap(group => {
     const root = nodes.find(node => node.id === group.rootId)!;
@@ -108,7 +108,7 @@ export function reservedLockedRoutes(routes: readonly EdgeRouteSnapshot[], nodes
   })];
 }
 
-/** Report moves that detach a locked route or introduce a node over its path. */
+/** 报告使锁定路径脱离或节点压到路径上的移动。 */
 export function validateStoredRoutes(before: readonly CanvasNode[], after: readonly CanvasNode[], routes: readonly EdgeRouteSnapshot[], projection: Projection, afterRoutes: readonly EdgeRouteSnapshot[]=routes): string | undefined {
   const oldNodes = new Map(before.map((node) => [node.id, node]));
   const newNodes = new Map(after.map((node) => [node.id, node]));
@@ -165,7 +165,7 @@ export function validateStoredRoutes(before: readonly CanvasNode[], after: reado
   return undefined;
 }
 
-/** The stored endpoints must still coincide with the current node handles. */
+/** 保存的端点必须仍与当前节点手柄重合。 */
 export function storedRouteAttached(route: EdgeRouteSnapshot, nodes: readonly CanvasNode[], geometry: DiagramGeometry): boolean {
   const points = worldRoutePoints(route, nodes), source = geometry.bounds.get(route.source.nodeId), target = geometry.bounds.get(route.target.nodeId);
   if (!points || points.length < 2 || !source || !target) return false;
@@ -177,7 +177,7 @@ export function storedRouteAttached(route: EdgeRouteSnapshot, nodes: readonly Ca
     && Math.abs(points.at(-1)!.x - end.x) < 0.001 && Math.abs(points.at(-1)!.y - end.y) < 0.001;
 }
 
-/** Permanent canonical geometry seeds the cache before automatic paths are searched. */
+/** 永久规范几何在搜索自动路径前先注入缓存。 */
 export function retainedCanonicalRoutes(nodes: readonly CanvasNode[], projection: Projection, edges: readonly DisplayEdge[], stored: readonly EdgeRouteSnapshot[], retained: ReadonlyMap<string, CachedRoute>, groups: readonly FrozenGroupSnapshot[] = []): Map<string, CachedRoute> {
   const result = new Map(retained);
   const geometry = createDiagramGeometry(nodes, projection);
@@ -211,7 +211,7 @@ export function retainedCanonicalRoutes(nodes: readonly CanvasNode[], projection
   return result;
 }
 
-/** Apply retained canonical routes only to one-to-one visible display edges. */
+/** 只把保留的规范路径应用到一对一的可见展示边。 */
 export function applyStoredRoutes(
   routes: ReadonlyMap<string, CachedRoute>,
   edges: readonly DisplayEdge[],

@@ -338,3 +338,220 @@ Append all future code-change reports below.
 - Full package suite: 399 passed, 13 failed. The same pre-existing card-size, growth, grouping, layout-intent and project-data failures remain; no new failures.
 - Remaining: overlay element-level validation is still a recorded gap and was intentionally unchanged.
 - Refactor summary: storage adapter 364 → about 38 lines; schema now owns validation/migration; public API unchanged; no fallback or compatibility patch added.
+
+## 2026-11-04 — Canvas hook comments
+
+**1. Problems Fixed**
+
+- No runtime behavior changed. Added module-level English headers and Chinese invariant annotations to the three main canvas hooks.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- None in production. Comments document transaction ordering, deferred navigation, group-solver fallback, label cache fork/adopt, snapshot timing, render caches and per-view workspace ownership.
+- `use-drag-profile.ts` already had a suitable English module header and was left unchanged.
+
+**3. Files Modified**
+
+- `src/react/canvas/use-canvas-controller.ts`
+- `src/react/canvas/use-canvas-scene.ts`
+- `src/react/canvas/use-workspace-session.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-canvas-comments.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Comment-only diff: 43 insertions, 0 deletions; no code, type or signature change.
+- Comments are limited to non-obvious invariants and cache/transaction lifecycles; no per-line narration.
+
+**5. Legacy Mechanism Cleanup**
+
+- None. No mechanism was replaced or removed.
+
+**6. Validation and Remaining Technical Debt**
+
+- Package typecheck passed.
+- Full package suite: 399 passed, 13 failed. The failure set is the same pre-existing card-size, growth, grouping, layout-intent and project-data baseline.
+- Diff checks confirmed the canvas changes are comment-only.
+- Remaining technical debt is unchanged: the 13 pre-existing suite failures and the recorded overlay validation gap.
+
+## 2026-11-04 — Canvas hook comment refinement
+
+**1. Problems Fixed**
+
+- Canvas module headers stated only one aspect, so the command/session/scene ownership boundary was not recoverable from the file head.
+- Non-obvious contracts were unmarked: preview read-only behavior, capture-before-commit, drag intent versus automatic compensation, reserved-path registration, route labels as snapshot carriers and metadata kept outside geometry history.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- None in production. English headers now state ownership, boundary and core mechanism for the three command/session/scene hooks; `use-drag-profile.ts` kept its existing header.
+- Chinese annotations were added or tightened only for ordering, failure semantics, cache lifecycles and non-persisted metadata.
+
+**3. Files Modified**
+
+- `src/react/canvas/use-canvas-controller.ts`, `use-canvas-scene.ts`, `use-workspace-session.ts`, `use-drag-profile.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-canvas-comments.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Comment-only diff; no runtime branch, state, cache or type change.
+- Comments stay limited to contracts the code cannot show; no per-field translation or per-line narration.
+
+**5. Legacy Mechanism Cleanup**
+
+- None. No mechanism, code path or comment policy was replaced.
+
+**6. Validation and Remaining Technical Debt**
+
+- `pnpm --filter @1002bot/visualization typecheck`: passed.
+- `git diff --check`: no whitespace errors.
+- `git diff --unified=0` confirmed every canvas change is a comment.
+- Full suite and browser checks were not rerun for this comment-only round; the existing 13 pre-existing package failures are unchanged.
+
+## 2026-11-04 — Canvas comment taxonomy correction
+
+**1. Problems Fixed**
+
+- The first pass used multi-line English module headers and `//` for a module-level function contract. That mixed `src/agent`'s three roles: module header, declaration contract and in-function logic note.
+- Two `//` notes restated conditions already visible in dependency arrays or cache comparisons.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- None in production. Module headers are one English line each and name the module subject, ownership and boundary.
+- `/** ... */` now carries declaration contracts on `contentOf`, `replaceContent`, `TransitionPreview`, `SceneState` and `CanvasSessionState`.
+- `//` notes are limited to function-body ordering, fallback, persistence and ownership rules.
+
+**3. Files Modified**
+
+- `src/react/canvas/use-canvas-controller.ts`, `use-canvas-scene.ts`, `use-workspace-session.ts`, `use-drag-profile.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-canvas-comments.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Comment-only diff; no runtime branch, state, cache or type change.
+- Removed two restatements; added four new declaration contracts. No new abstraction or narration.
+
+**5. Legacy Mechanism Cleanup**
+
+- None. No code path or comment policy was replaced; the previous entry remains as history.
+
+**6. Validation and Remaining Technical Debt**
+
+- `pnpm --filter @1002bot/visualization typecheck`: passed.
+- `git diff --check`: no whitespace errors.
+- `git diff --unified=0` confirmed every canvas change is a comment.
+- Full suite and browser checks were not rerun for this comment-only round; the existing 13 pre-existing package failures are unchanged.
+
+## 2026-11-04 — Components directory split
+
+**1. Problems Fixed**
+
+- `components/README.md` named `../styles/canvas.css` twice in its Owner list.
+- The flat components directory mixed rendered geometry, controls, detail panels and snapshot UI, so ownership was not visible from the path.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- None in production. Moved ten files into `primitives/`, `controls/`, `panels/` and `snapshot/`; root keeps `change-badge.tsx`, `icon.tsx` and `README.md`.
+- Rewrote only relative imports whose depth changed. Updated `VisualizationCanvas.tsx`, `use-canvas-scene.ts`, `routing-lab.tsx` and the architecture-boundary expectation.
+- Added the directory layout to `components/README.md` and corrected its Owner list; the package README names the four groups.
+
+**3. Files Modified**
+
+- `src/react/components/primitives/{nodes,relation-edge,ports}.tsx`
+- `src/react/components/controls/{top-actions,canvas-controls,selection-tools}.tsx`
+- `src/react/components/panels/{connection-panel,transition-panel}.tsx`
+- `src/react/components/snapshot/{snapshot-menu,snapshot-dialog}.tsx`
+- `src/react/VisualizationCanvas.tsx`, `src/react/canvas/use-canvas-scene.ts`, `playground/src/routing-lab.tsx`
+- `src/react/components/README.md`, `README.md`, `tests/architecture/boundaries.test.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-components-split.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- No runtime complexity change. The split adds one path segment per moved import and no barrel, wrapper or new abstraction.
+- Root keeps the two shared primitives rather than inventing a `shared/` directory for two files.
+
+**5. Legacy Mechanism Cleanup**
+
+- Removed the flat component locations from all imports. The architecture test now expects the `primitives/` paths.
+- No compatibility re-export was added.
+
+**6. Validation and Remaining Technical Debt**
+
+- Package typecheck passed.
+- Package build passed; dist check reported 170 artifacts.
+- Architecture tests 5/5 passed.
+- Full package suite: 399 passed, 13 failed. The failures are the pre-existing card-size, growth, grouping, layout-intent and project-data baseline; no new failures.
+- Headless Edge smoke on `http://127.0.0.1:5199/` (existing Vite server): stage `16d69bf0`, Structure view, 11 nodes, 6 edges, 6/6 routes, no notice.
+- `git diff --check` passed.
+
+## 2026-11-04 — Component comments
+
+**1. Problems Fixed**
+
+- Components had short English headers and only a few Chinese component comments; props interfaces, helpers and non-obvious rendering rules were unmarked.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- None in production. Added one English module header per file, Chinese `/** */` declaration contracts and `//` logic notes.
+- Comments cover slot fractions, hidden labels, pagination clamping, colon splitting, terminal badges, focus containment, portal targets and confirmation freshness.
+
+**3. Files Modified**
+
+- `src/react/components/change-badge.tsx`, `icon.tsx`
+- `src/react/components/primitives/{nodes,relation-edge,ports}.tsx`
+- `src/react/components/controls/{top-actions,canvas-controls,selection-tools}.tsx`
+- `src/react/components/panels/{connection-panel,transition-panel}.tsx`
+- `src/react/components/snapshot/{snapshot-menu,snapshot-dialog}.tsx`
+- `docs/agent-context/current-task/2026-11-04-visualization-components-split.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Comment-only diff; no runtime branch, state or prop change.
+- Comments stay limited to contracts the code cannot show; no per-field translation.
+
+**5. Legacy Mechanism Cleanup**
+
+- None. No code path or comment policy was replaced.
+
+**6. Validation and Remaining Technical Debt**
+
+- Package typecheck passed.
+- `git diff --check` passed.
+- Line review confirmed this pass only changed comments. The import-path lines in the working diff belong to the uncommitted directory split.
+- Build, full suite and browser smoke were not rerun for this comment-only round; the preceding split round reported 170 artifacts, 399 passing tests with 13 pre-existing failures, and a clean 11-node/6-edge browser smoke.
+
+## 2026-11-04 — Persistence comments
+
+**1. Problems Fixed**
+
+- Persistence modules had short headers and only a few comments; backup order, final-write behavior, write-queue recovery and migration defaults were unmarked.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- None in production. Added one English module header per file, Chinese `/** */` contracts on storage factories, normalization helpers, schema checks and backup constants.
+- Added Chinese `//` notes for duplicate IDs, frozen-member uniqueness, confirmation/checkpoint consistency, queue failure handling and order-insensitive comparison.
+
+**3. Files Modified**
+
+- `src/react/persistence/local-storage.ts`, `workspace-schema.ts`, `project-storage.ts`, `storage-session.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-persistence-refactor.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Comment-only diff; no runtime branch, state, error text or API change.
+- Comments stay limited to contracts the code cannot show; no per-field translation.
+
+**5. Legacy Mechanism Cleanup**
+
+- None. No code path or comment policy was replaced.
+
+**6. Validation and Remaining Technical Debt**
+
+- Package typecheck passed.
+- Persistence tests: 17/17 passed.
+- `git diff --check` passed; line review confirmed this pass only changed comments.
+- Build, full suite and browser smoke were not rerun for this comment-only round.

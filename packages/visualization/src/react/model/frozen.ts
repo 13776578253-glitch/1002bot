@@ -64,10 +64,8 @@ function overlapsExisting(groups: readonly FrozenGroupSnapshot[], ids: ReadonlyS
 }
 
 /**
- * Freeze a canonical container subtree or a multi-selection.
- *
- * A single collapsible root is expanded first so its frame encloses the subtree;
- * freezing then fixes the root and locks every descendant without resizing.
+ * 冻结一个规范容器子树或多项选择。
+ * 单根容器会先展开，使框包住整个子树；随后固定根节点并锁定所有后代，不再调整尺寸。
  */
 export function freezeSelection(input: FreezeInput): FreezeResult {
   if (!input.rootIds.length) return { ok: false, conflict: { kind: 'frozen-violation', entityIds: [], message: '没有可冻结的节点', actions: ['cancel'] } };
@@ -119,7 +117,7 @@ export function freezeSelection(input: FreezeInput): FreezeResult {
   return { ok: true, nodes: working, group };
 }
 
-/** Thaw a frozen group; the visual container remains until the user dissolves it. */
+/** 解冻冻结组；视觉容器保留到用户解散。 */
 export function unfreezeGroup(nodes: readonly CanvasNode[], group: FrozenGroupSnapshot): CanvasNode[] {
   const ids = new Set([group.rootId, ...group.memberIds]);
   return nodes.map((node) => {
@@ -129,7 +127,7 @@ export function unfreezeGroup(nodes: readonly CanvasNode[], group: FrozenGroupSn
   });
 }
 
-/** Read-only expansion keeps the container frame and all descendant geometry unchanged. */
+/** 只读展开保持容器框和所有后代几何不变。 */
 export function toggleFrozenExpansion(nodes: readonly CanvasNode[], rootId: string, expanded: boolean, groups: readonly FrozenGroupSnapshot[] = []): CanvasNode[] {
   const next = nodes.map((node) => {
     if (node.id !== rootId || node.type === 'cluster' || !node.data.expandable) return node;
@@ -147,7 +145,7 @@ export function toggleFrozenExpansion(nodes: readonly CanvasNode[], rootId: stri
   return layoutProtectionConflict(nodes, next) ? nodes as CanvasNode[] : next;
 }
 
-/** Reconcile persisted ledgers with restored nodes; missing members drop the whole group. */
+/** 让持久化账本与恢复后的节点对齐；成员缺失则丢弃整组。 */
 export function restoreFrozenGroups(nodes: readonly CanvasNode[], groups: readonly FrozenGroupSnapshot[]): { nodes: CanvasNode[]; groups: FrozenGroupSnapshot[]; conflicts: StageConflict[] } {
   const ids = new Set(nodes.map((node) => node.id));
   const kept = [...groups];

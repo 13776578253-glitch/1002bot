@@ -7,7 +7,7 @@ import { containerGrowthCeiling, fitMovedContainers, MIN_EDGE_GAP, SNAP_SCREEN_D
 export interface AlignmentGuide { axis: 'x' | 'y'; value: number; start: number; end: number; }
 export interface VisibleLink { source: string; target: string; }
 
-/** Snap matching edges and centres within a zoom-independent screen distance. */
+/** 在屏幕距离阈值内对齐匹配的边缘和中心点。 */
 export function alignNodeRect(anchor: Rect, peers: readonly Rect[], zoom: number): { dx: number; dy: number; guides: AlignmentGuide[] } {
   const threshold = SNAP_SCREEN_DISTANCE / zoom;
   let dx = 0, dy = 0, bestX = threshold + 1, bestY = threshold + 1;

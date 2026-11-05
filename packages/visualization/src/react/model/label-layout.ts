@@ -11,9 +11,9 @@ export interface LabelLayoutEdge {
   id: string;
   text: string;
   priority?: number;
-  /** Semantic identity of this exact projected connection. */
+  /** 当前投影连接的语义身份。 */
   identity?: string;
-  /** An explicit user or protected label position in world coordinates. */
+  /** 世界坐标下的人工或受保护标签位置。 */
   fixed?: EdgeLabelPlacement;
 }
 
@@ -28,7 +28,7 @@ export interface LabelLayoutResult {
 
 export const LABEL_LAYOUT_POLICY_KEY = 'label-layout-v2-tight-projection';
 
-/** Geometric attachment, independent of a polyline segment's array index. */
+/** 几何附着关系，不依赖折线段的数组下标。 */
 export interface LabelAttachment {
   from: Point;
   to: Point;
@@ -72,7 +72,7 @@ const inside = (outer: Rect, inner: Rect) => inner.x >= outer.x - EPSILON && inn
   && inner.x + inner.w <= outer.x + outer.w + EPSILON && inner.y + inner.h <= outer.y + outer.h + EPSILON;
 const labelIntersects = (a: Rect, b: Rect) => rectIntersects(expandBounds(a, LABEL_CLEARANCE), expandBounds(b, LABEL_CLEARANCE));
 
-/** The semantic value remains intact in fullText for a tooltip or details panel. */
+/** 完整语义保留在 fullText，供 tooltip 或详情面板使用。 */
 export function shortenLabel(text: string): string {
   if (measureLabel(text).width <= MAX_LABEL_WIDTH) return text;
   let result = '';
@@ -89,7 +89,7 @@ function clearOfNodes(rect: Rect, geometry: DiagramGeometry): boolean {
     || !rectIntersects(expandBounds(frame, NODE_CLEARANCE), rect));
 }
 
-/** Liang-Barsky clipping handles axis-aligned and diagonal segments. */
+/** Liang-Barsky 裁剪同时处理轴对齐和斜线段。 */
 function segmentCrossesBox(from: Point, to: Point, rect: Rect): boolean {
   let start = 0, end = 1;
   const dx = to.x - from.x, dy = to.y - from.y;
@@ -110,7 +110,7 @@ function segmentsOf(edgeId: string, points: readonly Point[]): Segment[] {
     if (!length) continue;
     const ux = (to.x - from.x) / length, uy = (to.y - from.y) / length;
     const previous = output.at(-1);
-    // A redundant point on the same straight segment does not create a bend.
+    // 同一直线段上的冗余点不算折点。
     if (previous && Math.abs(previous.ux * uy - previous.uy * ux) <= EPSILON && previous.ux * ux + previous.uy * uy > 0) {
       previous.to = to;
       previous.length += length;
@@ -181,7 +181,7 @@ function generateCandidates(edge: LabelLayoutEdge, segments: readonly Segment[],
         bucket: `${index}:${positionIndex}:${Math.sign(offset)}` });
     }
   }
-  // Select across the entire path, including both ends and both sides, before limiting.
+  // 先覆盖整条路径（含两端和两侧），再做数量限制。
   candidates.sort((a, b) => (a.crossings - b.crossings) || a.base - b.base || a.placement.x - b.placement.x || a.placement.y - b.placement.y);
   const diverse: Candidate[] = [], deferred: Candidate[] = [], buckets = new Set<string>();
   for (const candidate of candidates) {
@@ -223,7 +223,7 @@ function similarDirection(old: LabelAttachment, segment: Pick<Segment, 'ux' | 'u
   return length > EPSILON && Math.abs(dx / length * segment.ux + dy / length * segment.uy) >= 1 - 0.0001;
 }
 
-/** Map previous attachment to the closest similar segment without using its old array index. */
+/** 将旧附着映射到最近的相似线段，不使用旧的数组下标。 */
 function projectAttachment(edgeId: string, previous: LabelLayoutResult, segments: readonly Segment[], text: string, geometry: DiagramGeometry, pathIndex: SpatialIndex<Segment>): Candidate | undefined {
   const old = previous.attachment;
   if (!old || !previous.placement) return undefined;
@@ -287,12 +287,12 @@ function validPrior(result: LabelLayoutResult | undefined, identity: string | un
     && attachment.axis === (Math.abs(uy) <= EPSILON ? 'horizontal' : Math.abs(ux) <= EPSILON ? 'vertical' : 'diagonal');
 }
 
-/** A new candidate must beat the prior attachment by at least the switch threshold. */
+/** 新候选必须比旧附着至少高出切换阈值才采用。 */
 export function shouldSwitchLabel(candidateScore: number, previousScore: number): boolean {
   return candidateScore + SWITCH_IMPROVEMENT <= previousScore;
 }
 
-/** Candidate reuse is keyed by local path and obstacle geometry, never selection or zoom. */
+/** 候选复用按局部路径和障碍几何做键，与选择和缩放无关。 */
 export class LabelLayoutCache {
   private candidates = new Map<string, CandidateCache>();
   private previous = new Map<string, LabelLayoutResult>();
@@ -300,14 +300,14 @@ export class LabelLayoutCache {
   private lastSignature = '';
   private lastCandidateCount = 0;
 
-  /** Create an isolated render draft; cached candidate and result values are immutable. */
+  /** 创建隔离的渲染草稿；候选和结果缓存值不可变。 */
   fork(): LabelLayoutCache {
     const draft = new LabelLayoutCache();
     draft.adopt(this);
     return draft;
   }
 
-  /** Publish one committed render without sharing mutable map containers. */
+  /** 发布一次已提交渲染，不共享可变 Map 容器。 */
   adopt(draft: LabelLayoutCache): void {
     this.candidates = new Map(draft.candidates);
     this.previous = new Map(draft.previous);
@@ -387,7 +387,7 @@ export class LabelLayoutCache {
       prepared.push({ edge, text, candidates, ...(preferred ? { preferred } : {}), stable: !!preferred });
       candidateCount += candidates.length;
     }
-    // Limited options are settled first; equal cases use stable canonical/display IDs.
+    // 受限选项先结算；相同情况按规范/展示 ID 稳定排序。
     prepared.sort((a, b) => Number(b.stable) - Number(a.stable) || (b.edge.priority ?? 0) - (a.edge.priority ?? 0) || a.candidates.length - b.candidates.length || a.edge.id.localeCompare(b.edge.id));
     const selected = new Map<string, { prepared: Prepared; candidate: Candidate }>();
     const expectedPlacements = new Map(prepared.flatMap((item) => item.preferred ? [[item.edge.id, item.preferred.placement] as const] : []));
@@ -408,7 +408,7 @@ export class LabelLayoutCache {
         const preferredScore = scoreFor(edge.id, item.preferred);
         if (!best || !shouldSwitchLabel(bestScore, preferredScore)) { best = item.preferred; bestScore = preferredScore; }
       }
-      // A bounded single-label reassignment can free a location for a constrained edge.
+      // 有界的单标签重分配可以为受限边释放位置。
       if (!best) {
         let alternative: { displacedId: string; next: Candidate; incoming: Candidate; score: number } | undefined;
         for (const candidate of candidates) {
@@ -443,7 +443,7 @@ export class LabelLayoutCache {
     }
     const ids = new Set(edges.map((edge) => edge.id));
     for (const id of this.candidates.keys()) if (!ids.has(id)) this.candidates.delete(id);
-    // Keep the last legal placement while temporarily hidden, to avoid jumps when space returns.
+    // 暂时隐藏时保留最后合法位置，空间恢复后避免跳动。
     for (const [id, result] of labels) {
       const old = this.lastResults.get(id), a = result.placement, b = old?.placement;
       if (old && old.text === result.text && old.fullText === result.fullText && old.state === result.state && old.identity === result.identity

@@ -42,6 +42,16 @@ These rules apply to comments, documents, commit messages, and reports to the op
 - Do not add defensive code for states ruled out by the types or caller contract. Validate at real boundaries only.
 - Do not test that a mock was called with a constant. Test behavior against real or realistic fake components; when call count is the behavior, say so in the test name.
 
+### Comment roles
+
+Comments have three roles; choose by placement and do not mix them.
+
+- **Module header**: one English `/** ... */` line at the top of the file. Name the module subject, the responsibility it owns, and the boundary or invariant it keeps.
+- **Declaration contract**: `/** ... */` directly above an interface, class field, method, or module-level helper when its lifecycle, ownership, failure behavior, or content/metadata boundary is not evident from the name. Write it in Chinese, one sentence.
+- **Logic note**: `//` inside a function body. Explain ordering, fallback, cache invalidation, persistence, or another fact the code cannot show. Do not restate a condition, a dependency array, or the following line.
+
+English is reserved for the module header; Chinese carries the developer-facing contracts and logic notes. Do not translate field names. Apply this rule to new or edited comments; do not rewrite unrelated files only to change comment language.
+
 ### Operator-facing milestone reports
 
 Follow [the operator report standard](../面向负责人的阶段汇报规范.md) for human-facing milestone progress and architecture reports. Present scope, a simplified overview, component ownership, structural changes from the previous milestone when applicable, separate detailed views, focused mechanism reports, remaining structure when applicable, verification, and scope boundaries in that order. Anchor each major change in the overview and expand that part locally. Keep existing requirements for plans, agent handoffs, logs, review records, documentation owners, and append-only history.
