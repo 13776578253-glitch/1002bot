@@ -32,7 +32,10 @@ test('project conversion keeps relative geometry and derives independently inspe
   assert.deepEqual(project.stages.M1!.draft.nodes[1]!.position, { x: 30, y: 80 });
   assert.deepEqual(project.stages.M1!.containerStates, { parent: { expanded: true } });
   assert.deepEqual(project.stages.M1!.overrides.nodeTitles, { child: '自定义标题' });
-  assert.deepEqual(projectWorkspaceToCanvas(normalizeProjectWorkspace(project, 'alpha')), source);
+  const converted = projectWorkspaceToCanvas(normalizeProjectWorkspace(project, 'alpha'));
+  assert.deepEqual(converted.baselines, source.baselines);
+  assert.equal(converted.viewMode, 'structure');
+  assert.deepEqual(converted.views, { structure: source.baselines });
 });
 
 test('confirmations no longer add checkpoints while existing history is preserved', async () => {

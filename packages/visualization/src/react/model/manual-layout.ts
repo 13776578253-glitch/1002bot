@@ -34,8 +34,8 @@ export function manualGeometryConflict(nodes: readonly CanvasNode[], stage: Stag
 }
 
 /** 四向贴合补偿子节点坐标，并且不推动兄弟组件。 */
-export function fitAuthoredLayout(before: readonly CanvasNode[], proposed: readonly CanvasNode[], changedIds: readonly string[], stage: StageSnapshot, movedRoots: ReadonlySet<string> = new Set(), ignored: ReadonlySet<string> = new Set(), preserveFrames = false): { nodes: CanvasNode[]; conflict?: StageConflict } {
-  const fitted = fitMovedContainers(proposed, changedIds, { moveNeighbours: false, ignored, preserveFrozen: true, preserveFrames, anchorFrame: true });
+export function fitAuthoredLayout(before: readonly CanvasNode[], proposed: readonly CanvasNode[], changedIds: readonly string[], stage: StageSnapshot, movedRoots: ReadonlySet<string> = new Set(), ignored: ReadonlySet<string> = new Set(), preserveFrames = false, preserveFrameIds: ReadonlySet<string> = new Set()): { nodes: CanvasNode[]; conflict?: StageConflict } {
+  const fitted = fitMovedContainers(proposed, changedIds, { moveNeighbours: false, ignored, preserveFrozen: true, preserveFrames, preserveFrameIds, anchorFrame: true });
   for (const old of before) {
     const next = fitted.find((node) => node.id === old.id)!;
     if (next.width === old.width && next.height === old.height && next.position.x === old.position.x && next.position.y === old.position.y) continue;
@@ -68,7 +68,13 @@ export function deriveAuthoredLayout(input: readonly CanvasNode[], stage: StageS
   });
   const projection = projectGraph(stage, new Set(input.filter((node) => node.data.expanded).map((node) => node.id)));
   const changed = input.filter((node) => projection.nodeById.has(node.id) || node.type === 'cluster').map((node) => node.id);
-  return fitAuthoredLayout(input, proposed, changed, stage);
+  const preferredIds = new Set(input.filter((node) => {
+    const preferred = preferredEditedSize(node);
+    if (!preferred) return false;
+    const authored = node.data.expanded ? node.data.authored?.expandedSize : node.data.authored?.collapsedSize;
+    return !authored || preferred.width !== authored.width || preferred.height !== authored.height;
+  }).map((node) => node.id));
+  return fitAuthoredLayout(input, proposed, changed, stage, new Set(), new Set(), false, preferredIds);
 }
 
 export function moveAuthoredNodes(before: readonly CanvasNode[], proposed: readonly CanvasNode[], movedIds: readonly string[], stage: StageSnapshot): CanvasNode[] {

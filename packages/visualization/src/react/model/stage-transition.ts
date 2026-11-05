@@ -1,5 +1,4 @@
 /** Atomic stage transition: inherit confirmed layout, place differences, then commit or fail. */
-import { diffStages } from '../../core/graph/diff.ts';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import { CARD_SIZE, structureHeaderHeight, worldPosition, type CanvasNode } from './grouping.ts';
 import { baselineNodes, hierarchyProjection } from './hierarchy.ts';
@@ -175,7 +174,29 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
   }
   const sourceViews = input.targetSaved ? input.targetSaved.nodes : input.sourceContent.nodes;
   const mapped = mapReplacementViews(target, sourceViews);
-  const restoredBase = restoreNodeViews(target, baselineNodes(target), mapped.views);
+  const targetNodes = baselineNodes(target);
+  const targetById = new Map(targetNodes.map((node) => [node.id, node]));
+  const sourceBaseline = new Map(baselineNodes(input.source).map((node) => [node.id, node]));
+  const sourceExpansionChanged = mapped.views.some((view) => {
+    const baseline = sourceBaseline.get(view.id);
+    return !!baseline && (!!baseline.data.expanded !== !!view.data.expanded || baseline.type !== view.type);
+  });
+  const sourceAuto = (view: CanvasNodeView): boolean => {
+    if (view.data.layoutEdits?.position) return false;
+    const baseline = sourceBaseline.get(view.id);
+    if (!baseline || baseline.parentId !== view.parentId) return false;
+    return sourceExpansionChanged
+      || Math.abs(baseline.position.x - view.position.x) < 0.001 && Math.abs(baseline.position.y - view.position.y) < 0.001;
+  };
+  const restoredBase = restoreNodeViews(target, targetNodes, mapped.views).map((node) => {
+    if (input.targetSaved || node.data.frozen || (node.data.layoutMode !== undefined && node.data.layoutMode !== 'free')) return node;
+    const source = mapped.views.find((view) => view.id === node.id);
+    const targetNode = targetById.get(node.id);
+    const position = target.positions?.[node.id];
+    if (!source || !targetNode || !position || targetNode.parentId !== source.parentId) return node;
+    if (source.data.frozen || (source.data.layoutMode !== undefined && source.data.layoutMode !== 'free') || !sourceAuto(source)) return node;
+    return { ...node, position: { ...position } };
+  });
   const baseRoutes = inheritRoutes(input.targetSaved ?? input.sourceContent, target);
   const reconciled = restoreFrozenGroups(restoredBase, structuredClone(origin.frozenGroups));
   const baseFrozen = reconciled.groups;
@@ -189,14 +210,12 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     const parent = node.parentId === target.stage.graph.rootId ? undefined : node.parentId;
     if (view.parentId !== parent) inherited.delete(id);
   }
-  const diff = input.targetSaved
-    ? undefined
-    : diffStages(input.source.stage, target.stage, { nodeChanges: target.nodeChanges, edgeChanges: target.edgeChanges });
-  const diffAdded = new Set(diff?.nodes.added ?? []);
-  const diffReplaced = new Set((diff?.nodes.replaced ?? []).map((pair) => pair.to));
   const addedNodeIds = target.stage.graph.nodes
     .filter((node) => node.id !== target.stage.graph.rootId && !inherited.has(node.id))
-    .filter((node) => !diff || diffAdded.has(node.id) || diffReplaced.has(node.id))
+    .filter((node) => {
+      const mark = target.nodeChanges[node.id];
+      return mark?.kind === 'added' || mark?.kind === 'replaced';
+    })
     .map((node) => node.id);
 
   let working = reconciled.nodes;

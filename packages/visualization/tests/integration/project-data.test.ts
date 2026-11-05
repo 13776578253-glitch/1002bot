@@ -49,15 +49,21 @@ test('a source revision becomes a saveable draft without creating a new checkpoi
   const storage = createProjectViewStorage({ getItem: (key) => records.get(key) ?? null, setItem: (key, value) => { records.set(key, value); } }, project.id);
   const view = projectWorkspaceToCanvas(normalizeProjectWorkspace(await read<ProjectWorkspace>(at(manifest.workspace!)), project.id));
   const content = captureContent(baselineNodes(baseline));
-  view.baselines[snapshotId] = { ...view.baselines[snapshotId]!, confirmed: content, confirmedAt: '2026-11-01T00:00:00Z', confirmationId: 'initial-confirmation' };
+  const mode = view.viewMode ?? 'structure';
+  const setCurrent = (next: typeof view.baselines[string]) => {
+    view.baselines[snapshotId] = next;
+    view.views![mode]![snapshotId] = next;
+  };
+  setCurrent({ ...view.baselines[snapshotId]!, confirmed: content, confirmedAt: '2026-11-01T00:00:00Z', confirmationId: 'initial-confirmation' });
   await storage.save('project', view);
   const changed = structuredClone(baseline);
   changed.stage.graph.revision = 'revised-source';
   changed.stage.graph.nodes.find((node) => node.id === 'agent')!.summary = 'Updated source description';
-  view.baselines[snapshotId] = rebaseSavedView(changed, view.baselines[snapshotId]);
-  assert.equal(view.baselines[snapshotId].confirmationId, 'initial-confirmation');
-  assert.deepEqual(view.baselines[snapshotId].confirmed, content);
-  assert.equal(view.baselines[snapshotId].confirmedRevision, baseline.stage.graph.revision ?? baseline.stage.id);
+  const rebased = rebaseSavedView(changed, view.baselines[snapshotId]!);
+  setCurrent(rebased);
+  assert.equal(view.baselines[snapshotId]!.confirmationId, 'initial-confirmation');
+  assert.deepEqual(view.baselines[snapshotId]!.confirmed, content);
+  assert.equal(view.baselines[snapshotId]!.confirmedRevision, baseline.stage.graph.revision ?? baseline.stage.id);
   await storage.save('project', view);
   const restored = await storage.load('project');
   assert.equal(restored!.baselines[snapshotId]!.revision, 'revised-source');

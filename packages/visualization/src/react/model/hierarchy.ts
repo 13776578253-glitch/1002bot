@@ -91,7 +91,7 @@ export function toggleHierarchy(input: readonly CanvasNode[], id: string, stage:
       const expanded = !node.data.expanded;
       const preference = node.data.layoutEdits?.sizes?.[expanded ? 'expanded' : 'collapsed'];
       const responsibility = !node.data.childCount && !!node.data.details?.length;
-      const selectedSize = expanded ? responsibility ? detailCardSize(node.data.details!.length) : { width: Math.max(preference?.width ?? 0, node.data.contentWidth ?? authored.expandedSize!.width), height: Math.max(preference?.height ?? 0, node.data.contentHeight ?? authored.expandedSize!.height) } : CARD_SIZE;
+      const selectedSize = expanded ? responsibility ? detailCardSize(node.data.details!.length) : { width: Math.max(preference?.width ?? 0, node.data.contentWidth ?? authored.expandedSize!.width), height: Math.max(preference?.height ?? 0, node.data.contentHeight ?? authored.expandedSize!.height) } : preference ?? CARD_SIZE;
       const size = { width: selectedSize.width, height: selectedSize.height };
       const { dragHandle: _handle, ...rest } = node;
       const container = input.some((child) => child.parentId === node.id);

@@ -42,7 +42,7 @@ test('root container growth moves an adjacent outside node beyond the new bounda
 });
 
 test('dragging back refits the content bounds and a second outward drag keeps the same ceiling', () => {
-  let nodes = [frame('parent', 288, 178), card('parent')];
+  let nodes = [frame('parent', 288, 176), card('parent')];
   const initial = { width: nodes[0]!.width, height: nodes[0]!.height };
   nodes = move(nodes, 10000, 10000);
   const maximum = { width: nodes[0]!.width, height: nodes[0]!.height };
@@ -56,9 +56,9 @@ test('dragging back refits the content bounds and a second outward drag keeps th
 });
 
 test('manual and structural ancestors both shrink after their deepest card is dragged back', () => {
-  const manual: CanvasNode = { ...frame('manual', 288, 166, 'middle'), type: 'cluster' };
-  const middle = frame('middle', 336, 262, 'outer');
-  const outer = frame('outer', 384, 358);
+  const manual: CanvasNode = { ...frame('manual', 288, 164, 'middle'), type: 'cluster' };
+  const middle = frame('middle', 336, 260, 'outer');
+  const outer = frame('outer', 384, 356);
   let nodes = [outer, middle, manual, { ...card('manual'), position: { x: 24, y: 60 } }];
   const initial = nodes.slice(0, 3).map((node) => ({ width: node.width, height: node.height }));
   nodes = move(nodes, 10000, 10000);

@@ -188,7 +188,7 @@ function placeAuthoredAdditions(input: PlacementInput): PlacementResult {
     const parent = node.parentId ? byId(working, node.parentId) : undefined;
     const origin = parent ? worldPosition(parent, working) : { x: 0, y: 0 };
     const preferred = worldPosition(node, working);
-    const choices = candidates(node, working, input.stage, pending);
+    const choices = candidates(node, working, input.stage, pending, input.preferredPositions?.[id]);
     choices.sort((a, b) => Math.abs(a.x - preferred.x) + Math.abs(a.y - preferred.y) - Math.abs(b.x - preferred.x) - Math.abs(b.y - preferred.y));
     let accepted: CanvasNode[] | undefined;
     let acceptedPoint: Point | undefined;
@@ -199,7 +199,7 @@ function placeAuthoredAdditions(input: PlacementInput): PlacementResult {
       if (routeBlocked(rect, input.routes ?? [], [], working, id)) continue;
       const trialPending = new Set(pending); trialPending.delete(id);
       const trial = replace(working, { ...node, position: { x: point.x - origin.x, y: point.y - origin.y } });
-      const fitted = fitAuthoredLayout(input.nodes, trial, [id], input.stage, new Set(), trialPending);
+      const fitted = fitAuthoredLayout(input.nodes, trial, [id], input.stage, new Set(), trialPending, true);
       if (fitted.conflict) continue;
       const projection = hierarchyProjection(fitted.nodes, input.stage);
       const visible = fitted.nodes.filter((item) => !trialPending.has(item.id) && nodeIsVisible(item, fitted.nodes, projection));

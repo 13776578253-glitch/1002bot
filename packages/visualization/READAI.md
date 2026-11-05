@@ -555,3 +555,118 @@ Append all future code-change reports below.
 - Persistence tests: 17/17 passed.
 - `git diff --check` passed; line review confirmed this pass only changed comments.
 - Build, full suite and browser smoke were not rerun for this comment-only round.
+
+## 2026-11-04 — Card layout migration boundary
+
+**1. Problems Fixed**
+
+- Legacy card-size normalization ran inside `makeContent`, so view switching, stage switching and undo/redo could re-run the relaxation/conflict path.
+- No runtime behavior changes to routing, labeling, snapshot merge or the current-spec layout.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- Added `migrateRestoredViews`; it runs once from the workspace-session initial state and migrates stored views with a matching baseline.
+- `makeContent` now restores nodes/frozen groups and validates routes only; it no longer calls `normalizeCardLayout`.
+- Migration compares normalized frames with saved frames, skips current-spec views, updates only existing node IDs, leaves confirmed snapshots literal and does not create Undo entries.
+- Frozen/locked cards remain unchanged.
+
+**3. Files Modified**
+
+- `src/react/canvas/use-workspace-session.ts`
+- `tests/integration/card-layout-migration.test.ts` (new)
+- `docs/agent-context/current-task/2026-11-04-visualization-card-migration.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Removed one runtime normalization call from every `makeContent` read; the migration now has one recovery-boundary entry point.
+- Added four focused tests plus the frozen-card case; no new state layer or framework.
+- Diff in the production file: 50 insertions, 12 deletions.
+
+**5. Legacy Mechanism Cleanup**
+
+- Removed the runtime card-size migration responsibility from `makeContent`.
+- Preserved `normalizeCardLayout` as the single existing implementation, now used at recovery.
+
+**6. Validation and Remaining Technical Debt**
+
+- Baseline: 412 tests, 399 passed, 13 failed; final: 417 tests, 404 passed, 13 failed; failure set identical, typecheck passed.
+- Browser acceptance covered old/current workspace load, persistence, reload, M2 stage switch, expand/collapse, drag, undo/redo and frozen state.
+- Remaining risk: migration executes for every restored view at mount; confirmed legacy snapshots may require re-confirmation after draft geometry changes. No routing/labeling behavior touched.
+
+## 2026-11-04 — Stage roundtrip frame preservation
+
+**1. Problems Fixed**
+
+- Returning M1 -> M2 -> M1 without source or user edits shrank `agent` from `480x390` to `288x208` and shifted `test-agent` by 12 pixels.
+- The drift came from classifying a target-only baseline node as newly added, then refitting its parent.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- `stage-transition.ts` now classifies placements from the target stage's `nodeChanges`: only `added` and `replaced` nodes are placed.
+- Removed the reverse `diffStages` calculation for additions and its fallback branch.
+- Existing draft reuse, source-revision merge, `finalizeMerged`, frozen/locked validation and persisted geometry remain unchanged.
+
+**3. Files Modified**
+
+- `src/react/model/stage-transition.ts`
+- `tests/integration/stage-roundtrip.test.ts` (new)
+- `docs/agent-context/current-task/2026-11-04-visualization-stage-roundtrip.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Production diff: 4 insertions, 7 deletions; one target-mark predicate replaces a reverse diff and two sets.
+- No new state, fallback, cache or compatibility layer.
+- The regression test covers M1 -> M2 -> M1 for `overview` and `structure`.
+
+**5. Legacy Mechanism Cleanup**
+
+- Removed the reverse-diff addition check from `planStageTransition`.
+- Kept the target `nodeChanges` contract as the single source for added/replaced placement.
+
+**6. Validation and Remaining Technical Debt**
+
+- Related stage/P4 tests: 22/22 pass.
+- Full package suite: 418 tests, 405 passed, 13 failed; failure set identical to baseline; typecheck passed.
+- Edge acceptance: M1 -> M2 -> M1 and reload preserve `agent` at `480x390`; no error; expand/collapse, drag/undo and freeze entry remain error-free.
+- Remaining: the `full` view has an existing `input-channel` no-space conflict on first entry to M2; full view is outside this round's roundtrip assertion.
+
+## 2026-11-04 — Stage layout inheritance priority
+
+**1. Problems Fixed**
+
+- Full view first entry failed because target `positions` were used for additions but inherited source-auto nodes kept old positions. Runtime grew while provider stayed at y=360, producing `Runtime / Provider` and no-space.
+- Applying target positions to every inherited node caused Structure round-trip drift; applying none caused Full no-space.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- `stage-transition.ts` now applies target `positions` only to free source-auto nodes with the same parent. `layoutEdits.position`, frozen, locked/fixed and parent changes stay protected.
+- Source automatic reflow is recognized when source content has an expansion/type change; fixed/locked nodes do not inherit target positions.
+- `placement.ts` passes target `preferredPositions` to authored candidates and uses `preserveFrames=true` only in `placeAuthoredAdditions`.
+
+**3. Files Modified**
+
+- `src/react/model/stage-transition.ts`
+- `src/react/model/placement.ts`
+- `tests/integration/stage-roundtrip.test.ts`
+- `docs/agent-context/current-task/2026-11-04-visualization-layout-inheritance.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Production diff: 19 insertions, 1 deletion in stage transition; 2 changed lines in placement; test additions cover Full, source user position and automatic expansion reflow.
+- No new state, persistence field, fallback or manager.
+- Target positions remain local to target candidates/drafts; source content is unchanged.
+
+**5. Legacy Mechanism Cleanup**
+
+- No mechanism deleted. The existing `layoutEdits`, `layoutMode`, `target.positions`, `nodeChanges`, target draft and collision validator are reused.
+
+**6. Validation and Remaining Technical Debt**
+
+- Full first entry: runtime `1052x900`, additions at target positions, no no-space.
+- Structure and Full M1 -> M2 -> M1 preserve frames; source user, fixed/locked and frozen positions remain protected.
+- Full package suite: 421 tests, 408 passed, 13 failed; failure set identical to baseline; typecheck passed.
+- Edge browser: Structure and Full round trips and reload pass.
+- Remaining: source positions deviating from baseline without a position edit or expansion/type marker are conservatively protected; a future automatic reflow producer would need explicit provenance.
