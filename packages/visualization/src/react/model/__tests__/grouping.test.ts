@@ -217,7 +217,7 @@ test('root-level neighbors use the nearest upward clearance without moving the n
   const grouped = groupSelection(nodes, 'group');
   const entry = grouped.find((node) => node.id === 'entry')!;
   assert.equal(entry.position.x, 200);
-  assert.equal(entry.position.y, -66);
+  assert.equal(entry.position.y, -64);
   assertSeparated(grouped.find((node) => node.id === 'group')!, entry, grouped);
   for (const id of ['a', 'b']) assert.deepEqual(worldPosition(grouped.find((node) => node.id === id)!, grouped), nodes.find((node) => node.id === id)!.position);
 });

@@ -75,7 +75,7 @@ test('explicit move and resize intents round-trip through workspace restore', ()
   const restored = restoreNodeViews(baseline!, baselineNodes(baseline!), JSON.parse(JSON.stringify(saved.nodes)));
   const result = restored.find((item) => item.id === 'world')!;
   assert.equal(result.data.layoutEdits!.position!.origin, 'user');
-  assert.deepEqual(result.data.layoutEdits!.sizes!.collapsed, { width: 390, height: 131, origin: 'user' });
+  assert.deepEqual(result.data.layoutEdits!.sizes!.collapsed, { width: 310, height: 115, origin: 'user' });
   assert.deepEqual(result.position, resized.find((item) => item.id === 'world')!.position);
 });
 

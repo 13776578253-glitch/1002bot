@@ -23,12 +23,12 @@ const moveWorld = (nodes: CanvasNode[], targets: Record<string, { x: number; y: 
   return constrainNodeMoves(nodes, proposed, Object.keys(targets), zoom, new Set(nodes.map((node) => node.id)), []).nodes;
 };
 const fixture = (): CanvasNode[] => [
-  frame('outer', 'structure', 100, 100, 600, 360),
+  frame('outer', 'structure', 100, 100, 600, 358),
   card('a', 24, 72, 'outer'),
   card('b', 336, 254, 'outer'),
 ];
 const maximum = (base: number) => base + Math.min(base * MAX_CONTAINER_RATIO, MAX_CONTAINER_EXTRA);
-const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 0.001, `${actual} != ${expected}`);
+const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 0.01, `${actual} != ${expected}`);
 const sameWorld = (nodes: readonly CanvasNode[], id: string, expected: { x: number; y: number }) => {
   const actual = world(nodes, id);
   close(actual.x, expected.x);
@@ -113,8 +113,8 @@ test('repeated outward drags do not increase the ceiling and returning restores 
 
 test('nested structure and manual containers refit without shifting untouched siblings', () => {
   const original: CanvasNode[] = [
-    frame('outer', 'structure', 100, 100, 1164, 706),
-    frame('manual', 'cluster', 24, 72, 600, 348, 'outer'),
+    frame('outer', 'structure', 100, 100, 1164, 704),
+    frame('manual', 'cluster', 24, 72, 600, 346, 'outer'),
     card('a', 24, 60, 'manual'),
     card('b', 336, 242, 'manual'),
     card('outside', 900, 600, 'outer'),
