@@ -376,3 +376,41 @@ Append all future code-change reports below.
 - Baseline: 412 tests, 399 passed, 13 failed; final: 417 tests, 404 passed, 13 failed; failure set identical, typecheck passed.
 - Browser acceptance covered old/current workspace load, persistence, reload, M2 stage switch, expand/collapse, drag, undo/redo and frozen state.
 - Remaining risk: migration executes for every restored view at mount; confirmed legacy snapshots may require re-confirmation after draft geometry changes. No routing/labeling behavior touched.
+
+## 2026-11-04 — Stage roundtrip frame preservation
+
+**1. Problems Fixed**
+
+- Returning M1 -> M2 -> M1 without source or user edits shrank `agent` from `480x390` to `288x208` and shifted `test-agent` by 12 pixels.
+- The drift came from classifying a target-only baseline node as newly added, then refitting its parent.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+- `stage-transition.ts` now classifies placements from the target stage's `nodeChanges`: only `added` and `replaced` nodes are placed.
+- Removed the reverse `diffStages` calculation for additions and its fallback branch.
+- Existing draft reuse, source-revision merge, `finalizeMerged`, frozen/locked validation and persisted geometry remain unchanged.
+
+**3. Files Modified**
+
+- `src/react/model/stage-transition.ts`
+- `tests/integration/stage-roundtrip.test.ts` (new)
+- `docs/agent-context/current-task/2026-11-04-visualization-stage-roundtrip.md`
+- This report.
+
+**4. Complexity Assessment**
+
+- Production diff: 4 insertions, 7 deletions; one target-mark predicate replaces a reverse diff and two sets.
+- No new state, fallback, cache or compatibility layer.
+- The regression test covers M1 -> M2 -> M1 for `overview` and `structure`.
+
+**5. Legacy Mechanism Cleanup**
+
+- Removed the reverse-diff addition check from `planStageTransition`.
+- Kept the target `nodeChanges` contract as the single source for added/replaced placement.
+
+**6. Validation and Remaining Technical Debt**
+
+- Related stage/P4 tests: 22/22 pass.
+- Full package suite: 418 tests, 405 passed, 13 failed; failure set identical to baseline; typecheck passed.
+- Edge acceptance: M1 -> M2 -> M1 and reload preserve `agent` at `480x390`; no error; expand/collapse, drag/undo and freeze entry remain error-free.
+- Remaining: the `full` view has an existing `input-channel` no-space conflict on first entry to M2; full view is outside this round's roundtrip assertion.

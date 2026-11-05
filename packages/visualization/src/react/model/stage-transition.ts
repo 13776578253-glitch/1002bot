@@ -1,5 +1,4 @@
 /** Atomic stage transition: inherit confirmed layout, place differences, then commit or fail. */
-import { diffStages } from '../../core/graph/diff.ts';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import { CARD_SIZE, structureHeaderHeight, worldPosition, type CanvasNode } from './grouping.ts';
 import { baselineNodes, hierarchyProjection } from './hierarchy.ts';
@@ -191,14 +190,12 @@ export function planStageTransition(input: StageTransitionInput): StageTransitio
     const parent = node.parentId === target.stage.graph.rootId ? undefined : node.parentId;
     if (view.parentId !== parent) inherited.delete(id);
   }
-  const diff = input.targetSaved
-    ? undefined
-    : diffStages(input.source.stage, target.stage, { nodeChanges: target.nodeChanges, edgeChanges: target.edgeChanges });
-  const diffAdded = new Set(diff?.nodes.added ?? []);
-  const diffReplaced = new Set((diff?.nodes.replaced ?? []).map((pair) => pair.to));
   const addedNodeIds = target.stage.graph.nodes
     .filter((node) => node.id !== target.stage.graph.rootId && !inherited.has(node.id))
-    .filter((node) => !diff || diffAdded.has(node.id) || diffReplaced.has(node.id))
+    .filter((node) => {
+      const mark = target.nodeChanges[node.id];
+      return mark?.kind === 'added' || mark?.kind === 'replaced';
+    })
     .map((node) => node.id);
 
   let working = reconciled.nodes;
