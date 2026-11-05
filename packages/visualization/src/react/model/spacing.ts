@@ -73,7 +73,7 @@ export function containerSizeLimits(node: CanvasNode, nodes: readonly CanvasNode
  * 子节点位移后自底向上（从最深层父级到最外层）重新贴合所有受影响容器尺寸。
  * 使用 fitOffset 跟踪边界偏移，保持内部坐标系稳定并支持回拖反向收缩。
  */
-export function fitMovedContainers(input: readonly CanvasNode[], movedIds: readonly string[], options: { moveNeighbours?: boolean; ignored?: ReadonlySet<string>; preserveFrozen?: boolean; preserveFrames?: boolean; anchorFrame?: boolean } = {}): CanvasNode[] {
+export function fitMovedContainers(input: readonly CanvasNode[], movedIds: readonly string[], options: { moveNeighbours?: boolean; ignored?: ReadonlySet<string>; preserveFrozen?: boolean; preserveFrames?: boolean; preserveFrameIds?: ReadonlySet<string>; anchorFrame?: boolean } = {}): CanvasNode[] {
   let nodes = [...input];
   const ancestors = new Set<string>();
   for (const id of movedIds) {
@@ -87,7 +87,7 @@ export function fitMovedContainers(input: readonly CanvasNode[], movedIds: reado
     if (node.type === 'card' && !node.data.expanded) continue;
     if (options.preserveFrozen && node.data.frozen) continue;
     let { x, y, width, height } = containerContentBounds(node, nodes, options.ignored, options.anchorFrame);
-    if (options.preserveFrames) {
+    if (options.preserveFrames || options.preserveFrameIds?.has(id)) {
       const right = Math.max(node.width!, x + width), bottom = Math.max(node.height!, y + height);
       x = Math.min(0, x); y = Math.min(0, y);
       width = right - x; height = bottom - y;
