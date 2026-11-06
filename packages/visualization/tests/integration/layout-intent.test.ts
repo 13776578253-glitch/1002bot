@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { adaptProject, resolveSourceStages, type ArchitectureProject, type ProjectManifest, type ProjectSourceCatalog, type ProjectStageSelection, type ProjectViewDefinition } from '../../src/adapters/project/index.ts';
 import type { StageSnapshot } from '../../src/core/schema/types.ts';
-import { baselineNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
-import { contentPosition, recordPositionEdits, recordSizeEdits } from '../../src/react/model/layout-intent.ts';
-import { worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { endpointFingerprint } from '../../src/react/model/edge-routes.ts';
-import { mergeStageContent } from '../../src/react/model/snapshot-inheritance.ts';
-import { prepareStageNavigation } from '../../src/react/model/stage-navigation.ts';
-import { captureContent, restoreNodeViews, ViewHistory, type CanvasBaselineContent, type CanvasBaselineView, type CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
+import { baselineNodes, toggleHierarchy } from '../../src/react/model/layout/hierarchy.ts';
+import { contentPosition, recordPositionEdits, recordSizeEdits } from '../../src/react/model/layout/layout-intent.ts';
+import { worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { endpointFingerprint } from '../../src/react/model/routing/edge-routes.ts';
+import { mergeStageContent } from '../../src/react/model/stages/snapshot-inheritance.ts';
+import { prepareStageNavigation } from '../../src/react/model/stages/stage-navigation.ts';
+import { captureContent, restoreNodeViews } from '../../src/react/model/workspace/workspace.ts';
+import { ViewHistory } from '../../src/react/model/workspace/history.ts';
+import { type CanvasBaselineContent, type CanvasBaselineView, type CanvasWorkspaceView } from '../../src/react/model/contracts/snapshot-types.ts';
 import { createProjectViewStorage } from '../../src/react/persistence/project-storage.ts';
 
 const node = (id: string, x: number, y: number, parentId?: string): CanvasNode => ({

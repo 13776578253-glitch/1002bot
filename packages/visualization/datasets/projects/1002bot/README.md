@@ -1,4 +1,4 @@
-Owner: `packages/visualization/datasets/projects/1002bot/project.json`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`
+Owner: `packages/visualization/datasets/projects/1002bot/project.json`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/persistence/project-workspace.ts`, `src/react/persistence/project-storage.ts`
 
 # 项目架构数据
 

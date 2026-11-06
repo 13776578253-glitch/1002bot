@@ -33,7 +33,7 @@
     "build": "node tools/clean-dist.mjs && tsc -p tsconfig.build.json && node tools/rewrite-declaration-imports.mjs && node tools/copy-css.mjs && node tools/check-dist.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
-    "test": "node --experimental-strip-types --test src/react/model/__tests__/*.test.ts src/react/persistence/__tests__/*.test.ts tests/*.test.ts tests/integration/*.test.ts tests/architecture/*.test.ts",
+    "test": "node --experimental-strip-types --test src/react/model/**/__tests__/*.test.ts src/react/persistence/__tests__/*.test.ts tests/*.test.ts tests/integration/*.test.ts tests/architecture/*.test.ts",
     "dev": "vite --config playground/vite.config.ts",
     "build:web": "vite build --config playground/vite.config.ts",
     "check:dist": "node tools/check-dist.mjs",

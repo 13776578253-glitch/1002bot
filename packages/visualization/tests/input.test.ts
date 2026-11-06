@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertValidBaselines, type VisualizationBaseline } from '../src/core/schema/baseline.ts';
-import { createHierarchyNodes, hierarchyProjection, toggleHierarchy } from '../src/react/model/hierarchy.ts';
-import { worldPosition } from '../src/react/model/grouping.ts';
+import { createHierarchyNodes, toggleHierarchy } from '../src/react/model/layout/hierarchy.ts';
+import { hierarchyProjection } from '../src/react/model/layout/visibility.ts';
+import { worldPosition } from '../src/react/model/layout/node.ts';
 
 const external: VisualizationBaseline = {
   id: 'release-a',

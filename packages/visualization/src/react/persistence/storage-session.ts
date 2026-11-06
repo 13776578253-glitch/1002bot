@@ -1,5 +1,6 @@
 /** Storage session owns per-key write ordering; loads wait for outstanding saves so a remount cannot read stale data. */
-import type { CanvasViewStorage, CanvasWorkspaceView } from '../model/workspace.ts';
+import type { CanvasViewStorage } from './storage-types.ts';
+import type { CanvasWorkspaceView } from '../model/contracts/snapshot-types.ts';
 
 /** 每个存储实例、每个键一条待完成写入链；完成后释放。 */
 const pending = new WeakMap<CanvasViewStorage, Map<string, Promise<void>>>();

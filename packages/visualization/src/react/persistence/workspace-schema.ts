@@ -9,9 +9,9 @@ import type {
   FrozenBoundarySide,
   FrozenGroupSnapshot,
   StageTransitionRecord,
-} from '../model/workspace.ts';
-import type { UserGraphOverlay } from '../model/overlay.ts';
-import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
+} from '../model/contracts/snapshot-types.ts';
+import type { UserGraphOverlay } from '../model/contracts/overlay.ts';
+import type { StageInheritanceBase } from '../model/contracts/snapshot-types.ts';
 import { assertValidGraph } from '../../core/graph/validate.ts';
 
 type UnknownRecord = Record<string, unknown>;

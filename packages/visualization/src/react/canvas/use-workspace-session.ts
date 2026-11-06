@@ -2,20 +2,22 @@
 import { useCallback, useMemo, useRef, useState, type SetStateAction } from 'react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { VisualizationCanvasProps } from '../types.ts';
-import type { CanvasNode } from '../model/grouping.ts';
-import { baselineNodes } from '../model/hierarchy.ts';
-import { baselineForView } from '../model/view-projection.ts';
-import { restoreFrozenGroups } from '../model/frozen.ts';
-import { confirmationIsCurrent, draftMatchesConfirmed } from '../model/confirmation.ts';
-import { normalizeCardLayout } from '../model/normalize-card-layout.ts';
-import { hierarchyProjection } from '../model/hierarchy.ts';
-import { validateStoredRoutes } from '../model/edge-routes.ts';
-import type { UserGraphOverlay } from '../model/overlay.ts';
-import { captureContent, captureNodeViews, restoreNodeViews, ViewHistory, type CanvasBaselineContent, type CanvasBaselineView, type CanvasViewMode, type CanvasViewport, type CanvasWorkspaceView, type EdgeRouteSnapshot, type FrozenGroupSnapshot, type DisplayRouteSnapshot, type EdgeLabelPin } from '../model/workspace.ts';
-import type { StageInheritanceBase } from '../model/snapshot-inheritance.ts';
-import type { StageTransitionSuccess } from '../model/stage-transition.ts';
+import type { CanvasNode } from '../model/layout/node.ts';
+import { baselineNodes } from '../model/layout/hierarchy.ts';
+import { baselineForView } from '../model/stages/view-projection.ts';
+import { restoreFrozenGroups } from '../model/freeze/frozen.ts';
+import { confirmationIsCurrent, draftMatchesConfirmed } from '../model/workspace/confirmation.ts';
+import { normalizeCardLayout } from '../model/layout/normalize-card-layout.ts';
+import { hierarchyProjection } from '../model/layout/visibility.ts';
+import { validateStoredRoutes } from '../model/routing/edge-routes.ts';
+import type { UserGraphOverlay } from '../model/contracts/overlay.ts';
+import { captureContent, captureNodeViews, restoreNodeViews } from '../model/workspace/workspace.ts';
+import { ViewHistory } from '../model/workspace/history.ts';
+import { type CanvasBaselineContent, type CanvasBaselineView, type CanvasViewMode, type CanvasViewport, type CanvasWorkspaceView, type EdgeRouteSnapshot, type FrozenGroupSnapshot, type DisplayRouteSnapshot, type EdgeLabelPin } from '../model/contracts/snapshot-types.ts';
+import type { StageInheritanceBase } from '../model/contracts/snapshot-types.ts';
+import type { StageTransitionSuccess } from '../model/stages/stage-transition.ts';
 import { saveWorkspace } from '../persistence/storage-session.ts';
-import { sceneGeometryKey } from '../model/label-snapshots.ts';
+import { sceneGeometryKey } from '../model/layout/scene-geometry.ts';
 
 /** 单个阶段/视图会话的内容字段；revision、确认和继承元数据留在 CanvasBaselineView。 */
 export interface CanvasSessionState {
@@ -123,7 +125,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   const [nodes, publishNodes] = useState(initialContent.nodes), nodesRef = useRef(nodes);
   const [edgeRoutes, publishRoutes] = useState(initialContent.edgeRoutes), routesRef = useRef(edgeRoutes);
   const [frozenGroups, publishFrozen] = useState(initialContent.frozenGroups), frozenRef = useRef(frozenGroups);
-  const [overlay, publishOverlay] = useState(initialContent.overlay), overlayRef = useRef(overlay);
+  const overlayRef = useRef(initialContent.overlay);
   const [displayRoutes, publishDisplay] = useState(initialContent.displayRoutes ?? []), displayRoutesRef = useRef(displayRoutes);
   const displayGeometry = useRef(sceneGeometryKey(initialContent.nodes));
   const [labelPins, publishLabelPins] = useState(initialContent.labelPins ?? []), labelPinsRef = useRef(labelPins);
@@ -144,7 +146,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   // 路径、冻结组或标签固定变化会使已渲染的显示路径失效。
   const setRoutes = useCallback((next: EdgeRouteSnapshot[]) => { if (next !== routesRef.current) displayGeometry.current = ''; routesRef.current = next; publishRoutes(next); }, []);
   const setFrozenGroups = useCallback((next: FrozenGroupSnapshot[]) => { if (next !== frozenRef.current) displayGeometry.current = ''; frozenRef.current = next; publishFrozen(next); }, []);
-  const setOverlay = useCallback((next: UserGraphOverlay | undefined) => { overlayRef.current = next; publishOverlay(next); }, []);
+  const setOverlay = useCallback((next: UserGraphOverlay | undefined) => { overlayRef.current = next; }, []);
   const setDisplayRoutes = useCallback((next: DisplayRouteSnapshot[], geometry = sceneGeometryKey(nodesRef.current), stageId = idRef.current, mode = modeRef.current) => {
     if (stageId !== idRef.current || mode !== modeRef.current || geometry !== sceneGeometryKey(nodesRef.current)) return false;
     displayGeometry.current = geometry;
@@ -251,7 +253,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
         ...(result.inheritance ? { inheritance: result.inheritance } : {}), sourceStage: structuredClone(getBaseline(targetId, mode).stage) };
       views.current[mode][targetId] = next;
       metadata.current.set(result.content, structuredClone(next));
-      history(targetId, mode).record(before, result.content);
+      history(targetId, mode).record(before, result.content, !!old && !('reused' in result && result.reused));
     }
     idRef.current = targetId; publishId(targetId);
     publishContent(makeContent(targetId, modeRef.current)); refresh((value) => value + 1); save();
@@ -281,7 +283,7 @@ export function useWorkspaceSession(props: VisualizationCanvasProps, restored?: 
   // 视口属于视图草稿；有未完成事务时只更新内存，等事务结束再保存。
   const saveViewport = useCallback((viewport: CanvasViewport) => { views.current[modeRef.current][idRef.current]!.viewport = viewport; if (!pending.current) save(false); }, [save]);
   return {
-    nodes, nodesRef, setNodes, edgeRoutes, routesRef, frozenGroups, frozenRef, overlay, overlayRef, labelPins, labelPinsRef, setLabelPins,
+    nodes, nodesRef, setNodes, edgeRoutes, routesRef, frozenGroups, frozenRef, labelPins, labelPinsRef, setLabelPins,
     setRoutes, setFrozenGroups, setOverlay, setDisplayRoutes, cacheRenderedRoutes, displayRoutes, displayRoutesRef, commitContent,
     baselineId, baseline: getBaseline(baselineId, viewMode), viewMode, switchView, getBaseline,
     // 旧阶段缺少三视图时只提示迁移，不自动改写历史。

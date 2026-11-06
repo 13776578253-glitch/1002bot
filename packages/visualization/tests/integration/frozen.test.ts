@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CanonicalEdge, CanonicalNode, StageSnapshot } from '../../src/core/schema/types.ts';
-import { createHierarchyNodes, syncHierarchyExpansion, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
-import { worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { freezeSelection, restoreFrozenGroups, toggleFrozenExpansion, unfreezeGroup } from '../../src/react/model/frozen.ts';
+import { createHierarchyNodes, syncHierarchyExpansion, toggleHierarchy } from '../../src/react/model/layout/hierarchy.ts';
+import { worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { freezeSelection, restoreFrozenGroups, toggleFrozenExpansion, unfreezeGroup } from '../../src/react/model/freeze/frozen.ts';
 
 function entity(id: string, parentId: string | null, order: number, kind: CanonicalNode['kind'] = parentId === null ? 'root' : 'component'): CanonicalNode {
   return { id, parentId, kind, label: id, summary: id, order, ports: [] };

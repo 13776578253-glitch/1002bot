@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { adaptProject, resolveSourceStages, type ArchitectureProject, type ProjectManifest, type ProjectSourceCatalog, type ProjectStageSelection, type ProjectViewDefinition } from '../../src/adapters/project/index.ts';
-import { baselineNodes } from '../../src/react/model/hierarchy.ts';
-import { prepareStageNavigation } from '../../src/react/model/stage-navigation.ts';
-import { baselineForView } from '../../src/react/model/view-projection.ts';
-import { solveHierarchyExpansion } from '../../src/react/model/placement.ts';
-import { captureContent, type CanvasBaselineContent } from '../../src/react/model/workspace.ts';
+import { baselineNodes } from '../../src/react/model/layout/hierarchy.ts';
+import { prepareStageNavigation } from '../../src/react/model/stages/stage-navigation.ts';
+import { baselineForView } from '../../src/react/model/stages/view-projection.ts';
+import { solveHierarchyExpansion } from '../../src/react/model/layout/placement.ts';
+import { captureContent } from '../../src/react/model/workspace/workspace.ts';
+import { type CanvasBaselineContent } from '../../src/react/model/contracts/snapshot-types.ts';
 
 function runtimeBaselines() {
   const directory = new URL('../../datasets/projects/runtime-evolution/', import.meta.url);

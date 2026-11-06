@@ -29,7 +29,7 @@ for (const file of files) {
       } else if (file.endsWith('.css')) import.meta.resolve(specifier);
     }
   }
-  assert.ok(!file.includes(join('react', 'model', '__tests__')), 'Tests shipped in dist');
+  assert.ok(!relative(dist, file).split(/[\\/]/).includes('__tests__'), 'Tests shipped in dist');
 }
 const core = await import(pathToFileURL(join(dist, 'index.js')).href);
 const react = await import(pathToFileURL(join(dist, 'react/index.js')).href);

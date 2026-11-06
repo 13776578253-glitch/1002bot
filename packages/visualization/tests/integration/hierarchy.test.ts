@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHierarchyNodes as createNodes, hierarchyProjection as projectNodes, nodeIsVisible, toggleHierarchy as toggleNodes } from '../../src/react/model/hierarchy.ts';
-import { groupSelection, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
+import { createHierarchyNodes as createNodes, toggleHierarchy as toggleNodes } from '../../src/react/model/layout/hierarchy.ts';
+import { hierarchyProjection as projectNodes, nodeIsVisible } from '../../src/react/model/layout/visibility.ts';
+import { groupSelection } from '../../src/react/model/layout/grouping.ts';
+import { worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
 import { recursiveStage, initialPositions } from '../fixtures/recursive.ts';
 import { assertValidSnapshot } from '../../src/core/schema/validate.ts';
-import { routeDiagramEdge } from '../../src/react/model/routing.ts';
+import { routeDiagramEdge } from '../../src/react/model/routing/routing.ts';
 import { obstacleFromRect } from '../../src/core/layout/geometry.ts';
 import { validateOrthogonalPath } from '../helpers/geometry.ts';
-import { constrainNodeMoves } from '../../src/react/model/constraints.ts';
-import { placeEdgeLabel } from '../../src/react/model/labels.ts';
-import type { Rect } from '../../src/core/layout/geometry.ts';
+import { constrainNodeMoves } from '../../src/react/model/layout/constraints.ts';
+import { LabelLayoutCache } from '../../src/react/model/labels/label-layout.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { DiagramRouteCache } from '../../src/react/model/routing/route-cache.ts';
 
 const createHierarchyNodes = () => createNodes(recursiveStage, initialPositions);
 const hierarchyProjection = (nodes: readonly CanvasNode[]) => projectNodes(nodes, recursiveStage);
@@ -145,22 +148,23 @@ test('labels stay on or immediately beside their routes at each recursive depth'
   for (const id of [undefined, 'session', 'session-context', 'context-compose']) {
     if (id) nodes = toggleHierarchy(nodes, id);
     const projection = hierarchyProjection(nodes);
-    const visible = nodes.filter((node) => nodeIsVisible(node, nodes, projection));
-    const bounds = (node: CanvasNode): Rect => ({ ...worldPosition(node, nodes), w: node.width!, h: node.height! });
-    const blockers = visible.map((node) => node.type === 'card' ? bounds(node) : { ...bounds(node), h: node.type === 'structure' ? 68 : 54 });
-    const frames = visible.filter((node) => node.type !== 'card').map(bounds);
-    const occupied: Rect[] = [];
-    for (const edge of projection.edges) {
-      const route = routeDiagramEdge(nodes, projection, edge.source.nodeId, edge.target.nodeId);
-      const label = placeEdgeLabel(route.points, edge.label ?? '', blockers, frames, occupied);
-      const nearest = Math.min(...route.points.slice(1).map((point, index) => {
-        const start = route.points[index]!;
-        const x = Math.max(Math.min(start.x, point.x), Math.min(Math.max(start.x, point.x), label.x));
-        const y = Math.max(Math.min(start.y, point.y), Math.min(Math.max(start.y, point.y), label.y));
-        return Math.hypot(x - label.x, y - label.y);
-      }));
-      assert.ok(nearest <= Math.max(label.width, label.height) / 2 + 4, `${id ?? 'overview'} ${edge.label}: ${nearest}`);
-      occupied.push({ x: label.x - label.width / 2, y: label.y - label.height / 2, w: label.width, h: label.height });
+    const changes = Object.fromEntries(recursiveStage.graph.edges.map((edge) => [edge.id, { kind: 'baseline' as const, label: '基线' }]));
+    const edges = aggregateProjectedEdges(projection, changes);
+    const routes = new DiagramRouteCache().update(nodes, projection, edges);
+    const { labels, stats } = new LabelLayoutCache().update(nodes, projection, edges, routes);
+    assert.ok(stats.visible > 0);
+    for (const [edgeId, label] of labels) {
+      if (!label.placement) continue;
+      const attachment = label.attachment;
+      assert.ok(attachment);
+      const points = routes.get(edgeId)!.points;
+      assert.ok(points.some((to, index) => {
+        if (!index) return false;
+        const from = points[index - 1]!, point = attachment.projected;
+        return Math.abs((to.x - from.x) * (point.y - from.y) - (to.y - from.y) * (point.x - from.x)) < 0.001
+          && point.x >= Math.min(from.x, to.x) - 0.001 && point.x <= Math.max(from.x, to.x) + 0.001
+          && point.y >= Math.min(from.y, to.y) - 0.001 && point.y <= Math.max(from.y, to.y) + 0.001;
+      }), edgeId);
     }
   }
 });

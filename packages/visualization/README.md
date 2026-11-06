@@ -1,4 +1,4 @@
-Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace.ts`, `src/react/model/stage-transition.ts`, `src/react/model/stage-navigation.ts`, `src/react/model/placement.ts`, `src/react/model/frozen.ts`, `src/react/model/blackbox-routes.ts`, `src/react/model/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/manual-layout.ts`, `src/react/model/layout-intent.ts`, `src/react/model/snapshot-inheritance.ts`, `src/react/canvas/use-workspace-session.ts`, `src/react/model/project-workspace.ts`, `src/react/persistence/project-storage.ts`, `src/react/model/view-projection.ts`, `src/react/model/normalize-card-layout.ts`, `src/react/model/label-layout.ts`, `src/react/model/label-pins.ts`, `src/react/model/label-snapshots.ts`
+Owner: `packages/visualization/package.json`, `src/react/index.ts`, `src/react/VisualizationCanvas.tsx`, `src/react/model/workspace/workspace.ts`, `src/react/model/stages/stage-transition.ts`, `src/react/model/stages/stage-navigation.ts`, `src/react/model/layout/placement.ts`, `src/react/model/freeze/frozen.ts`, `src/react/model/freeze/blackbox-routes.ts`, `src/react/model/routing/edge-routes.ts`, `src/adapters/progress-reports/index.ts`, `src/core/project/types.ts`, `src/core/project/resolve.ts`, `src/adapters/project/index.ts`, `src/react/model/layout/manual-layout.ts`, `src/react/model/layout/layout-intent.ts`, `src/react/model/stages/snapshot-inheritance.ts`, `src/react/canvas/use-workspace-session.ts`, `src/react/persistence/project-workspace.ts`, `src/react/persistence/project-storage.ts`, `src/react/model/stages/view-projection.ts`, `src/react/model/layout/normalize-card-layout.ts`, `src/react/model/labels/label-layout.ts`, `src/react/model/labels/label-pins.ts`, `src/react/model/labels/label-snapshots.ts`
 
 # Visualization
 
@@ -33,28 +33,28 @@ pnpm check:snapshots
 | `src/core/layout/legality.ts` | 统一硬合法性校验 |
 | `src/core/layout/search-limits.ts` | A* 与拼接循环的搜索上限 |
 | `src/react/model` | 初始位置、递归显隐、分组、吸附、四向有限扩缩、路由与标签 |
-| `src/react/model/route-groups.ts` | 离线星形组求解、四种模式与跨组端口协调 |
-| `src/react/model/label-candidates.ts` | 路径的多标签候选与分支偏好 |
-| `src/react/model/route-quality.ts` | 组级统一质量度量与路径-标签评分 |
-| `src/react/model/route-selection.ts` | 组解完整性与旧路由回退选择 |
-| `src/react/model/group-route-cache.ts` | 组级增量缓存、路径保留与邻居失效 |
-| `src/react/model/routing-status.ts` | 组解回退原因与提示文案 |
+| `src/react/model/routing/route-groups.ts` | 离线星形组求解、四种模式与跨组端口协调 |
+| `src/react/model/labels/label-layout.ts` | 最终路径的标签排布与恢复 |
+| `src/react/model/routing/route-quality.ts` | 组级路径质量度量 |
+| `src/react/model/routing/resolve-routes.ts` | 路由引擎选择、路径复用与保护校验 |
+| `src/react/model/routing/group-route-cache.ts` | 组级增量缓存、路径保留与邻居失效 |
+| `src/react/model/routing/routing-status.ts` | 组解回退原因与提示文案 |
 | `src/react/canvas` | 受控交互状态与场景派生 |
-| `src/react/model/workspace.ts` | 可序列化工作视图、草稿/已确认快照与有界事务历史 |
-| `src/react/model/stage-transition.ts` | 阶段差异、原子安置流水线与结构化冲突 |
-| `src/react/model/placement.ts` | 展开与增量安置共享的几何求解、确定性空隙填充与有限扩容 |
-| `src/react/model/stage-navigation.ts`、`snapshot-inheritance.ts` | 父确认快照继承、来源修订与当前草稿三方合并 |
-| `src/react/model/frozen.ts` | 单层冻结子图、只读展开与解冻 |
-| `src/react/model/blackbox-routes.ts` | 隐藏内部路径、边界端口与刚性分段、外部连接可行性 |
-| `src/react/model/edge-routes.ts` | Canonical Edge 路径持久化、owner 坐标与可见展示边应用 |
-| `src/react/model/route-cache.ts` | 按端点、障碍和保留路径变化失效的精确路径与标签缓存 |
-| `src/react/model/display-edges.ts` | 折叠展示边聚合及原始连接成员 |
+| `src/react/model/contracts/snapshot-types.ts`、`src/react/model/workspace/workspace.ts` | 快照合同、工作节点捕获与恢复 |
+| `src/react/model/stages/stage-transition.ts` | 阶段差异、原子安置流水线与结构化冲突 |
+| `src/react/model/layout/placement.ts` | 展开与增量安置共享的几何求解、确定性空隙填充与有限扩容 |
+| `src/react/model/stages/stage-navigation.ts`、`snapshot-inheritance.ts` | 父确认快照继承、来源修订与当前草稿三方合并 |
+| `src/react/model/freeze/frozen.ts` | 单层冻结子图、只读展开与解冻 |
+| `src/react/model/freeze/blackbox-routes.ts` | 隐藏内部路径、边界端口与刚性分段、外部连接可行性 |
+| `src/react/model/routing/edge-routes.ts` | Canonical Edge 路径持久化、owner 坐标与可见展示边应用 |
+| `src/react/model/routing/route-cache.ts` | 按端点、障碍和保留路径变化失效的精确路径缓存 |
+| `src/react/model/routing/display-edges.ts` | 折叠展示边聚合及原始连接成员 |
 | `src/react/components` | 节点、关系、控制、面板与快照组件；按 primitives / controls / panels / snapshot 分组 |
 | `src/react/styles` | 画布作用域内的主题、节点、连线和控制样式 |
 | `src/adapters/progress-reports` | 将可序列化的报告目录与阶段增量转换为完整基线；无 IO 或 UI 依赖 |
 | `src/adapters/project` | Source 增量、View 语义与人工几何的纯适配 |
-| `src/react/model/manual-layout.ts` | 人工坐标、局部父链扩缩与边界检查，保持无关节点位置 |
-| `src/react/model/project-workspace.ts`、`persistence/project-storage.ts` | 项目工作空间与画布合同桥接、独立确认检查点 |
+| `src/react/model/layout/manual-layout.ts` | 人工坐标、局部父链扩缩与边界检查，保持无关节点位置 |
+| `src/react/persistence/project-workspace.ts`、`persistence/project-storage.ts` | 项目工作空间与画布合同桥接、独立确认检查点 |
 | `datasets/projects.json` | 项目注册表；默认项目指向清单 |
 | `datasets/projects/1002bot/project.json` | 当前项目清单，Source / Stages / Views / Workspace 资源 |
 | `datasets/projects/1002bot/source/catalog.json` | 组件、关系与契约事实 |

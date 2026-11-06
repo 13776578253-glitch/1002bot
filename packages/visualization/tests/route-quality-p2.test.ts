@@ -1,25 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { measureRoutes, scoreRoutes, type QualityRoute } from '../src/react/model/route-quality.ts';
+import { measureRoutes, scoreRoutes, type QualityRoute } from '../src/react/model/routing/route-quality.ts';
 
 const route = (edgeId: string, points: { x: number; y: number }[]): QualityRoute => ({ edgeId, points });
 
 test('a single crossing is chosen over a large detour', () => {
   const crossing = [route('a', [{ x: 0, y: 100 }, { x: 300, y: 100 }]), route('b', [{ x: 150, y: 0 }, { x: 150, y: 200 }])];
   const detour = [route('a', [{ x: 0, y: 100 }, { x: 300, y: 100 }]), route('b', [{ x: 150, y: 0 }, { x: 150, y: 80 }, { x: 400, y: 80 }, { x: 400, y: 220 }, { x: 150, y: 220 }, { x: 150, y: 200 }])];
-  assert.ok(scoreRoutes(crossing, { hiddenPenalty: 0 }).score < scoreRoutes(detour, { hiddenPenalty: 0 }).score);
+  assert.ok(scoreRoutes(crossing).score < scoreRoutes(detour).score);
 });
 
 test('a mild two-bend detour still loses to one crossing', () => {
   const crossing = [route('a', [{ x: 0, y: 100 }, { x: 300, y: 100 }]), route('b', [{ x: 150, y: 0 }, { x: 150, y: 200 }])];
   const mild = [route('a', [{ x: 0, y: 100 }, { x: 300, y: 100 }]), route('b', [{ x: 150, y: 0 }, { x: 150, y: 80 }, { x: 170, y: 80 }, { x: 170, y: 200 }])];
-  assert.ok(scoreRoutes(crossing, { hiddenPenalty: 0 }).score < scoreRoutes(mild, { hiddenPenalty: 0 }).score);
+  assert.ok(scoreRoutes(crossing).score < scoreRoutes(mild).score);
 });
 
 test('an equally long non-crossing arrangement wins', () => {
   const crossing = [route('a', [{ x: 0, y: 100 }, { x: 300, y: 100 }]), route('b', [{ x: 150, y: 0 }, { x: 150, y: 200 }])];
   const separated = [route('a', [{ x: 0, y: 100 }, { x: 300, y: 100 }]), route('b', [{ x: 0, y: 150 }, { x: 200, y: 150 }])];
-  assert.ok(scoreRoutes(separated, { hiddenPenalty: 0 }).score < scoreRoutes(crossing, { hiddenPenalty: 0 }).score);
+  assert.ok(scoreRoutes(separated).score < scoreRoutes(crossing).score);
 });
 
 test('crossing and detour matrix prefers a short detour and rejects long ones', () => {
@@ -31,8 +31,8 @@ test('crossing and detour matrix prefers a short detour and rejects long ones', 
   };
   const matrix = [10, 30, 100].map((delta) => ({
     delta,
-    crossingScore: scoreRoutes(crossing, { hiddenPenalty: 0 }).score,
-    detourScore: scoreRoutes(detour(delta), { hiddenPenalty: 0 }).score,
+    crossingScore: scoreRoutes(crossing).score,
+    detourScore: scoreRoutes(detour(delta)).score,
   }));
   console.log(JSON.stringify({ crossingMatrix: matrix }));
   assert.ok(matrix[0]!.detourScore < matrix[0]!.crossingScore, '10px detour avoids the crossing');
@@ -63,28 +63,6 @@ test('channel stability sorts target ports by world projection, not local fracti
 test('bends count direction changes rather than redundant points', () => {
   assert.equal(measureRoutes([{ edgeId: 'straight', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }] }]).bends, 0);
   assert.equal(measureRoutes([{ edgeId: 'elbow', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }] }]).bends, 1);
-});
-
-test('labels are only penalised when they are required', () => {
-  assert.equal(measureRoutes([{ edgeId: 'none', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], labelRequired: false }]).labelHidden, 0);
-  assert.equal(measureRoutes([{ edgeId: 'required', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], labelRequired: true }]).labelHidden, 1);
-});
-
-test('label ownership penalises labels far from their own route', () => {
-  const near = measureRoutes([{ edgeId: 'a', points: [{ x: 0, y: 0 }, { x: 200, y: 0 }], label: { x: 100, y: 0, width: 40, height: 20 } }]);
-  const far = measureRoutes([{ edgeId: 'a', points: [{ x: 0, y: 0 }, { x: 200, y: 0 }], label: { x: 100, y: 80, width: 40, height: 20 } }]);
-  assert.equal(near.labelOwnerMisses, 0);
-  assert.equal(far.labelOwnerMisses, 1);
-});
-
-test('path mode scoring ignores label location and visibility', () => {
-  const path = [{ x: 0, y: 0 }, { x: 200, y: 0 }];
-  const near: QualityRoute = { edgeId: 'a', points: path, label: { x: 100, y: 0, width: 40, height: 20 } };
-  const far: QualityRoute = { edgeId: 'a', points: path, label: { x: 100, y: 200, width: 40, height: 20 } };
-  const hidden: QualityRoute = { edgeId: 'a', points: path, labelRequired: true, labelState: 'space-exhausted' };
-  assert.equal(scoreRoutes([near]).score, scoreRoutes([far]).score);
-  assert.equal(scoreRoutes([near]).score, scoreRoutes([hidden]).score);
-  assert.equal(measureRoutes([far]).labelOwnerMisses, 1);
 });
 
 test('port and channel metrics use global node-scoped identities', () => {

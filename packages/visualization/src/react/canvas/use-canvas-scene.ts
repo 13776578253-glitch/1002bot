@@ -4,24 +4,22 @@ import { MarkerType, type Edge } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { Projection } from '../../core/projection/index.ts';
 import type { LinkData } from '../components/primitives/relation-edge.tsx';
-import { leafMembers, selectionRoots, structureHeaderHeight, worldPosition, type CanvasNode } from '../model/grouping.ts';
-import { nodeIsVisible } from '../model/hierarchy.ts';
-import { DiagramRouteCache, type CachedRoute } from '../model/route-cache.ts';
-import type { GroupSolveOutcome } from '../model/route-groups.ts';
-import { selectCanvasRoutes } from '../model/route-selection.ts';
-import { GroupRouteCache, type GroupRouteCacheStats } from '../model/group-route-cache.ts';
-import { routingFallback, type RoutingFallbackReason, type RoutingStatus } from '../model/routing-status.ts';
-import type { DisplayEdge } from '../model/display-edges.ts';
-import { applyStoredRoutes, reservedLockedRoutes, retainedCanonicalRoutes } from '../model/edge-routes.ts';
-import type { EdgeRouteSnapshot } from '../model/workspace.ts';
-import type { DisplayRouteSnapshot, FrozenGroupSnapshot } from '../model/workspace.ts';
-import { retainedDisplayRoutes } from '../model/display-route-snapshots.ts';
-import { clipAlignmentGuides } from '../model/guides.ts';
-import type { AlignmentGuide } from '../model/constraints.ts';
-import { LabelLayoutCache } from '../model/label-layout.ts';
-import { labelPinForEdge } from '../model/label-pins.ts';
-import type { EdgeLabelPin, CanvasViewMode } from '../model/workspace.ts';
-import { captureLabelledRoutes, labelIdentity, labelSeeds, sceneGeometryKey } from '../model/label-snapshots.ts';
+import { leafMembers, selectionRoots } from '../model/layout/grouping.ts';
+import { structureHeaderHeight, worldPosition, type CanvasNode } from '../model/layout/node.ts';
+import { nodeIsVisible } from '../model/layout/visibility.ts';
+import { DiagramRouteCache, type CachedRoute } from '../model/routing/route-cache.ts';
+import { GroupRouteCache } from '../model/routing/group-route-cache.ts';
+import { resolveRoutes } from '../model/routing/resolve-routes.ts';
+import type { DisplayEdge } from '../model/routing/display-edges.ts';
+import type { EdgeRouteSnapshot } from '../model/contracts/snapshot-types.ts';
+import type { DisplayRouteSnapshot, FrozenGroupSnapshot } from '../model/contracts/snapshot-types.ts';
+import { sceneGeometryKey } from '../model/layout/scene-geometry.ts';
+import { clipAlignmentGuides } from '../model/layout/guides.ts';
+import type { AlignmentGuide } from '../model/layout/constraints.ts';
+import { LabelLayoutCache } from '../model/labels/label-layout.ts';
+import { labelPinForEdge } from '../model/labels/label-pins.ts';
+import type { EdgeLabelPin, CanvasViewMode } from '../model/contracts/snapshot-types.ts';
+import { captureLabelledRoutes, labelIdentity, labelSeeds } from '../model/labels/label-snapshots.ts';
 
 /** 单帧渲染输入；stored* 是已保存内容，readOnly 时改用候选快照。 */
 interface SceneState {
@@ -54,51 +52,14 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   const cache = useMemo(() => new DiagramRouteCache(), [baseline.id,baseline.stage.graph.revision,readOnly]);
   const lastRenderedEngine = useRef<'legacy' | 'group'>('legacy');
   const lastVisibleRoutes = useRef<ReadonlyMap<string, CachedRoute>>(new Map());
-  const routeInputs = useMemo(() => displayEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, text: edge.text })), [displayEdges]);
-  // 固定/锁定路径先登记为保留障碍，再参与本次求解。
-  const reserved = useMemo(() => reservedLockedRoutes(storedRoutes, nodes, frozenGroups), [storedRoutes, geometryKey]);
-  type GroupAttempt =
-    | { status: 'disabled' }
-    | { status: 'ineligible'; reason: Exclude<RoutingFallbackReason, 'incomplete' | 'error'> }
-    | { status: 'result'; outcome: GroupSolveOutcome; stats: GroupRouteCacheStats }
-    | { status: 'failed'; stats?: GroupRouteCacheStats; error?: string };
   const groupCache = useMemo(() => new GroupRouteCache(), [baseline.id, baseline.stage.graph.revision, engine]);
-  // 组求解只在没有只读预览、固定/锁定路径、冻结组和折叠聚合边时接管。
-  const groupAttempt = useMemo((): GroupAttempt => {
-    if (engine !== 'group') return { status: 'disabled' };
-    if (readOnly) return { status: 'ineligible', reason: 'preview' };
-    if (storedRoutes.length) return { status: 'ineligible', reason: 'protected-routes' };
-    if (frozenGroups.length) return { status: 'ineligible', reason: 'frozen-groups' };
-    if (displayEdges.some((edge) => edge.aggregated)) return { status: 'ineligible', reason: 'aggregated-edges' };
-    try {
-      const update = groupCache.update({
-        nodes, projection, edges: routeInputs,
-        ...(portPolicy ? { policy: portPolicy } : {}),
-      });
-      if (!update.outcome) return { status: 'failed', stats: update.stats, ...(update.error ? { error: update.error } : {}) };
-      return { status: 'result', outcome: update.outcome, stats: update.stats };
-    } catch (error) {
-      return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
-    }
-  }, [engine, readOnly, storedRoutes, frozenGroups, displayEdges, geometryKey, projection, routeInputs, portPolicy, groupCache]);
-  const expectedIds = routeInputs.map((edge) => edge.id);
-  const groupOutcome = groupAttempt.status === 'result' ? groupAttempt.outcome : undefined;
-  // 只有覆盖全部预期边的完整组解才替换 Legacy；否则保留旧路径。
-  const groupComplete = Boolean(groupOutcome?.ok && expectedIds.every((id) => groupOutcome.routes.has(id)));
-  // 组解完整时跳过 Legacy 缓存；否则先恢复固定/锁定路径和已保存的显示几何。
-  const retained = useMemo(() => groupComplete ? new Map<string, CachedRoute>() : retainedCanonicalRoutes(nodes, projection, displayEdges, storedRoutes, retainedDisplayRoutes(nodes, projection, displayEdges, storedDisplayRoutes, reserved, portPolicy), frozenGroups), [groupComplete, geometryKey, projection, displayEdges, storedDisplayRoutes, reserved, storedRoutes, portPolicy]);
-  // 从组解降级时，用上一帧的组路径播种 Legacy，避免引擎切换导致路径跳变。
-  const seed = lastRenderedEngine.current === 'group' && !groupComplete ? lastVisibleRoutes.current : undefined;
-  const legacyRoutes = useMemo(() => groupComplete ? undefined : cache.update(nodes, projection, routeInputs, reserved, retained, portPolicy, seed), [groupComplete, geometryKey, projection, routeInputs, reserved, retained, portPolicy, seed]);
-  const resolved = useMemo(() => {
-    if (!legacyRoutes) return { routes: undefined, durationMs: 0 };
-    const started = performance.now();
-    const routes = applyStoredRoutes(legacyRoutes, displayEdges, storedRoutes, nodes, projection, frozenGroups);
-    return { routes, durationMs: performance.now() - started };
-  }, [legacyRoutes, displayEdges, storedRoutes, geometryKey, projection, frozenGroups]);
-  const selectedRoutes = selectCanvasRoutes(resolved.routes ?? new Map(), groupOutcome, expectedIds);
-  const routes = selectedRoutes.routes;
-  const routingEngine = selectedRoutes.engine;
+  const resolved = useMemo(() => resolveRoutes({
+    nodes, projection, edges: displayEdges, policy: portPolicy, stored: storedRoutes, displaySnapshots: storedDisplayRoutes, frozen: frozenGroups,
+    readOnly, seed: lastRenderedEngine.current === 'group' ? lastVisibleRoutes.current : undefined,
+  }, cache, engine === 'group' ? groupCache : undefined),
+  [geometryKey, projection, displayEdges, portPolicy, storedRoutes, storedDisplayRoutes, frozenGroups, readOnly, cache, engine, groupCache]);
+  const { routes, reserved, status: routingStatus } = resolved;
+  const routingEngine = routingStatus.engine;
   // 标签缓存按基线隔离；渲染使用 fork 草稿，提交后才 adopt，丢弃被放弃的渲染帧。
   const labelCaches = useRef(new WeakMap<VisualizationBaseline, LabelLayoutCache>());
   let labelCache = labelCaches.current.get(baseline);
@@ -113,48 +74,27 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   }, [labelCache, routes, geometryKey, projection, displayEdges, labelPins, storedDisplayRoutes]);
   const labelLayout = labelDraft.layout;
   useLayoutEffect(() => { labelCache.adopt(labelDraft.draft); }, [labelCache, labelDraft]);
-  // 路径与标签快照从同一帧生成，不重新求解；路由的 label 字段只是载体，最终位置以 labelLayout 为准。
-  const snapshotLabels = useMemo(() => new Map([...routes].map(([id, route]) => {
-    const label = labelLayout.labels.get(id)?.placement;
-    return [id, { ...route, label: label ?? { x: 0, y: 0, width: 0, height: 0 } }];
-  })), [routes, labelLayout]);
   const snapshots = useMemo(() => captureLabelledRoutes(nodes, projection, displayEdges, routes, labelLayout.labels, reserved, portPolicy), [geometryKey, projection, displayEdges, routes, labelLayout.labels, reserved, portPolicy]);
   // 只在 React 提交后更新引擎和可见路径，供下一次降级播种。
   useLayoutEffect(() => {
     lastRenderedEngine.current = routingEngine;
     lastVisibleRoutes.current = routes;
   }, [routingEngine, routes]);
-  // 组求解降级原因供底部提示；拖动和预览保持静默。
-  const routingStatus = useMemo((): RoutingStatus => {
-    if (engine !== 'group') return { requested: false, engine: 'legacy' };
-    if (routingEngine === 'group') return { requested: true, engine: 'group', cache: groupAttempt.status === 'result' ? groupAttempt.stats : undefined };
-    const reason: RoutingFallbackReason = groupAttempt.status === 'ineligible' ? groupAttempt.reason
-      : groupAttempt.status === 'failed' ? 'error'
-        : groupAttempt.status === 'result' && !groupAttempt.outcome.ok ? 'error' : 'incomplete';
-    const failures = groupAttempt.status === 'result' ? groupAttempt.outcome.failures : [];
-    return {
-      requested: true, engine: 'legacy',
-      ...(groupAttempt.status === 'result' ? { cache: groupAttempt.stats } : groupAttempt.status === 'failed' && groupAttempt.stats ? { cache: groupAttempt.stats } : {}),
-      fallback: routingFallback(reason, failures),
-    };
-  }, [engine, routingEngine, groupAttempt]);
-  // 完整组解时 Legacy 计时归零，同一帧不重复统计。
+  // 完整组解跳过 Legacy 缓存，两个引擎分别报告计算时间。
   const routeStats = useMemo(() => {
-    const groupMs = groupAttempt.status === 'result' ? groupAttempt.stats.durationMs : 0;
-    const groupCacheMode = groupAttempt.status === 'result' ? groupAttempt.stats.mode : 'legacy';
-    if (groupComplete && groupOutcome?.ok) {
+    const groupMs = routingStatus.cache?.durationMs ?? 0;
+    const groupCacheMode = routingStatus.cache?.mode ?? 'legacy';
+    if (routingEngine === 'group') {
       return {
-        routedEdges: groupOutcome.routes.size,
-        placedLabels: [...groupOutcome.routes.values()].filter((route) => route.label.width > 0).length,
-        translatedEdges: 0, durationMs: groupMs, totalEdges: routeInputs.length,
-        routingMs: 0, labelMs: 0, geometryMs: 0, groupMs, groupCacheMode,
+        routedEdges: routes.size, translatedEdges: 0, durationMs: groupMs,
+        totalEdges: displayEdges.length, routingMs: 0, geometryMs: 0, groupMs, groupCacheMode,
       };
     }
     return {
-      ...cache.lastStats, durationMs: cache.lastStats.durationMs + resolved.durationMs, routingMs: cache.lastStats.routingMs + resolved.durationMs,
-      groupMs, groupCacheMode,
+      ...cache.lastStats, durationMs: cache.lastStats.durationMs + resolved.resolvedMs,
+      routingMs: cache.lastStats.routingMs + resolved.resolvedMs, groupMs, groupCacheMode,
     };
-  }, [cache, legacyRoutes, resolved, geometryKey, groupAttempt, groupComplete, groupOutcome, routeInputs.length]);
+  }, [cache, resolved, routingEngine, routingStatus, routes, displayEdges.length]);
   const members = useMemo(() => {
     const counts = new Map<string, number>();
     for (const node of nodes) if (node.parentId) counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
@@ -225,7 +165,7 @@ export function useCanvasScene({ nodes, baseline, projection, displayEdges, sele
   return {
     displayNodes, edges, routes, routingEngine, routingStatus, blockedRoutes: [...routes].filter(([, route]) => route.feasible === false).map(([id]) => id), visibleGuides: clipAlignmentGuides(alignment, guideBlockers), selectedGroup, roots,
     selectionLabel: roots.length > 1 ? `已选 ${roots.length} 项` : roots[0]?.data.title ?? '',
-    selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats, labelLayout, labelledRoutes: snapshotLabels,
+    selectedModes: new Set(selected.map((node) => node.data.layoutMode ?? 'free')), routeStats, labelLayout,
     frame: { geometryKey, baselineId: baseline.id, viewMode, snapshots },
   };
 }

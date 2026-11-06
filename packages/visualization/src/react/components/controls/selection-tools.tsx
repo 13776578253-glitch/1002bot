@@ -1,6 +1,6 @@
 /** Selection tools own layout-mode, grouping and freeze actions for the current selection. */
 import { Icon } from '../icon.tsx';
-import type { LayoutMode } from '../../model/grouping.ts';
+import type { LayoutMode } from '../../model/contracts/layout-types.ts';
 
 export interface SelectionToolsProps {
   label: string;

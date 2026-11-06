@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adaptProject, type ArchitectureProject, type ProjectViewDefinition } from '../../src/adapters/project/index.ts';
 import { assertValidBaselines } from '../../src/core/schema/baseline.ts';
-import { baselineNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
-import { groupSelection, ungroup, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { manualGeometryConflict, moveAuthoredNodes, moveAlignedAuthoredNodes } from '../../src/react/model/manual-layout.ts';
-import { captureContent, restoreNodeViews } from '../../src/react/model/workspace.ts';
-import { planStageTransition } from '../../src/react/model/stage-transition.ts';
+import { baselineNodes, toggleHierarchy } from '../../src/react/model/layout/hierarchy.ts';
+import { groupSelection, ungroup } from '../../src/react/model/layout/grouping.ts';
+import { worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { manualGeometryConflict, moveAuthoredNodes, moveAlignedAuthoredNodes } from '../../src/react/model/layout/manual-layout.ts';
+import { captureContent, restoreNodeViews } from '../../src/react/model/workspace/workspace.ts';
+import { planStageTransition } from '../../src/react/model/stages/stage-transition.ts';
 
 function fixture() {
   const rootView: ProjectViewDefinition = {

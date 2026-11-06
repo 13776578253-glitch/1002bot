@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadWorkspace, saveWorkspace } from '../../src/react/persistence/storage-session.ts';
-import type { CanvasViewStorage, CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
+import type { CanvasViewStorage } from '../../src/react/persistence/storage-types.ts';
+import type { CanvasWorkspaceView } from '../../src/react/model/contracts/snapshot-types.ts';
 
 const view = (baselineId: string): CanvasWorkspaceView => ({ version: 2, baselineId, baselines: {} });
 

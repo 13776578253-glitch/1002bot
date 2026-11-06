@@ -1,7 +1,7 @@
 /** Top actions own stage/view selection, theme switch and snapshot entry; project, import and export remain disabled placeholders. */
 import { Icon } from '../icon.tsx';
 import { SnapshotMenu } from '../snapshot/snapshot-menu.tsx';
-import type { CanvasViewMode } from '../../model/workspace.ts';
+import type { CanvasViewMode } from '../../model/contracts/snapshot-types.ts';
 
 const modes = ['overview', 'structure', 'full'] as const;
 /** 视图模式显示名；内部 mode 标识与展示文案解耦。 */

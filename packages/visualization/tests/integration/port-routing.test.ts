@@ -1,16 +1,19 @@
+import { resolveRoutes } from '../../src/react/model/routing/resolve-routes.ts';
+import { GroupRouteCache } from '../../src/react/model/routing/group-route-cache.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectGraph } from '../../src/core/projection/index.ts';
 import type { StageSnapshot } from '../../src/core/schema/types.ts';
-import type { CanvasNode } from '../../src/react/model/grouping.ts';
-import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, type ReservedRoute } from '../../src/react/model/routing.ts';
-import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
-import { captureDisplayRoutes, retainedDisplayRoutes } from '../../src/react/model/display-route-snapshots.ts';
-import { applyStoredRoutes, retainedCanonicalRoutes, routeSnapshotForEdge } from '../../src/react/model/edge-routes.ts';
-import { DiagramRouteCache } from '../../src/react/model/route-cache.ts';
-import { freezeSelection } from '../../src/react/model/frozen.ts';
-import { captureFrozenSubgraph, resolveFrozenBoundaryRoute } from '../../src/react/model/blackbox-routes.ts';
-import type { EdgeRouteSnapshot, FrozenGroupSnapshot } from '../../src/react/model/workspace.ts';
+import type { CanvasNode } from '../../src/react/model/layout/node.ts';
+import { createDiagramGeometry, pathIsClear, routeDiagramGeometry, type ReservedRoute } from '../../src/react/model/routing/routing.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { captureDisplayRoutes, retainedDisplayRoutes } from '../../src/react/model/routing/display-route-snapshots.ts';
+import { applyStoredRoutes, retainedCanonicalRoutes, routeSnapshotForEdge, validateStoredRoutes } from '../../src/react/model/routing/edge-routes.ts';
+import { DiagramRouteCache } from '../../src/react/model/routing/route-cache.ts';
+import { freezeSelection } from '../../src/react/model/freeze/frozen.ts';
+import { captureFrozenSubgraph } from '../../src/react/model/freeze/blackbox-routes.ts';
+import { resolveFrozenBoundaryRoute } from '../../src/react/model/routing/frozen-boundary.ts';
+import type { EdgeRouteSnapshot, FrozenGroupSnapshot } from '../../src/react/model/contracts/snapshot-types.ts';
 
 function card(id: string, x: number, y: number, width = 260, height = 92): CanvasNode {
   return { id, type: 'card', position: { x, y }, width, height, data: { title: id } };
@@ -246,10 +249,46 @@ test('a shared frozen corridor is restored without allowing exterior locked cros
   const { projection, edges, inputs } = scene(nodes, 'source', 'target');
   const routes = new DiagramRouteCache().update(nodes, projection, inputs);
   const shared = [{ x: 60, y: 60 }, { x: 60, y: 120 }];
-  const protectedRoutes = [{ edgeId: 'link', points: shared }, { edgeId: 'shared-frozen', points: shared }];
+  const protectedRoutes = [{ edgeId: 'link', points: shared, frozenOwnerId: 'frame' }, { edgeId: 'shared-frozen', points: shared, frozenOwnerId: 'frame' }];
   const saved = captureDisplayRoutes(nodes, projection, edges, routes, protectedRoutes);
   assert.equal(retainedDisplayRoutes(nodes, projection, edges, saved, protectedRoutes).size, 1);
   const exterior = [...protectedRoutes, { edgeId: 'exterior', points: [{ x: -20, y: 200 }, { x: 140, y: 200 }] }];
   const invalid = captureDisplayRoutes(nodes, projection, edges, routes, exterior);
   assert.equal(retainedDisplayRoutes(nodes, projection, edges, invalid, exterior).size, 0);
+});
+
+test('scene routing accepts a complete Group solve and applies the same input policy to Legacy preview', () => {
+  const nodes = [card('source', 0, 0, 120, 60), card('target', 0, 300, 120, 60)];
+  const { projection, edges } = scene(nodes, 'source', 'target');
+  const policy = { direction: 'top-down' } as const;
+  const input = { nodes, projection, edges, policy };
+  const legacy = new DiagramRouteCache(), group = new GroupRouteCache();
+  const active = resolveRoutes(input, legacy, group);
+  assert.equal(active.status.engine, 'group');
+  assert.equal(active.failures.size, 0);
+  assert.match(active.routes.get('link')!.sourceHandle, /^bottom:source:/);
+  const locked = routeSnapshotForEdge(edges[0]!, active.routes.get('link')!, 'locked', nodes, []);
+  assert.ok(locked);
+  assert.equal(validateStoredRoutes(nodes, nodes, [locked], projection), undefined);
+  const protectedScene = resolveRoutes({ ...input, stored: [locked] }, legacy, group);
+  assert.equal(protectedScene.status.fallback?.reason, 'protected-routes');
+  assert.equal(protectedScene.failures.size, 0);
+  assert.deepEqual(protectedScene.routes.get('link')!.points, locked.points);
+  const preview = resolveRoutes({ ...input, readOnly: true, seed: active.routes }, legacy, group);
+  assert.equal(preview.status.fallback?.reason, 'preview');
+  assert.equal(preview.failures.size, 0);
+  assert.deepEqual(preview.routes.get('link')!.points, active.routes.get('link')!.points);
+});
+
+test('a restored route with the wrong port is replaced before it can be rendered', () => {
+  const nodes = [card('source', 0, 0, 120, 60), card('target', 0, 300, 120, 60)];
+  const { projection, edges } = scene(nodes, 'source', 'target');
+  const input = { nodes, projection, edges };
+  const first = resolveRoutes(input, new DiagramRouteCache());
+  const snapshots = captureDisplayRoutes(nodes, projection, edges, first.routes);
+  snapshots[0]!.sourceHandle = 'left-out';
+  const restored = resolveRoutes({ ...input, displaySnapshots: snapshots }, new DiagramRouteCache());
+  assert.equal(restored.failures.size, 0);
+  assert.equal(restored.reusedPaths, 0);
+  assert.equal(restored.routes.get('link')!.sourceHandle, first.routes.get('link')!.sourceHandle);
 });

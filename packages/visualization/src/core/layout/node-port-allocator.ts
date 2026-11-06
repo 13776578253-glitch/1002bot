@@ -149,11 +149,11 @@ function sideLength(geometry: NodePortGeometry, side: PortSide): number {
   return side === 'top' || side === 'bottom' ? geometry.width : geometry.height;
 }
 
-function parseHandle(handle: string | undefined): { side: PortSide; role: EndpointRole; index: number } | undefined {
+export function parseSlotHandle(handle: string | undefined): { side: Exclude<PortSide, 'auto'>; role: EndpointRole; index: number } | undefined {
   if (!handle) return undefined;
-  const [side, role, index] = handle.split(':');
-  if (!SIDES.includes(side as PortSide) || (role !== 'source' && role !== 'target') || !/^\d+$/.test(index ?? '')) return undefined;
-  return { side: side as PortSide, role, index: Number(index) };
+  const [side, role, index, extra] = handle.split(':');
+  if (extra !== undefined || !SIDES.includes(side as PortSide) || (role !== 'source' && role !== 'target') || !/^\d+$/.test(index ?? '')) return undefined;
+  return { side: side as Exclude<PortSide, 'auto'>, role, index: Number(index) };
 }
 
 function buildNode(geometry: NodePortGeometry, rules: SlotRules): NodeState {
@@ -228,7 +228,7 @@ export function createNodePortAllocator(input: {
   const choose = (request: PortRequest, mode: 'single' | 'trunk' | 'packed'): Choice | undefined => {
     const node = current().nodes.get(request.nodeId);
     if (!node) return undefined;
-    const parsed = parseHandle(request.storedHandle);
+    const parsed = parseSlotHandle(request.storedHandle);
     if (parsed && parsed.role === request.role) {
       const stored = node.byKey.get(`${parsed.side}:${parsed.index}`);
       if (stored) {
@@ -270,7 +270,7 @@ export function createNodePortAllocator(input: {
   const request = (value: PortRequest): SlotGrant | undefined => {
     const node = current().nodes.get(value.nodeId);
     if (!node) return fail(value, 'capacity-exhausted', `unknown node ${value.nodeId}`);
-    const parsed = parseHandle(value.storedHandle);
+    const parsed = parseSlotHandle(value.storedHandle);
     if (parsed && (value.priority === 'locked' || value.priority === 'frozen' || value.reserveExisting)) {
       if (parsed.role !== value.role) return fail(value, 'handle-missing', `slot ${value.storedHandle} belongs to another role`);
       const stored = node.byKey.get(`${parsed.side}:${parsed.index}`);

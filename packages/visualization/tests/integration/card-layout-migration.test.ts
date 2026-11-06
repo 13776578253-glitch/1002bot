@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import type { VisualizationBaseline } from '../../src/core/schema/baseline.ts';
 import type { CanonicalNode, StageSnapshot } from '../../src/core/schema/types.ts';
 import { migrateRestoredViews, VIEW_MODES } from '../../src/react/canvas/use-workspace-session.ts';
-import { baselineForView } from '../../src/react/model/view-projection.ts';
-import type { CanvasBaselineContent, CanvasBaselineView, CanvasViewMode, CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
+import { baselineForView } from '../../src/react/model/stages/view-projection.ts';
+import type { CanvasBaselineContent, CanvasBaselineView, CanvasViewMode, CanvasWorkspaceView } from '../../src/react/model/contracts/snapshot-types.ts';
 
 const root: CanonicalNode = { id: 'root', parentId: null, kind: 'root', label: 'root', order: 0, ports: [] };
 const card: CanonicalNode = { id: 'card', parentId: 'root', kind: 'component', label: 'Card', order: 0, ports: [] };
@@ -66,6 +66,17 @@ test('frozen old cards are left unchanged by migration', () => {
   assert.equal(restored.nodes[0]!.width, 260);
   assert.equal(restored.nodes[0]!.height, 92);
   assert.equal(restored.requiresConfirmation, false);
+  assert.equal(migrated.issues.size, 0);
+});
+
+test('recovery keeps an explicitly edited card size and its historical confirmation', () => {
+  const authored = content(300, 100, { layoutEdits: { version: 1, sizes: { collapsed: { width: 300, height: 100, origin: 'user' } } } });
+  const source = workspace(view(authored, { confirmed: authored, confirmedRevision: 'one' }));
+  const migrated = migrateRestoredViews(source, definitions);
+  const restored = migrated.views.structure.s!;
+  assert.deepEqual(restored.nodes, authored.nodes);
+  assert.deepEqual(restored.confirmed, authored);
+  assert.equal(restored.confirmedRevision, 'one');
   assert.equal(migrated.issues.size, 0);
 });
 

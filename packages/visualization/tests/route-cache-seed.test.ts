@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
-import type { CanvasNode } from '../src/react/model/grouping.ts';
-import { DiagramRouteCache, type CachedRoute } from '../src/react/model/route-cache.ts';
+import type { CanvasNode } from '../src/react/model/layout/node.ts';
+import { DiagramRouteCache, type CachedRoute } from '../src/react/model/routing/route-cache.ts';
 
 const card = (id: string, x: number, y: number, width = 240, height = 80): CanvasNode => ({ id, type: 'card', position: { x, y }, width, height, data: { title: id } });
 const nodes = [card('a', 0, 0), card('b', 600, 0), card('c', 0, 400), card('d', 600, 400)];
@@ -29,21 +29,18 @@ test('a cold legacy cache consumes a seed without re-solving different paths', (
   const cold = new DiagramRouteCache().update(nodes, projection, inputs, [], new Map(), {}, new Map(source));
   for (const edge of inputs) {
     assert.deepEqual(cold.get(edge.id)!.points, source.get(edge.id)!.points, `${edge.id} points`);
-    assert.deepEqual(cold.get(edge.id)!.label, source.get(edge.id)!.label, `${edge.id} label`);
   }
 });
 
-test('a seed retains path identity, discards labels and reuses cached routes afterwards', () => {
+test('a legal seed preserves untouched cached routes after a node moves', () => {
   const cache = new DiagramRouteCache();
   const first = cache.update(nodes, projection, inputs);
-  const seededA: CachedRoute = { ...first.get('a-b')!, points: [{ x: 10, y: 20 }, { x: 10, y: 100 }, { x: 300, y: 100 }], label: { x: 100, y: 100, width: 60, height: 24 }, text: 'a to b' };
-  const seededB: CachedRoute = { ...first.get('c-d')!, points: [{ x: 20, y: 400 }, { x: 20, y: 480 }, { x: 300, y: 480 }], label: { x: 100, y: 480, width: 60, height: 24 }, text: 'c to d' };
+  const seededA: CachedRoute = { ...first.get('a-b')!, text: inputs[0]!.text };
+  const seededB: CachedRoute = { ...first.get('c-d')!, text: inputs[1]!.text };
   const seed = new Map([['a-b', seededA], ['c-d', seededB]]);
   const next = cache.update(nodes, projection, inputs, [], new Map(), {}, seed);
   assert.equal(next.get('a-b')!.points, seededA.points);
   assert.equal(next.get('c-d')!.points, seededB.points);
-  assert.equal(next.get('a-b')!.label.width, 0);
-  assert.equal(next.get('c-d')!.label.width, 0);
   const retained = cache.update(nodes, projection, inputs);
   assert.equal(retained.get('a-b'), next.get('a-b'));
   assert.equal(retained.get('c-d'), next.get('c-d'));

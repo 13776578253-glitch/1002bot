@@ -1,13 +1,14 @@
 /** Deterministic P5 routing benchmark: cold and local-update samples by edge count. */
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
-import type { CanvasNode } from '../src/react/model/grouping.ts';
-import type { GroupEdgeInput, GroupSolveInput } from '../src/react/model/route-groups.ts';
-import { solveRouteGroups } from '../src/react/model/route-groups.ts';
-import { GroupRouteCache } from '../src/react/model/group-route-cache.ts';
-import { DiagramRouteCache, type CachedRoute } from '../src/react/model/route-cache.ts';
-import { measureRoutes, type QualityRoute } from '../src/react/model/route-quality.ts';
-import { crossGroupCrossingHotspots } from '../src/react/model/cross-group-quality.ts';
+import type { CanvasNode } from '../src/react/model/layout/node.ts';
+import type { GroupEdgeInput, GroupSolveInput } from '../src/react/model/routing/route-groups.ts';
+import { solveRouteGroups } from '../src/react/model/routing/route-groups.ts';
+import { GroupRouteCache } from '../src/react/model/routing/group-route-cache.ts';
+import { DiagramRouteCache, type CachedRoute } from '../src/react/model/routing/route-cache.ts';
+import { LabelLayoutCache } from '../src/react/model/labels/label-layout.ts';
+import { measureRoutes, type QualityRoute } from '../src/react/model/routing/route-quality.ts';
+import { crossGroupCrossingHotspots } from '../src/react/model/routing/cross-group-quality.ts';
 
 const HUBS = 5;
 const HUB_GAP = 2600;
@@ -85,9 +86,7 @@ function percentile(values: readonly number[], p: number): number {
 
 function qualityRows(routes: Map<string, CachedRoute>): QualityRoute[] {
   return [...routes].map(([edgeId, route]) => ({
-    edgeId, points: route.points, label: route.label,
-    labelRequired: Boolean(route.text.trim()),
-    ...(route.labelState ? { labelState: route.labelState } : {}),
+    edgeId, points: route.points,
   }));
 }
 
@@ -160,6 +159,10 @@ function runScale(edgeCount: number, crossed: boolean): Record<string, unknown> 
     localFailureCount: localFailures.length,
     localFailures,
     crossingHotspots,
+    labels: {
+      group: new LabelLayoutCache().update(fixture.nodes, fixture.projection, legacyInputs, groupRoutes).stats,
+      legacy: new LabelLayoutCache().update(fixture.nodes, fixture.projection, legacyInputs, legacyRoutes).stats,
+    },
     quality: { group: quality(groupRoutes), legacy: quality(legacyRoutes) },
   };
 }

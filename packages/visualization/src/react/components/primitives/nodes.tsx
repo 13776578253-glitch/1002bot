@@ -1,7 +1,7 @@
 /** Node renderers own card, structure and cluster presentation; geometry and interaction state come from the workspace model. */
 import type { NodeProps } from '@xyflow/react';
 import { memo, useState, type CSSProperties } from 'react';
-import { RESPONSIBILITY_CARD_SIZE, structureHeaderHeight, type CanvasNode } from '../../model/grouping.ts';
+import { RESPONSIBILITY_CARD_SIZE, structureHeaderHeight, type CanvasNode } from '../../model/layout/node.ts';
 import { ChangeBadge } from '../change-badge.tsx';
 import { Icon } from '../icon.tsx';
 import { Ports } from './ports.tsx';

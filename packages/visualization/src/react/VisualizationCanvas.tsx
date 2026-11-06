@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'reac
 import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, SelectionMode, ViewportPortal, type Edge } from '@xyflow/react';
 import { assertValidBaselines } from '../core/schema/baseline.ts';
 import type { VisualizationCanvasProps } from './types.ts';
-import type { CanvasWorkspaceView } from './model/workspace.ts';
+import type { CanvasWorkspaceView } from './model/contracts/snapshot-types.ts';
 import { Card, Structure, Cluster } from './components/primitives/nodes.tsx';
 import { Link, type LinkData } from './components/primitives/relation-edge.tsx';
 import { Icon } from './components/icon.tsx';
@@ -12,14 +12,15 @@ import { CanvasControls } from './components/controls/canvas-controls.tsx';
 import { SelectionTools } from './components/controls/selection-tools.tsx';
 import { ConnectionPanel } from './components/panels/connection-panel.tsx';
 import { TransitionPanel } from './components/panels/transition-panel.tsx';
-import { normalizeMarqueeSelection, type CanvasNode } from './model/grouping.ts';
+import { normalizeMarqueeSelection } from './model/layout/grouping.ts';
+import { type CanvasNode } from './model/layout/node.ts';
 import { useCanvasController } from './canvas/use-canvas-controller.ts';
 import { baselineNodes, VIEW_MODES } from './canvas/use-workspace-session.ts';
-import { baselineForView } from './model/view-projection.ts';
+import { baselineForView } from './model/stages/view-projection.ts';
 import { normalizeWorkspaceView } from './persistence/workspace-schema.ts';
-import { restoreNodeViews } from './model/workspace.ts';
-import { restoreFrozenGroups } from './model/frozen.ts';
-import { rebaseSavedView } from './model/stage-navigation.ts';
+import { restoreNodeViews } from './model/workspace/workspace.ts';
+import { restoreFrozenGroups } from './model/freeze/frozen.ts';
+import { rebaseSavedView } from './model/stages/stage-navigation.ts';
 import { loadWorkspace } from './persistence/storage-session.ts';
 
 const nodeTypes = { card: Card, cluster: Cluster, structure: Structure };
@@ -41,7 +42,7 @@ function CanvasContent({ restored, ...props }: VisualizationCanvasProps & { rest
   const onSelectionEnd = useCallback(() => { if (!canvas.preview) setNodes((current) => normalizeMarqueeSelection(current)); }, [canvas.preview, setNodes]);
   const onMove = useCallback((_event: unknown, viewport: { zoom: number }) => setZoom(Math.round(viewport.zoom * 100)), [setZoom]);
   const onMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => { if (!canvas.preview) canvas.saveViewport(viewport); }, [canvas.preview, canvas.saveViewport]);
-  return <main className="canvas-app" data-theme={theme} data-scene-geometry={canvas.frame.geometryKey} data-label-visible={canvas.labelLayout.stats.visible} data-label-hidden={canvas.labelLayout.stats.hidden} data-label-layout-ms={canvas.labelLayout.stats.durationMs.toFixed(3)} data-view-mode={canvas.viewMode} data-stage-id={baseline.id} aria-label="架构画布" data-transition={JSON.stringify(canvas.transition)} data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-route-geometry-ms={canvas.routeStats.geometryMs.toFixed(3)} data-route-routing-ms={canvas.routeStats.routingMs.toFixed(3)} data-route-label-ms={canvas.routeStats.labelMs.toFixed(3)} data-route-group-ms={canvas.routeStats.groupMs.toFixed(3)} data-routing-engine={canvas.routingEngine} data-routing-fallback={canvas.routingStatus.fallback?.reason ?? ''} data-routing-cache={canvas.routingStatus.cache ? `${canvas.routingStatus.cache.mode}:${canvas.routingStatus.cache.reusedGroups}/${canvas.routingStatus.cache.groups}` : ''} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
+  return <main className="canvas-app" data-theme={theme} data-scene-geometry={canvas.frame.geometryKey} data-label-visible={canvas.labelLayout.stats.visible} data-label-hidden={canvas.labelLayout.stats.hidden} data-label-layout-ms={canvas.labelLayout.stats.durationMs.toFixed(3)} data-view-mode={canvas.viewMode} data-stage-id={baseline.id} aria-label="架构画布" data-transition={JSON.stringify(canvas.transition)} data-route-count={canvas.routeStats.routedEdges} data-route-total={canvas.routeStats.totalEdges} data-route-ms={canvas.routeStats.durationMs.toFixed(3)} data-route-geometry-ms={canvas.routeStats.geometryMs.toFixed(3)} data-route-routing-ms={canvas.routeStats.routingMs.toFixed(3)} data-route-label-ms={canvas.labelLayout.stats.durationMs.toFixed(3)} data-route-group-ms={canvas.routeStats.groupMs.toFixed(3)} data-routing-engine={canvas.routingEngine} data-routing-fallback={canvas.routingStatus.fallback?.reason ?? ''} data-routing-cache={canvas.routingStatus.cache ? `${canvas.routingStatus.cache.mode}:${canvas.routingStatus.cache.reusedGroups}/${canvas.routingStatus.cache.groups}` : ''} data-drag-profile={JSON.stringify(canvas.dragProfile)}>
     <ReactFlow<CanvasNode, Edge<LinkData>>
       nodes={displayNodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodesChange={onNodesChange} nodesConnectable={false} deleteKeyCode={null}

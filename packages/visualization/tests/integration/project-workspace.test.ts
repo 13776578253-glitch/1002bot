@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { CanvasBaselineContent, CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
-import { canvasWorkspaceToProject, projectSnapshot, projectWorkspaceToCanvas } from '../../src/react/model/project-workspace.ts';
+import type { CanvasBaselineContent, CanvasWorkspaceView } from '../../src/react/model/contracts/snapshot-types.ts';
+import { canvasWorkspaceToProject, projectSnapshot, projectWorkspaceToCanvas } from '../../src/react/persistence/project-workspace.ts';
 import { createProjectViewStorage, normalizeProjectWorkspace } from '../../src/react/persistence/project-storage.ts';
 
 class MemoryStorage {

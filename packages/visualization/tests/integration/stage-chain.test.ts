@@ -2,18 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { adaptProgressReports, type ReportDataset } from '../../src/adapters/progress-reports/index.ts';
-import { baselineNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
-import { captureContent, type CanvasBaselineContent, type DisplayRouteSnapshot } from '../../src/react/model/workspace.ts';
-import { worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { planStageTransition } from '../../src/react/model/stage-transition.ts';
-import { hierarchyProjection } from '../../src/react/model/hierarchy.ts';
-import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
-import { DiagramRouteCache } from '../../src/react/model/route-cache.ts';
-import { captureDisplayRoutes, retainedDisplayRoutes } from '../../src/react/model/display-route-snapshots.ts';
-import { createDiagramGeometry, pathIsClear } from '../../src/react/model/routing.ts';
-import { freezeSelection, toggleFrozenExpansion } from '../../src/react/model/frozen.ts';
-import { captureFrozenSubgraph, validateFrozenConnections, boundaryWorldPoints } from '../../src/react/model/blackbox-routes.ts';
-import { applyStoredRoutes, retainedCanonicalRoutes, reservedLockedRoutes, worldRoutePoints } from '../../src/react/model/edge-routes.ts';
+import { baselineNodes, toggleHierarchy } from '../../src/react/model/layout/hierarchy.ts';
+import { captureContent } from '../../src/react/model/workspace/workspace.ts';
+import { type CanvasBaselineContent, type DisplayRouteSnapshot } from '../../src/react/model/contracts/snapshot-types.ts';
+import { worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { planStageTransition } from '../../src/react/model/stages/stage-transition.ts';
+import { hierarchyProjection } from '../../src/react/model/layout/visibility.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { resolveRoutes } from '../../src/react/model/routing/resolve-routes.ts';
+import { DiagramRouteCache } from '../../src/react/model/routing/route-cache.ts';
+import { captureDisplayRoutes } from '../../src/react/model/routing/display-route-snapshots.ts';
+import { createDiagramGeometry, pathIsClear } from '../../src/react/model/routing/routing.ts';
+import { freezeSelection, toggleFrozenExpansion } from '../../src/react/model/freeze/frozen.ts';
+import { captureFrozenSubgraph, validateFrozenConnections } from '../../src/react/model/freeze/blackbox-routes.ts';
+import { boundaryWorldPoints } from '../../src/react/model/routing/frozen-boundary.ts';
+import { retainedCanonicalRoutes, reservedLockedRoutes, worldRoutePoints } from '../../src/react/model/routing/edge-routes.ts';
 
 test('confirmed report M1 advances through every published stage without moving inherited content anchors', () => {
   const baselines = adaptProgressReports(JSON.parse(readFileSync(new URL('../fixtures/legacy-reports.json', import.meta.url), 'utf8')) as ReportDataset);
@@ -67,11 +70,9 @@ test('confirmed report M1 advances through every published stage without moving 
   }
   const openedProjection = hierarchyProjection(opened, baseline.stage), openedEdges = aggregateProjectedEdges(openedProjection, baseline.edgeChanges);
   const barriers = reservedLockedRoutes(captured.routes, opened, [captured.group]);
-  const seeds = retainedCanonicalRoutes(opened, openedProjection, openedEdges, captured.routes, new Map(), [captured.group]);
-  const visible = applyStoredRoutes(new DiagramRouteCache().update(opened, openedProjection, openedEdges, barriers, seeds), openedEdges, captured.routes, opened, openedProjection, [captured.group]);
+  const scene = { nodes: opened, projection: openedProjection, edges: openedEdges, stored: captured.routes, frozen: [captured.group] };
+  const visible = resolveRoutes(scene, new DiagramRouteCache()).routes;
   const snapshots = captureDisplayRoutes(opened, openedProjection, openedEdges, visible, barriers);
-  const freshRoutes = structuredClone(captured.routes), freshGroup = structuredClone(captured.group);
-  const restoredSeeds = retainedCanonicalRoutes(opened, openedProjection, openedEdges, freshRoutes, retainedDisplayRoutes(opened, openedProjection, openedEdges, snapshots, barriers), [freshGroup]);
-  const restored = applyStoredRoutes(new DiagramRouteCache().update(opened, openedProjection, openedEdges, barriers, restoredSeeds), openedEdges, freshRoutes, opened, openedProjection, [freshGroup]);
+  const restored = resolveRoutes({ ...structuredClone(scene), displaySnapshots: snapshots }, new DiagramRouteCache()).routes;
   for (const edge of openedEdges) assert.deepEqual(restored.get(edge.id)!.points, visible.get(edge.id)!.points, `restored frozen view: ${edge.id}`);
 });

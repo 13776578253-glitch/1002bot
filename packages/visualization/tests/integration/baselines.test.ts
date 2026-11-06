@@ -1,14 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sampleBaselines as baselineOptions } from '../fixtures/baselines.ts';
-import { relationLabel } from '../../src/react/model/change.ts';
 import type { StageSnapshot } from '../../src/core/schema/types.ts';
 type BaselineId = 'M1' | 'M2';
 const getBaseline = (id: string) => baselineOptions.find((baseline) => baseline.id === id)!;
-import { createHierarchyNodes as createNodes, hierarchyProjection, nodeIsVisible, toggleHierarchy, syncHierarchyExpansion } from '../../src/react/model/hierarchy.ts';
-import { CARD_SIZE, groupSelection, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { routeDiagramEdge } from '../../src/react/model/routing.ts';
-import { placeEdgeLabel } from '../../src/react/model/labels.ts';
+import { createHierarchyNodes as createNodes, toggleHierarchy, syncHierarchyExpansion } from '../../src/react/model/layout/hierarchy.ts';
+import { hierarchyProjection, nodeIsVisible } from '../../src/react/model/layout/visibility.ts';
+import { CARD_SIZE, worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { groupSelection } from '../../src/react/model/layout/grouping.ts';
+import { routeDiagramEdge } from '../../src/react/model/routing/routing.ts';
+import { LabelLayoutCache } from '../../src/react/model/labels/label-layout.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { DiagramRouteCache } from '../../src/react/model/routing/route-cache.ts';
 import { obstacleFromRect, type Rect } from '../../src/core/layout/geometry.ts';
 import { validateOrthogonalPath } from '../helpers/geometry.ts';
 
@@ -115,15 +118,18 @@ test('complete relation and change labels avoid cards, titles, frame borders and
       const visible = nodes.filter((node) => nodeIsVisible(node, nodes, projection));
       const blockers = visible.map((node) => ({ ...bounds(node, nodes), h: node.type === 'card' ? node.height! : 68 }));
       const frames = visible.filter((node) => node.type !== 'card').map((node) => bounds(node, nodes));
+      const edges = aggregateProjectedEdges(projection, edgeChanges);
+      const routes = new DiagramRouteCache().update(nodes, projection, edges);
+      const labels = new LabelLayoutCache().update(nodes, projection, edges, routes);
+      assert.ok(labels.stats.visible > 0);
       const occupied: Rect[] = [];
-      for (const edge of projection.edges) {
-        const route = routeDiagramEdge(nodes, projection, edge.source.nodeId, edge.target.nodeId);
-        const text = relationLabel(edge.label ?? '', edgeChanges[edge.canonicalEdgeId]!);
-        const label = placeEdgeLabel(route.points, text, blockers, frames, occupied);
+      for (const [edgeId, result] of labels.labels) {
+        const label = result.placement;
+        if (!label) continue;
         const rect = { x: label.x - label.width / 2, y: label.y - label.height / 2, w: label.width, h: label.height };
-        const context = `${id}/${owner ?? 'overview'} ${edge.canonicalEdgeId} ${text}`;
+        const context = `${id}/${owner ?? 'overview'} ${edgeId} ${result.fullText}`;
         assert.ok(label.width >= 44 && label.height >= 24, context);
-        assert.ok([...blockers, ...occupied].every((blocker) => !overlaps(rect, expand(blocker, 8))), `${context}: overlaps a card, header or label`);
+        assert.ok(blockers.every((blocker) => !overlaps(rect, expand(blocker, 8))) && occupied.every((other) => !overlaps(rect, other)), `${context}: overlaps a card, header or label`);
         assert.ok(frames.every((frame) => contains(expand(frame, -8), rect) || !overlaps(expand(frame, 8), rect)), `${context}: crosses a frame border`);
         occupied.push(rect);
       }

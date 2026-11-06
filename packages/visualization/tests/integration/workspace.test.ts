@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CanonicalNode, StageSnapshot } from '../../src/core/schema/types.ts';
 import type { VisualizationBaseline } from '../../src/core/schema/baseline.ts';
-import { createHierarchyNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
-import { CARD_SIZE, groupSelection, worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { captureContent, captureNodeViews, restoreNodeViews, ViewHistory, type CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
+import { createHierarchyNodes, toggleHierarchy } from '../../src/react/model/layout/hierarchy.ts';
+import { CARD_SIZE, worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { groupSelection } from '../../src/react/model/layout/grouping.ts';
+import { captureContent, captureNodeViews, restoreNodeViews } from '../../src/react/model/workspace/workspace.ts';
+import { ViewHistory } from '../../src/react/model/workspace/history.ts';
+import { type CanvasWorkspaceView } from '../../src/react/model/contracts/snapshot-types.ts';
 import { createLocalStorageViewStorage } from '../../src/react/persistence/local-storage.ts';
 
 const entity = (id: string, parentId: string | null, order: number): CanonicalNode => ({ id, parentId, kind: parentId === null ? 'root' : 'component', label: id, summary: `${id} source summary`, order, ports: [] });

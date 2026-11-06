@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
-import type { CanvasNode } from '../src/react/model/grouping.ts';
-import { DiagramRouteCache } from '../src/react/model/route-cache.ts';
+import type { CanvasNode } from '../src/react/model/layout/node.ts';
+import { DiagramRouteCache } from '../src/react/model/routing/route-cache.ts';
 
 const columns = 5, rows = 4;
 const nodes: CanvasNode[] = [];
@@ -37,9 +37,9 @@ test('baseline routing profile is bounded and fully accounted for', () => {
   const routes = cache.update(nodes, projection, inputs, [], new Map(), { direction: 'auto' });
   const wall = performance.now() - started;
   const stats = cache.lastStats;
-  console.log(`[route-baseline] nodes=${nodes.length} edges=${inputs.length} geometry=${stats.geometryMs.toFixed(2)}ms routing=${stats.routingMs.toFixed(2)}ms labels=${stats.labelMs.toFixed(2)}ms total=${wall.toFixed(2)}ms routed=${stats.routedEdges}`);
+  console.log(`[route-baseline] nodes=${nodes.length} edges=${inputs.length} geometry=${stats.geometryMs.toFixed(2)}ms routing=${stats.routingMs.toFixed(2)}ms total=${wall.toFixed(2)}ms routed=${stats.routedEdges}`);
   assert.equal(routes.size, inputs.length);
   assert.equal(stats.totalEdges, inputs.length);
-  assert.ok(stats.geometryMs >= 0 && stats.routingMs >= 0 && stats.labelMs >= 0);
+  assert.ok(stats.geometryMs >= 0 && stats.routingMs >= 0);
   assert.ok(wall < 5000, `baseline routing took ${wall.toFixed(2)}ms`);
 });

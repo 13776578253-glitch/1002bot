@@ -1,8 +1,8 @@
 /** Connection panel owns relation inspection, route/label controls and endpoint navigation for one display edge. */
 import { memo, useId, useMemo } from 'react';
 import type { StageSnapshot } from '../../../core/schema/types.ts';
-import { relationNames, type DisplayEdge } from '../../model/display-edges.ts';
-import type { EdgeRouteState } from '../../model/workspace.ts';
+import { relationNames, type DisplayEdge } from '../../model/routing/display-edges.ts';
+import type { EdgeRouteState } from '../../model/contracts/snapshot-types.ts';
 import { ChangeBadge } from '../change-badge.tsx';
 import { Icon } from '../icon.tsx';
 

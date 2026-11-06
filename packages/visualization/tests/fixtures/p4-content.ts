@@ -1,15 +1,17 @@
 import { adaptProject } from '../../src/adapters/project/index.ts';
-import { baselineNodes, hierarchyProjection } from '../../src/react/model/hierarchy.ts';
-import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
-import { DiagramRouteCache } from '../../src/react/model/route-cache.ts';
-import { routeSnapshotForEdge } from '../../src/react/model/edge-routes.ts';
-import { freezeSelection } from '../../src/react/model/frozen.ts';
-import { captureFrozenSubgraph } from '../../src/react/model/blackbox-routes.ts';
-import { captureDisplayRoutes } from '../../src/react/model/display-route-snapshots.ts';
-import { captureContent, type CanvasBaselineContent } from '../../src/react/model/workspace.ts';
-import type { CanvasNode } from '../../src/react/model/grouping.ts';
+import { baselineNodes } from '../../src/react/model/layout/hierarchy.ts';
+import { hierarchyProjection } from '../../src/react/model/layout/visibility.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { DiagramRouteCache } from '../../src/react/model/routing/route-cache.ts';
+import { routeSnapshotForEdge } from '../../src/react/model/routing/edge-routes.ts';
+import { freezeSelection } from '../../src/react/model/freeze/frozen.ts';
+import { captureFrozenSubgraph } from '../../src/react/model/freeze/blackbox-routes.ts';
+import { captureDisplayRoutes } from '../../src/react/model/routing/display-route-snapshots.ts';
+import { captureContent } from '../../src/react/model/workspace/workspace.ts';
+import { type CanvasBaselineContent } from '../../src/react/model/contracts/snapshot-types.ts';
+import type { CanvasNode } from '../../src/react/model/layout/node.ts';
 import type { Projection } from '../../src/core/projection/index.ts';
-import type { DisplayEdge } from '../../src/react/model/display-edges.ts';
+import type { DisplayEdge } from '../../src/react/model/routing/display-edges.ts';
 import { p4Project } from './project-p4.ts';
 
 export const p4Baselines = adaptProject(p4Project);
@@ -19,7 +21,7 @@ export interface P4Content {
   nodes: CanvasNode[];
   projection: Projection;
   edges: DisplayEdge[];
-  routes: Map<string, import('../../src/react/model/route-cache.ts').CachedRoute>;
+  routes: Map<string, import('../../src/react/model/routing/route-cache.ts').CachedRoute>;
   content: CanvasBaselineContent;
   pinnedId: string;
   lockedId: string;

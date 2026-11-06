@@ -3,27 +3,30 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { applyNodeChanges, useReactFlow, type NodeChange } from '@xyflow/react';
 import type { VisualizationBaseline } from '../../core/schema/baseline.ts';
 import type { VisualizationCanvasProps } from '../types.ts';
-import { groupSelection, selectionRoots, ungroup, type CanvasNode, type LayoutMode } from '../model/grouping.ts';
-import { hierarchyProjection, nodeIsVisible, toggleHierarchy } from '../model/hierarchy.ts';
-import { constrainNodeMoves, type AlignmentGuide } from '../model/constraints.ts';
-import { fitAuthoredLayout, manualGeometryConflict, moveAlignedAuthoredNodes } from '../model/manual-layout.ts';
-import { aggregateProjectedEdges, type DisplayEdge } from '../model/display-edges.ts';
-import { freezeSelection, frozenGroupFor, toggleFrozenExpansion } from '../model/frozen.ts';
-import { removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints, reservedLockedRoutes } from '../model/edge-routes.ts';
-import { captureDisplayRoutes } from '../model/display-route-snapshots.ts';
-import type { CachedRoute } from '../model/route-cache.ts';
-import type { StageViewState } from '../model/stage-transition.ts';
-import { prepareStageNavigation, type NavigationResult } from '../model/stage-navigation.ts';
-import { captureFrozenSubgraph, validateFrozenConnections, releaseFrozenSubgraph } from '../model/blackbox-routes.ts';
-import { rebaseFrozenGrowth } from '../model/frozen-growth.ts';
-import type { StageConflict } from '../model/stage-types.ts';
-import { recordPositionEdits, recordSizeEdits } from '../model/layout-intent.ts';
-import type { CanvasWorkspaceView, CanvasViewMode, EdgeRouteState, FrozenGroupSnapshot } from '../model/workspace.ts';
+import { groupSelection, selectionRoots, ungroup } from '../model/layout/grouping.ts';
+import { type CanvasNode } from '../model/layout/node.ts';
+import { type LayoutMode } from '../model/contracts/layout-types.ts';
+import { hierarchyProjection, nodeIsVisible } from '../model/layout/visibility.ts';
+import { toggleHierarchy } from '../model/layout/hierarchy.ts';
+import { constrainNodeMoves, type AlignmentGuide } from '../model/layout/constraints.ts';
+import { fitAuthoredLayout, manualGeometryConflict, moveAlignedAuthoredNodes } from '../model/layout/manual-layout.ts';
+import { aggregateProjectedEdges, type DisplayEdge } from '../model/routing/display-edges.ts';
+import { freezeSelection, frozenGroupFor, toggleFrozenExpansion } from '../model/freeze/frozen.ts';
+import { removeRoute, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints, reservedLockedRoutes } from '../model/routing/edge-routes.ts';
+import { captureDisplayRoutes } from '../model/routing/display-route-snapshots.ts';
+import type { CachedRoute } from '../model/routing/route-cache.ts';
+import type { StageViewState } from '../model/stages/stage-transition.ts';
+import { prepareStageNavigation, type NavigationResult } from '../model/stages/stage-navigation.ts';
+import { captureFrozenSubgraph, validateFrozenConnections, releaseFrozenSubgraph } from '../model/freeze/blackbox-routes.ts';
+import { rebaseFrozenGrowth } from '../model/freeze/frozen-growth.ts';
+import type { StageConflict } from '../model/contracts/stage-types.ts';
+import { recordPositionEdits, recordSizeEdits } from '../model/layout/layout-intent.ts';
+import type { CanvasWorkspaceView, CanvasViewMode, EdgeRouteState, FrozenGroupSnapshot } from '../model/contracts/snapshot-types.ts';
 import { useWorkspaceSession, VIEW_MODES, VIEW_LABELS, type ViewTransition } from './use-workspace-session.ts';
 import { useCanvasScene } from './use-canvas-scene.ts';
 import { useDragProfile } from './use-drag-profile.ts';
-import { labelPinForEdge, pinLabelForEdge, upsertLabelPin, removeLabelPinForEdge } from '../model/label-pins.ts';
-import { sceneGeometryKey } from '../model/label-snapshots.ts';
+import { labelPinForEdge, pinLabelForEdge, upsertLabelPin, removeLabelPinForEdge } from '../model/labels/label-pins.ts';
+import { sceneGeometryKey } from '../model/layout/scene-geometry.ts';
 
 /** 阶段切换的只读候选；失败时保留冲突和可重试的重继承结果。 */
 interface TransitionPreview {
@@ -200,14 +203,15 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     const groups = [...session.frozenGroups, result.group];
     const inside = new Set([result.group.rootId, ...result.group.memberIds]);
     result.group.previousRoutes = structuredClone(session.edgeRoutes.filter((route) => inside.has(route.source.nodeId) || inside.has(route.target.nodeId)));
-    const captured = captureFrozenSubgraph({nodes:result.nodes,stage:baseline.stage,group:result.group,groups,displayEdges,displayRoutes:routesRef.current,storedRoutes:session.edgeRoutes});
+    const labels = new Map(session.displayRoutesRef.current.map((route) => [route.id, route.label]));
+    const captured = captureFrozenSubgraph({nodes:result.nodes,stage:baseline.stage,group:result.group,groups,displayEdges,displayRoutes:routesRef.current,displayLabels:labels,storedRoutes:session.edgeRoutes});
     if(!captured.ok){setMessage(captured.conflicts[0]!.message);return;}
     const merged = captured.routes.reduce((list, route) => upsertRoute(list, route), session.edgeRoutes);
     session.commitContent((current) => ({
       ...current, nodes: captured.nodes,
       frozenGroups: [...current.frozenGroups, captured.group],
       edgeRoutes: merged,
-      displayRoutes: captureDisplayRoutes(nodesRef.current, projection, displayEdges, routesRef.current, reservedLockedRoutes(merged, captured.nodes, [...session.frozenGroups, captured.group])),
+      displayRoutes: captureDisplayRoutes(nodesRef.current, projection, displayEdges, routesRef.current, reservedLockedRoutes(merged, captured.nodes, [...session.frozenGroups, captured.group]), baseline.stage.presentation?.portPolicy, (id) => labels.get(id)),
     }));
     setMessage(`已冻结 ${1 + result.group.memberIds.length} 个节点`);
     clearTransientState();
@@ -248,7 +252,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
     }
     const route = routesRef.current.get(selectedEdge);
     if (!route) { setMessage('当前路径尚未生成，无法固定'); return; }
-    const snapshot = routeSnapshotForEdge(edge, route, state, nodesRef.current, session.frozenGroups);
+    const snapshot = routeSnapshotForEdge(edge, route, state, nodesRef.current, session.frozenGroups, session.displayRoutesRef.current.find((item) => item.id === selectedEdge)?.label);
     if (!snapshot) { setMessage('无法固定当前路径'); return; }
     session.commitContent((current) => ({ ...current, edgeRoutes: upsertRoute(current.edgeRoutes, snapshot) }));
     setMessage(state === 'locked' ? '路径已锁定' : '路径已固定');
@@ -442,7 +446,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
   // 只有在 scene frame 与当前节点几何一致时才捕获快照；待完成事务在这里 finish 并执行延迟导航。
   useLayoutEffect(() => {
     const frame = scene.frame;
-    routesRef.current = scene.labelledRoutes;
+    routesRef.current = scene.routes;
     const capture = () => {
       if (preview || frame.baselineId !== baselineId || frame.geometryKey !== sceneGeometryKey(nodesRef.current)) return;
       session.setDisplayRoutes(frame.snapshots, frame.geometryKey, frame.baselineId, frame.viewMode);
@@ -453,7 +457,7 @@ export function useCanvasController(props: VisualizationCanvasProps, restored?: 
       pendingFinish.current = false; capture(); finish(); dragProfile.stop();
       const navigation = deferredNavigation.current; deferredNavigation.current = undefined; navigation?.();
     } else session.cacheRenderedRoutes(frame.snapshots, frame.geometryKey, frame.baselineId, frame.viewMode);
-  }, [scene.frame.geometryKey, scene.frame.snapshots, scene.frame.viewMode, scene.labelledRoutes, baselineId, preview, finishRevision, finish, session.setDisplayRoutes, session.cacheRenderedRoutes, dragProfile.stop]);
+  }, [scene.frame.geometryKey, scene.frame.snapshots, scene.frame.viewMode, scene.routes, baselineId, preview, finishRevision, finish, session.setDisplayRoutes, session.cacheRenderedRoutes, dragProfile.stop]);
   const saveViewport = useCallback((viewport: { x: number; y: number; zoom: number }) => { if (!preview) session.saveViewport(viewport); }, [preview, session.saveViewport]);
   return {
     ...scene, ...session, saveViewport, undo, redo, baselines: props.baselines, theme, setTheme, boxMode, setBoxMode, grid, setGrid, zoom, setZoom,

@@ -1,7 +1,7 @@
 /** Transition panel owns the read-only candidate summary and structured conflict list; it writes no workspace state. */
 import { memo, useId } from 'react';
 import type { VisualizationBaseline } from '../../../core/schema/baseline.ts';
-import type { StageConflict } from '../../model/stage-types.ts';
+import type { StageConflict } from '../../model/contracts/stage-types.ts';
 import { Icon } from '../icon.tsx';
 
 /** 阶段切换失败时的只读候选；冲突列表与可选重继承动作都不写入工作区。 */

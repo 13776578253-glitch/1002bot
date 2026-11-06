@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { worldRoutePoints } from '../../src/react/model/edge-routes.ts';
-import { rebaseFrozenGrowth } from '../../src/react/model/frozen-growth.ts';
-import type { EdgeRouteSnapshot, FrozenGroupSnapshot } from '../../src/react/model/workspace.ts';
+import { worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { worldRoutePoints } from '../../src/react/model/routing/edge-routes.ts';
+import { rebaseFrozenGrowth } from '../../src/react/model/freeze/frozen-growth.ts';
+import type { EdgeRouteSnapshot, FrozenGroupSnapshot } from '../../src/react/model/contracts/snapshot-types.ts';
 
 test('left/top frame growth rebases protected paths, labels and boundary segments without world drift', () => {
   const before: CanvasNode[] = [

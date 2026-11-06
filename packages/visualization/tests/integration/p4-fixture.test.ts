@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adaptProject } from '../../src/adapters/project/index.ts';
-import { baselineNodes } from '../../src/react/model/hierarchy.ts';
+import { baselineNodes } from '../../src/react/model/layout/hierarchy.ts';
 import { p4Project } from '../fixtures/project-p4.ts';
 import { buildP4Content } from '../fixtures/p4-content.ts';
-import { restoreFrozenGroups } from '../../src/react/model/frozen.ts';
-import { restoreNodeViews, ViewHistory, type CanvasWorkspaceView } from '../../src/react/model/workspace.ts';
-import { worldPosition } from '../../src/react/model/grouping.ts';
-import { planStageTransition } from '../../src/react/model/stage-transition.ts';
-import { prepareStageNavigation } from '../../src/react/model/stage-navigation.ts';
+import { restoreFrozenGroups } from '../../src/react/model/freeze/frozen.ts';
+import { restoreNodeViews } from '../../src/react/model/workspace/workspace.ts';
+import { ViewHistory } from '../../src/react/model/workspace/history.ts';
+import { type CanvasWorkspaceView } from '../../src/react/model/contracts/snapshot-types.ts';
+import { worldPosition } from '../../src/react/model/layout/node.ts';
+import { planStageTransition } from '../../src/react/model/stages/stage-transition.ts';
+import { prepareStageNavigation } from '../../src/react/model/stages/stage-navigation.ts';
 import { createProjectViewStorage } from '../../src/react/persistence/project-storage.ts';
 
 const baselines = adaptProject(p4Project);

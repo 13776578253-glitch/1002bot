@@ -4,15 +4,16 @@ import { readFileSync } from 'node:fs';
 import { adaptProgressReports, type ReportDataset } from '../../src/adapters/progress-reports/index.ts';
 import type { ChangeMark, VisualizationBaseline } from '../../src/core/schema/baseline.ts';
 import type { CanonicalEdge, CanonicalNode, StageSnapshot } from '../../src/core/schema/types.ts';
-import { captureContent, type FrozenGroupSnapshot } from '../../src/react/model/workspace.ts';
-import { createHierarchyNodes, toggleHierarchy, baselineNodes } from '../../src/react/model/hierarchy.ts';
-import { freezeSelection } from '../../src/react/model/frozen.ts';
-import { worldPosition, type CanvasNode } from '../../src/react/model/grouping.ts';
-import { planStageTransition } from '../../src/react/model/stage-transition.ts';
+import { captureContent } from '../../src/react/model/workspace/workspace.ts';
+import { type FrozenGroupSnapshot } from '../../src/react/model/contracts/snapshot-types.ts';
+import { createHierarchyNodes, toggleHierarchy, baselineNodes } from '../../src/react/model/layout/hierarchy.ts';
+import { freezeSelection } from '../../src/react/model/freeze/frozen.ts';
+import { worldPosition, type CanvasNode } from '../../src/react/model/layout/node.ts';
+import { planStageTransition } from '../../src/react/model/stages/stage-transition.ts';
 import { projectGraph } from '../../src/core/projection/index.ts';
-import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
-import { DiagramRouteCache } from '../../src/react/model/route-cache.ts';
-import { routeSnapshotForEdge } from '../../src/react/model/edge-routes.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { DiagramRouteCache } from '../../src/react/model/routing/route-cache.ts';
+import { routeSnapshotForEdge } from '../../src/react/model/routing/edge-routes.ts';
 
 function entity(id: string, parentId: string | null, order: number, kind: CanonicalNode['kind'] = parentId === null ? 'root' : 'component'): CanonicalNode {
   return { id, parentId, kind, label: id, summary: `${id} summary`, order, ports: [] };

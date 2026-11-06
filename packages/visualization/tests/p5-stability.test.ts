@@ -1,12 +1,10 @@
 import test from 'node:test';
+import { GroupRouteCache, type GroupRouteCacheInput } from '../src/react/model/routing/group-route-cache.ts';
 import assert from 'node:assert/strict';
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
-import type { CanvasNode } from '../src/react/model/grouping.ts';
-import { GroupRouteCache, type GroupRouteCacheInput } from '../src/react/model/group-route-cache.ts';
-import { solveRouteGroups, type GroupEdgeInput, type GroupSolveInput } from '../src/react/model/route-groups.ts';
-import { measureRoutes, type QualityRoute } from '../src/react/model/route-quality.ts';
-import type { CachedRoute } from '../src/react/model/route-cache.ts';
+import type { CanvasNode } from '../src/react/model/layout/node.ts';
+import { solveRouteGroups, type GroupEdgeInput, type GroupSolveInput } from '../src/react/model/routing/route-groups.ts';
 
 const card = (id: string, x: number, y: number, width = 240, height = 80): CanvasNode => ({ id, type: 'card', position: { x, y }, width, height, data: { title: id } });
 const nodes = [
@@ -36,14 +34,6 @@ function fixture(inputNodes: readonly CanvasNode[], inputEdges: readonly GroupEd
   return { nodes: inputNodes, projection: projectGraph(stage, new Set()), edges: inputEdges, policy: { direction: 'top-down' }, maxEdgesPerGroup: 12 };
 }
 
-function quality(routes: Map<string, CachedRoute>): ReturnType<typeof measureRoutes> {
-  const rows: QualityRoute[] = [...routes].map(([edgeId, route]) => ({
-    edgeId, points: route.points, label: route.label, labelRequired: Boolean(route.text.trim()),
-    ...(route.labelState ? { labelState: route.labelState } : {}),
-  }));
-  return measureRoutes(rows);
-}
-
 test('multi-node moves invalidate only affected groups and preserve untouched route objects', () => {
   const cache = new GroupRouteCache();
   const first = cache.update(fixture(nodes, edges));
@@ -58,9 +48,6 @@ test('multi-node moves invalidate only affected groups and preserve untouched ro
   if (!second.outcome?.ok) return;
   assert.equal(second.outcome.routes.get('c1'), first.outcome.routes.get('c1'));
   assert.equal(second.outcome.routes.get('c2'), first.outcome.routes.get('c2'));
-  const metrics = quality(second.outcome.routes);
-  assert.equal(metrics.labelOverlaps, 0);
-  assert.equal(metrics.labelOwnerMisses, 0);
 });
 
 test('node-set changes force a full solve and leave no stale records', () => {

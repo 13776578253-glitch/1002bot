@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
-import type { CanvasNode } from '../src/react/model/grouping.ts';
-import { solveRouteGroups, type GroupEdgeInput, type GroupSolveInput } from '../src/react/model/route-groups.ts';
-import { GroupRouteCache, type GroupRouteCacheInput } from '../src/react/model/group-route-cache.ts';
+import type { CanvasNode } from '../src/react/model/layout/node.ts';
+import { solveRouteGroups, type GroupEdgeInput, type GroupSolveInput } from '../src/react/model/routing/route-groups.ts';
+import { GroupRouteCache, type GroupRouteCacheInput } from '../src/react/model/routing/group-route-cache.ts';
 
 const card = (id: string, x: number, y: number, width = 260, height = 92): CanvasNode => ({ id, type: 'card', position: { x, y }, width, height, data: { title: id } });
 

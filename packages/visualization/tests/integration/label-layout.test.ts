@@ -3,15 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { adaptProject, resolveSourceStages, type ArchitectureProject, type ProjectManifest, type ProjectSourceCatalog, type ProjectStageSelection, type ProjectViewDefinition } from '../../src/adapters/project/index.ts';
 import { rectIntersects, segmentCrossesRect, type Point, type Rect } from '../../src/core/layout/geometry.ts';
-import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
-import { applyStoredRoutes, routeSnapshotForEdge } from '../../src/react/model/edge-routes.ts';
-import { baselineNodes, hierarchyProjection } from '../../src/react/model/hierarchy.ts';
-import { LabelLayoutCache } from '../../src/react/model/label-layout.ts';
-import { DiagramRouteCache, type CachedRoute } from '../../src/react/model/route-cache.ts';
-import { createDiagramGeometry } from '../../src/react/model/routing.ts';
-import { expandBounds } from '../../src/react/model/spatial-index.ts';
-import { baselineForView } from '../../src/react/model/view-projection.ts';
-import type { CanvasViewMode } from '../../src/react/model/workspace.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { applyStoredRoutes, routeSnapshotForEdge } from '../../src/react/model/routing/edge-routes.ts';
+import { baselineNodes } from '../../src/react/model/layout/hierarchy.ts';
+import { hierarchyProjection } from '../../src/react/model/layout/visibility.ts';
+import { LabelLayoutCache } from '../../src/react/model/labels/label-layout.ts';
+import { DiagramRouteCache, type CachedRoute } from '../../src/react/model/routing/route-cache.ts';
+import { createDiagramGeometry } from '../../src/react/model/routing/routing.ts';
+import { expandBounds } from '../../src/react/model/layout/spatial-index.ts';
+import { baselineForView } from '../../src/react/model/stages/view-projection.ts';
+import type { CanvasViewMode } from '../../src/react/model/contracts/snapshot-types.ts';
 
 const directory = new URL('../../datasets/projects/runtime-evolution/', import.meta.url);
 const read = <T>(path: string): T => JSON.parse(readFileSync(new URL(path, directory), 'utf8')) as T;
@@ -66,11 +67,6 @@ for (const source of baselines) for (const mode of modes) {
     assert.deepEqual(routes, routesBefore);
     assert.deepEqual(nodes, nodesBefore);
     const geometry = createDiagramGeometry(nodes, projection);
-    const upstreamRouteLabels = edges.flatMap((edge) => {
-      const route = routes.get(edge.id);
-      return route && route.feasible !== false && edge.text.trim() && route.label.width > 0 && route.label.height > 0
-        ? [{ id: edge.id, label: route.label, box: rectOf(route.label) }] : [];
-    });
     const current = edges.flatMap((edge) => {
       const label = result.labels.get(edge.id)?.placement;
       return label ? [{ id: edge.id, label, box: rectOf(label) }] : [];
@@ -85,13 +81,13 @@ for (const source of baselines) for (const mode of modes) {
       const halfAcross = (Math.abs(dy / length) * item.label.width + Math.abs(dx / length) * item.label.height) / 2;
       assert.ok(Math.abs(attachment.offset) <= 0.0001 || Math.abs(Math.abs(attachment.offset) - halfAcross) <= 2.0001, `${item.id}: detached label`);
     }
-    const upstream = quality(upstreamRouteLabels, routes, geometry.blockers, geometry.frames), after = quality(current, routes, geometry.blockers, geometry.frames);
+    const after = quality(current, routes, geometry.blockers, geometry.frames);
     assert.equal(after.labelOverlaps, 0);
     assert.equal(after.nodeOverlaps, 0);
     assert.equal(after.frameOverlaps, 0);
     assert.equal(after.farFromPath, 0);
     const metric = { stage: source.stage.label, mode, edges: edges.length, feasible: [...routes.values()].filter((route) => route.feasible !== false).length,
-      upstreamRoutePlaceholders: { ...upstream, hidden: edges.length - upstream.visible }, labelLayout: { ...after, hidden: edges.length - after.visible }, durationMs: result.stats.durationMs };
+      labelLayout: { ...after, hidden: edges.length - after.visible }, durationMs: result.stats.durationMs };
     metrics.push(metric);
     t.diagnostic(JSON.stringify(metric));
   });
@@ -114,12 +110,11 @@ test('locking a hidden label preserves only the route, and the label can reappea
   const blockedProjection = { ...projection, nodes: [...projection.nodes, visibleBlocker], nodeById: new Map([...projection.nodeById, [blocker.id, visibleBlocker] as const]) };
   const hidden = new LabelLayoutCache().update(blockedNodes, blockedProjection, [edge], new Map([[edge.id, route]])).labels.get(edge.id)!;
   assert.equal(hidden.state, 'space-exhausted');
-  const zeroRoute = { ...route, label: { x: 0, y: 0, width: 0, height: 0 } };
-  const snapshot = routeSnapshotForEdge(edge, zeroRoute, 'locked', nodes, []);
+  const snapshot = routeSnapshotForEdge(edge, route, 'locked', nodes, []);
   assert.ok(snapshot);
   assert.equal(snapshot.label, undefined);
   assert.deepEqual(snapshot.points, route.points);
-  const restoredRoutes = applyStoredRoutes(new Map([[edge.id, zeroRoute]]), [edge], [snapshot], nodes, projection, []);
+  const restoredRoutes = applyStoredRoutes(new Map([[edge.id, route]]), [edge], [snapshot], nodes, projection, []);
   assert.deepEqual(restoredRoutes.get(edge.id)?.points, route.points);
   const restored = new LabelLayoutCache().update(nodes, projection, [{ id: edge.id, text: edge.text, ...(snapshot.label ? { fixed: snapshot.label } : {}) }], restoredRoutes).labels.get(edge.id)!;
   assert.ok(restored.placement);

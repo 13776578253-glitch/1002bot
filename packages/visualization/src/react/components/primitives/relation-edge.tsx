@@ -2,7 +2,7 @@
 import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
 import type { ChangeMark } from '../../../core/schema/baseline.ts';
 import { svgPathFromPoints, type Point } from '../../../core/layout/geometry.ts';
-import type { EdgeLabelPlacement } from '../../model/labels.ts';
+import type { EdgeLabelPlacement } from '../../model/contracts/label-types.ts';
 import { memo } from 'react';
 
 /** 连线渲染数据；points 是已选路径，label 是最终放置结果，路由策略不在组件内。 */
@@ -14,7 +14,6 @@ export interface LinkData extends Record<string, unknown> {
   points: Point[];
   label: EdgeLabelPlacement;
   labelText?: string;
-  labelFallback?: EdgeLabelPlacement | undefined;
   labelState?: 'normal' | 'adjusted' | 'space-exhausted' | undefined;
   onSelect(id: string): void;
   counts?: { title: string; added: number; replaced: number };

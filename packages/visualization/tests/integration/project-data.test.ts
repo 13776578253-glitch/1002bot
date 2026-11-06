@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { adaptProject, resolveSourceStages, type ArchitectureProject, type ProjectManifest, type ProjectRegistry, type ProjectSourceCatalog, type ProjectStageSelection, type ProjectViewDefinition } from '../../src/adapters/project/index.ts';
-import { baselineNodes } from '../../src/react/model/hierarchy.ts';
-import { captureContent } from '../../src/react/model/workspace.ts';
-import { rebaseSavedView } from '../../src/react/model/stage-navigation.ts';
+import { baselineNodes } from '../../src/react/model/layout/hierarchy.ts';
+import { captureContent } from '../../src/react/model/workspace/workspace.ts';
+import { rebaseSavedView } from '../../src/react/model/stages/stage-navigation.ts';
 import { createProjectViewStorage, normalizeProjectWorkspace } from '../../src/react/persistence/project-storage.ts';
-import { projectWorkspaceToCanvas, type ProjectWorkspace } from '../../src/react/model/project-workspace.ts';
+import { projectWorkspaceToCanvas, type ProjectWorkspace } from '../../src/react/persistence/project-workspace.ts';
 
 const datasets = new URL('../../datasets/', import.meta.url);
 const read = async <T>(path: string): Promise<T> => JSON.parse(await readFile(new URL(path, datasets), 'utf8')) as T;

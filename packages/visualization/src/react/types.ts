@@ -1,6 +1,6 @@
 /** React canvas component options and input contracts. */
 import type { VisualizationBaseline } from '../core/schema/baseline.ts';
-import type { CanvasViewStorage } from './model/workspace.ts';
+import type { CanvasViewStorage } from './persistence/storage-types.ts';
 
 export interface VisualizationCanvasProps {
   /** 架构演进基线快照数组；至少包含一项，按数组顺序渲染。 */

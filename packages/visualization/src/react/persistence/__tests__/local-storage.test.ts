@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { CanvasBaselineView, CanvasWorkspaceView } from '../../model/workspace.ts';
+import type { CanvasBaselineView, CanvasWorkspaceView } from '../../model/contracts/snapshot-types.ts';
 import { createLocalStorageViewStorage } from '../local-storage.ts';
 
 class RecordingStorage {

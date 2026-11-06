@@ -25,7 +25,6 @@ const hiddenEdge: Edge<LinkData> = {
     change: { kind: 'inherited', label: '沿用' },
     points: [{ x: 220, y: 46 }, { x: 270, y: 46 }, { x: 320, y: 46 }],
     label: { x: 270, y: 46, width: 0, height: 0 },
-    labelFallback: { x: 270, y: 46, width: 120, height: 24 },
     labelState: 'space-exhausted',
     onSelect: (_id: string) => {},
   },

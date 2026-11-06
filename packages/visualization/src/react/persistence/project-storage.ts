@@ -1,9 +1,10 @@
 /** Project storage owns canvas/project conversion and one-time backups; schema normalization lives in workspace-schema.ts. */
-import type { CanvasBaselineContent, CanvasBaselineView, CanvasViewMode, CanvasViewStorage, CanvasWorkspaceView } from '../model/workspace.ts';
+import type { CanvasBaselineContent, CanvasBaselineView, CanvasViewMode, CanvasWorkspaceView } from '../model/contracts/snapshot-types.ts';
+import type { CanvasViewStorage } from './storage-types.ts';
 import {
   canvasWorkspaceToProject, projectSnapshot, projectWorkspaceToCanvas,
   type ProjectStageWorkspace, type ProjectViewWorkspace, type ProjectWorkspace, type ProjectWorkspaceCheckpoint,
-} from '../model/project-workspace.ts';
+} from './project-workspace.ts';
 import { normalizeWorkspaceView } from './workspace-schema.ts';
 
 type RecordValue = Record<string, unknown>;

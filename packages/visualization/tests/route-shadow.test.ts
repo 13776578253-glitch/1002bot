@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
-import type { CanvasNode } from '../src/react/model/grouping.ts';
-import { DiagramRouteCache } from '../src/react/model/route-cache.ts';
-import { solveRouteGroups, type GroupEdgeInput, type GroupSolveInput } from '../src/react/model/route-groups.ts';
-import { measureRoutes, type QualityRoute } from '../src/react/model/route-quality.ts';
+import type { CanvasNode } from '../src/react/model/layout/node.ts';
+import { DiagramRouteCache } from '../src/react/model/routing/route-cache.ts';
+import { solveRouteGroups, type GroupEdgeInput, type GroupSolveInput } from '../src/react/model/routing/route-groups.ts';
+import { measureRoutes, type QualityRoute } from '../src/react/model/routing/route-quality.ts';
 
 interface Fixture {
   name: string;
@@ -65,7 +65,7 @@ const locked: Fixture = {
   name: 'locked',
   nodes: [card('A', 0, 0), card('B', 700, 0), card('C', 0, 400, 120, 60), card('D', 700, 400, 120, 60)],
   edges: [
-    { id: 'locked', source: 'A', target: 'B', text: '锁定连接', priority: 'locked', fixed: { sourceHandle: 'right:source:0', targetHandle: 'left:target:0', points: lockedPoints, label: { x: 480, y: 300, width: 60, height: 24 }, text: '锁定连接' } },
+    { id: 'locked', source: 'A', target: 'B', text: '锁定连接', priority: 'locked', fixed: { sourceHandle: 'right:source:0', targetHandle: 'left:target:0', points: lockedPoints, text: '锁定连接' } },
     { id: 'free-a', source: 'A', target: 'C', text: '左侧自由连接' },
     { id: 'free-b', source: 'B', target: 'D', text: '右侧自由连接' },
   ],
@@ -76,8 +76,7 @@ function oldQuality(fixture: Fixture): QualityRoute[] {
   const cache = new DiagramRouteCache();
   const routes = cache.update(nodes, projection, inputs, [], new Map(), fixture.policy ?? {});
   return [...routes].map(([edgeId, route]) => ({
-    edgeId, points: route.points, label: route.label,
-    ...(route.feasible === false ? { labelState: 'space-exhausted' as const } : {}),
+    edgeId, points: route.points,
   }));
 }
 
@@ -89,9 +88,6 @@ function newQuality(fixture: Fixture): { metrics: ReturnType<typeof measureRoute
     edgeId: route.edgeId, points: route.points, sourceSlot: route.sourceSlot, targetSlot: route.targetSlot,
     ...(route.trunkId ? { trunkId: route.trunkId } : {}),
     ...(route.trunkSegment ? { trunkSegment: route.trunkSegment } : {}),
-    ...(route.label ? { label: { x: route.label.anchor.x, y: route.label.anchor.y, width: route.label.rect.w, height: route.label.rect.h, score: route.label.score, segmentKind: route.label.segmentKind, distanceToTarget: route.label.distanceToTarget } } : {}),
-    labelRequired: route.labelRequired,
-    labelState: route.labelState,
   })));
   return { metrics: measureRoutes(routes), modes: result.plans.map((plan) => plan.mode) };
 }
@@ -101,8 +97,6 @@ for (const fixture of [six, fan, dense, locked]) {
     const oldMetrics = measureRoutes(oldQuality(fixture));
     const next = newQuality(fixture);
     console.log(JSON.stringify({ fixture: fixture.name, modes: next.modes, old: oldMetrics, new: next.metrics }));
-    assert.equal(next.metrics.labelOverlaps, 0, 'new labels do not overlap');
-    assert.equal(next.metrics.labelOwnerMisses, 0, 'new labels stay near their own route');
     assert.ok(next.metrics.length > 0);
   });
 }

@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CanonicalEdge, CanonicalNode, StageSnapshot } from '../../src/core/schema/types.ts';
 import { projectGraph } from '../../src/core/projection/index.ts';
-import { createHierarchyNodes, toggleHierarchy } from '../../src/react/model/hierarchy.ts';
-import { aggregateProjectedEdges } from '../../src/react/model/display-edges.ts';
-import { DiagramRouteCache } from '../../src/react/model/route-cache.ts';
-import { createDiagramGeometry, pathIsClear, routeDiagramGeometry } from '../../src/react/model/routing.ts';
-import { freezeSelection } from '../../src/react/model/frozen.ts';
-import { applyStoredRoutes, captureRoutesForGroup, removeRoute, reservedLockedRoutes, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints } from '../../src/react/model/edge-routes.ts';
+import { createHierarchyNodes, toggleHierarchy } from '../../src/react/model/layout/hierarchy.ts';
+import { aggregateProjectedEdges } from '../../src/react/model/routing/display-edges.ts';
+import { DiagramRouteCache } from '../../src/react/model/routing/route-cache.ts';
+import { createDiagramGeometry, pathIsClear, routeDiagramGeometry } from '../../src/react/model/routing/routing.ts';
+import { captureFrozenSubgraph } from '../../src/react/model/freeze/blackbox-routes.ts';
+import { freezeSelection } from '../../src/react/model/freeze/frozen.ts';
+import { applyStoredRoutes, removeRoute, reservedLockedRoutes, routeSnapshotForEdge, routeStateFor, upsertRoute, validateStoredRoutes, worldRoutePoints } from '../../src/react/model/routing/edge-routes.ts';
 
 function entity(id: string, parentId: string | null, order: number, kind: CanonicalNode['kind'] = parentId === null ? 'root' : 'component'): CanonicalNode {
   return { id, parentId, kind, label: id, summary: id, order, ports: [] };
@@ -45,7 +46,9 @@ test('freezing captures internal routes as owner-relative locks and boundary rou
   assert.equal(frozen.ok, true);
   if (!frozen.ok) return;
   const { projection, edges, routes } = routesFor();
-  const captured = captureRoutesForGroup(edges, routes, frozen.group, frozen.nodes, [frozen.group]);
+  const capture = captureFrozenSubgraph({ nodes: frozen.nodes, stage, group: frozen.group, groups: [frozen.group], displayEdges: edges, displayRoutes: routes, storedRoutes: [] });
+  assert.ok(capture.ok);
+  const captured = capture.routes;
   const inside = captured.find((route) => route.canonicalEdgeId === 'inside')!;
   const cross = captured.find((route) => route.canonicalEdgeId === 'cross')!;
   assert.equal(inside.state, 'locked');
@@ -61,7 +64,6 @@ test('freezing captures internal routes as owner-relative locks and boundary rou
   const movedRoutes = applyStoredRoutes(routes, edges, captured, moved, projection);
   assert.equal(inside.label, undefined);
   assert.deepEqual(movedRoutes.get('inside')!.points, shifted);
-  assert.equal(movedRoutes.get('inside')!.label.width, 0);
   assert.equal(validateStoredRoutes(frozen.nodes, moved, captured, projection), undefined);
   const detached = frozen.nodes.map((node) => node.id === 'first' ? { ...node, position: { ...node.position, x: node.position.x + 25 } } : node);
   assert.match(validateStoredRoutes(frozen.nodes, detached, captured, projection)!, /端点/);
@@ -91,7 +93,11 @@ test('freezing does not save a projected boundary route as a canonical path', ()
   const frozen = freezeSelection({ nodes: nodes(), rootIds: ['module'], groupId: 'freeze:module', stage });
   assert.equal(frozen.ok, true);
   if (!frozen.ok) return;
-  assert.deepEqual(captureRoutesForGroup(edges, routes, frozen.group, frozen.nodes, [frozen.group]), []);
+  const capture = captureFrozenSubgraph({ nodes: frozen.nodes, stage, group: frozen.group, groups: [frozen.group], displayEdges: edges, displayRoutes: routes, storedRoutes: [] });
+  assert.ok(capture.ok);
+  const cross = capture.routes.find((route) => route.canonicalEdgeId === 'cross')!;
+  assert.equal(cross.source.nodeId, 'first');
+  assert.ok(cross.frozenBoundaries?.length);
 });
 
 test('stored paths apply only to matching one-to-one visible endpoints', () => {

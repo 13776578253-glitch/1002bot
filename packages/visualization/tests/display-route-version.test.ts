@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildP4Content } from './fixtures/p4-content.ts';
-import { createDiagramGeometry } from '../src/react/model/routing.ts';
+import { createDiagramGeometry } from '../src/react/model/routing/routing.ts';
 
 test('visible route snapshots share the node geometry version they were captured from', () => {
   const fixture = buildP4Content();
@@ -13,6 +13,5 @@ test('visible route snapshots share the node geometry version they were captured
     assert.deepEqual(snapshot.targetBounds, geometry.bounds.get(snapshot.target), `${snapshot.id} target bounds`);
     const visible = fixture.routes.get(snapshot.id)!;
     assert.deepEqual(snapshot.points, visible.points, `${snapshot.id} points`);
-    assert.deepEqual(snapshot.label, visible.label, `${snapshot.id} label`);
   }
 });

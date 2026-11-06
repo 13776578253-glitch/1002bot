@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crossGroupCrossingHotspots } from '../src/react/model/cross-group-quality.ts';
-import type { QualityRoute } from '../src/react/model/route-quality.ts';
+import { crossGroupCrossingHotspots } from '../src/react/model/routing/cross-group-quality.ts';
+import type { QualityRoute } from '../src/react/model/routing/route-quality.ts';
 
 test('crossing hotspots rank edges and groups by actual crossings', () => {
   const routes: QualityRoute[] = [

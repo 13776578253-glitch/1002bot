@@ -1,5 +1,5 @@
 /** Local storage adapter owns read/write and one-time backups; schema normalization lives in workspace-schema.ts. */
-import type { CanvasViewStorage } from '../model/workspace.ts';
+import type { CanvasViewStorage } from './storage-types.ts';
 import { normalizeWorkspaceView } from './workspace-schema.ts';
 
 /** 一次性备份后缀；同名备份已存在时永不覆盖。 */

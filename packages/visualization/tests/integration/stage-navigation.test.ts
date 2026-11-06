@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { VisualizationBaseline } from '../../src/core/schema/baseline.ts';
-import { baselineNodes } from '../../src/react/model/hierarchy.ts';
-import { captureContent, type CanvasBaselineView } from '../../src/react/model/workspace.ts';
-import { prepareStageNavigation, prepareSourceRevision } from '../../src/react/model/stage-navigation.ts';
+import { baselineNodes } from '../../src/react/model/layout/hierarchy.ts';
+import { captureContent } from '../../src/react/model/workspace/workspace.ts';
+import { type CanvasBaselineView } from '../../src/react/model/contracts/snapshot-types.ts';
+import { prepareStageNavigation, prepareSourceRevision } from '../../src/react/model/stages/stage-navigation.ts';
 import { createLocalStorageViewStorage } from '../../src/react/persistence/local-storage.ts';
 
 function baseline(id:string,extra=false):VisualizationBaseline{
@@ -59,7 +60,7 @@ test('inheritance evidence and source snapshots survive persistence without auto
   const view=saved();let text:string|null=null;
   const storage=createLocalStorageViewStorage({getItem:()=>text,setItem:(_key,value)=>{text=value;}});
   storage.save('key',{version:2,baselineId:'two',baselines:{two:view}});
-  const loaded=storage.load('key') as import('../../src/react/model/workspace.ts').CanvasWorkspaceView;
+  const loaded=storage.load('key') as import('../../src/react/model/contracts/snapshot-types.ts').CanvasWorkspaceView;
   assert.deepEqual(loaded.baselines.two!.inheritance,view.inheritance);
   assert.deepEqual(loaded.baselines.two!.sourceStage,view.sourceStage);
   assert.equal(loaded.baselines.two!.confirmed,undefined);

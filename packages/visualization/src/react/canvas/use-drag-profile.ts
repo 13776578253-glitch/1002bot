@@ -1,6 +1,6 @@
 /** Drag profile records gesture-local timing for browser acceptance; measurements never enter saved views. */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RouteCacheStats } from '../model/route-cache.ts';
+import type { RouteCacheStats } from '../model/routing/route-cache.ts';
 
 const percentile = (values: number[]) => values.length ? [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1]! : 0;
 export function useDragProfile(stats: RouteCacheStats) {

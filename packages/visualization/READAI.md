@@ -670,3 +670,89 @@ Append all future code-change reports below.
 - Full package suite: 421 tests, 408 passed, 13 failed; failure set identical to baseline; typecheck passed.
 - Edge browser: Structure and Full round trips and reload pass.
 - Remaining: source positions deviating from baseline without a position edit or expansion/type marker are conservatively protected; a future automatic reflow producer would need explicit provenance.
+
+## 2026-11-06 — Model dependency boundaries
+
+**1. Problems Fixed**
+Four runtime cycles coupled grouping to spacing, visibility to placement, placement to freeze orchestration, and stored routes to frozen capture.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+Layout owns node primitives, sibling reflow, visibility and frozen frame geometry. The stage supplies frozen frame dimensions. Routing owns boundary fragments and connectors. The architecture test checks import direction and runtime cycles.
+
+**3. Files Modified**
+Grouped the React model, moved its unit tests with their owners, and updated React exports, callers, tools and owner documentation.
+
+**4. Complexity Assessment**
+The dependency graph is acyclic. Existing algorithms, caches, workspace storage contracts and the runtime node type are preserved.
+
+**5. Legacy Mechanism Cleanup**
+Retired flat import paths and the spacing re-export. Public React exports resolve directly to their owners.
+
+**6. Validation and Remaining Technical Debt**
+422 package tests, both type checks, distribution build (182 artifacts), and Playground build passed. Isolated Edge exited before CDP was ready. Storage ownership remains for the fourth batch.
+
+## 2026-11-06 — Shared route resolution
+
+**1. Problems Fixed**
+Canvas and stage flows assembled routes independently and used different port policies. Retained connectors could skip unrelated locked barriers.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+resolveRoutes composes caller-owned engines and emits legal paths or structured failures. Current port anchors, segment legality and protected geometry are checked across solving, reuse and final application.
+
+**3. Files Modified**
+Routing engines and snapshots, frozen boundary connector, canvas scene, stage navigation and transition, and port/stage integration tests.
+
+**4. Complexity Assessment**
+One route assembly path replaces three. Both engine caches retain independent invalidation. The resolver stores no state between calls.
+
+**5. Legacy Mechanism Cleanup**
+Removed the extra selection module, duplicate geometry and handle parsing, and the WeakSet used to bypass route reservations.
+
+**6. Validation and Remaining Technical Debt**
+420 package tests, type checks, distribution and Playground builds passed. Full repository tests hit QQ subprocess and temporary Git permission failures. Edge verification remains pending.
+
+## 2026-11-06 — Path and label ownership
+
+**1. Problems Fixed**
+Obsolete label algorithms and placeholder geometry obscured ownership of the final placement.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+LabelLayoutCache is the placement owner. Route results carry geometry, handles and path diagnostics. Snapshot capture takes actual placement separately and preserves existing label fields.
+
+**3. Files Modified**
+Label algorithms, both routing engines, route quality, snapshot and freeze capture, scene/controller, Playground and benchmark.
+
+**4. Complexity Assessment**
+Removed label-only branches in routing, the labelled route copy of each frame, and a test-only freeze capture path.
+
+**5. Legacy Mechanism Cleanup**
+Deleted placeEdgeLabel, candidate/beam modules and route-side placeholder metrics. Migrated baseline, recursive and frozen path coverage to their production entry points.
+
+**6. Validation and Remaining Technical Debt**
+403 package tests, package and Playground type checks, distribution build (180 artifacts), and Playground build passed. Browser verification remains pending.
+
+## 2026-11-06 — Snapshot contracts and intent authority
+
+**1. Problems Fixed**
+
+Confirmation and stage inheritance compared fitted geometry through separate rules. Workspace also owned storage contracts and project conversion.
+
+**2. Functions, Algorithms, and Mechanisms Changed**
+
+The shared intent comparison uses authored position and sizes, effective legacy geometry, protected anchors, frozen ledgers, protected paths and label pins. Stage merging keeps the current upstream automatic route seed. History retains the previous stage basis when a rebase changes metadata alone.
+
+**3. Files Modified**
+
+Separated snapshot, layout and label contracts. Workspace owns capture, restore, confirmation and history. Persistence owns the storage interface and project conversion. Public React exports retain their names. The route attachment check uses one anchor resolver for both directional and Group slot handles.
+
+**4. Complexity Assessment**
+
+Removed duplicate comparison logic and the overlay's unused React state. The serialized format and historical confirmation content are preserved. The runtime node type and engine caches retain their ownership.
+
+**5. Legacy Mechanism Cleanup**
+
+Removed the unused overlay initializer. Historical overlay payloads remain readable and writable. Captured automatic paths and fitted frames remain recovery data.
+
+**6. Validation and Remaining Technical Debt**
+
+406 package tests and 242 repository tests passed. Repository, package and Playground type checks passed. Distribution build verified 192 artifacts and the Playground build passed. Isolated Chromium verified label pinning and reload, locked Group port fallback, drag undo and redo, conflict preview, M1 to M2 inheritance and reload. The transient React Flow handle warning for event-agent also reproduces on 7cbe3ff. Both runs show 14 nodes and 13 paths after switching.

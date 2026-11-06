@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectGraph } from '../src/core/projection/index.ts';
 import type { StageSnapshot } from '../src/core/schema/types.ts';
-import type { CanvasNode } from '../src/react/model/grouping.ts';
+import type { CanvasNode } from '../src/react/model/layout/node.ts';
 import { createNodePortAllocator } from '../src/core/layout/node-port-allocator.ts';
 import {
   allocateEdgePortsAtomic, classifyFailure, getGlobalPortKey, selectModeResult, solveRouteGroups,
   type GroupEdgeInput, type GroupSolveInput, type ModeEvaluationResult,
-} from '../src/react/model/route-groups.ts';
+} from '../src/react/model/routing/route-groups.ts';
 
 function fixture(targets: { id: string; x: number; y: number }[]): GroupSolveInput {
   const hub: CanvasNode = { id: 'hub', type: 'card', position: { x: 0, y: 0 }, width: 260, height: 92, data: { title: 'hub' } };
@@ -46,8 +46,6 @@ test('a star group solves every edge with a shared allocator', () => {
   assert.deepEqual(result.failures, []);
   assert.ok(result.plans[0]!.routes.every((route) => route.points.length >= 2));
   for (const route of result.routes.values()) {
-    assert.equal(route.label.width, 0);
-    assert.equal(route.label.height, 0);
   }
 });
 
@@ -104,7 +102,7 @@ test('UT-P15-04 locked ports and paths are reserved from their handles', () => {
   const nodes = [a, b, c];
   const lockedPoints = [{ x: 260, y: 16 }, { x: 700, y: 16 }];
   const edges: GroupEdgeInput[] = [
-    { id: 'locked', source: 'A', target: 'B', text: 'locked', priority: 'locked', fixed: { sourceHandle: 'right:source:0', targetHandle: 'left:target:0', points: lockedPoints, label: { x: 480, y: 46, width: 0, height: 0 }, text: 'locked' } },
+    { id: 'locked', source: 'A', target: 'B', text: 'locked', priority: 'locked', fixed: { sourceHandle: 'right:source:0', targetHandle: 'left:target:0', points: lockedPoints, text: 'locked' } },
     { id: 'free', source: 'A', target: 'C', text: 'free' },
   ];
   const stage: StageSnapshot = {
@@ -164,7 +162,7 @@ test('UT-P15-06 lanes follow target geometry and do not cross', () => {
 });
 
 test('last-legal retention distinguishes retain, incomplete and rollback', () => {
-  const previous = { sourceHandle: 'bottom:source:0', targetHandle: 'top:target:0', points: [{ x: 0, y: 0 }, { x: 0, y: 100 }], label: { x: 0, y: 50, width: 0, height: 0 }, text: 'old' };
+  const previous = { sourceHandle: 'bottom:source:0', targetHandle: 'top:target:0', points: [{ x: 0, y: 0 }, { x: 0, y: 100 }], text: 'old' };
   assert.equal(classifyFailure({ previous, previousLegal: true, endpointsStable: true, transactional: false }), 'retain');
   assert.equal(classifyFailure({ previous, previousLegal: false, endpointsStable: true, transactional: false }), 'incomplete');
   assert.equal(classifyFailure({ previous, previousLegal: false, endpointsStable: false, transactional: true }), 'rollback');
